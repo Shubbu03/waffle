@@ -42,11 +42,19 @@ const paperQuote = {
   inputAmountLamports: "100000000",
   outputAmountRaw: "1000",
   minOutputAmountRaw: "950",
+  requestId: "jupiter-request",
+  router: "metis" as const,
   feeLamports: "5000",
+  fees: {
+    totalBps: 0, mint: null, platform: null,
+    signatureLamports: "5000", prioritizationLamports: "0", rentLamports: "0",
+  },
   slippageBps: 500,
   priceImpactBps: 100,
+  priceImpactPct: -1,
   fetchedAt: timestamp,
   expiresAt: later,
+  providerQuoteId: null,
 };
 
 const signal = {
@@ -225,15 +233,20 @@ describe("signals, quotes, and positions", () => {
   });
 
   test("real order contract rejects other routers, fee payers, and size above 0.05 SOL", () => {
+    const { providerQuoteId: _providerQuoteId, ...baseQuote } = paperQuote;
     const order = {
-      ...paperQuote,
+      ...baseQuote,
       kind: "real",
       inputAmountLamports: "50000000",
       taker: address,
       signatureFeePayer: address,
+      prioritizationFeePayer: address,
+      rentFeePayer: address,
+      gasless: false,
       requiredSignatures: 1,
       router: "metis",
       requestId: "jupiter-request",
+      lastValidBlockHeight: "123456789",
       transactionBase64: "dHJhbnNhY3Rpb24=",
     };
     expect(realOrderSchema.safeParse(order).success).toBe(true);
