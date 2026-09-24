@@ -1,0 +1,19 @@
+/** Mainnet program addresses. Only PumpSwap is in the MVP classifier scope. */
+export const PUMP_PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+export const PUMP_SWAP_PROGRAM_ID = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+export const RAYDIUM_AMM_V4_PROGRAM_ID = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+export const RAYDIUM_CPMM_PROGRAM_ID = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
+export const RAYDIUM_CLMM_PROGRAM_ID = "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK";
+export const SPL_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+export const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+
+export const PROGRAM_IDS = {
+  pump: PUMP_PROGRAM_ID,
+  pumpSwap: PUMP_SWAP_PROGRAM_ID,
+  raydiumAmmV4: RAYDIUM_AMM_V4_PROGRAM_ID,
+  raydiumCpmm: RAYDIUM_CPMM_PROGRAM_ID,
+  raydiumClmm: RAYDIUM_CLMM_PROGRAM_ID,
+  splToken: SPL_TOKEN_PROGRAM_ID,
+  token2022: TOKEN_2022_PROGRAM_ID,
+} as const;
