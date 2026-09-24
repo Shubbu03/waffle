@@ -117,4 +117,4 @@ Auto TP/SL execution, hosted keys, LLM trading, paid API, Dodo subs, SKR staking
 
 ## Progress — 24 September 2026
 
-MS0 C0.1 partial | done: four Bun workspace packages, shared dependency links, strict TypeScript configuration, root lockfile, README, and accepted wallet-selection decision | verified: frozen-lockfile install and all four workspace typechecks pass | pending: shared schemas/program IDs/score reasons and their tests, native mobile initialization, integration environment examples; C0.2 database setup has not started.
+MS0 C0.1 partial | done: four Bun workspace packages, shared dependency links, strict TypeScript configuration, root lockfile, README, accepted wallet-selection decision, shared score policy, program IDs, validated API/live schemas, and schema tests | verified: shared tests and all four workspace typechecks pass | pending: native mobile initialization and integration environment examples; C0.2 database setup has not started.

@@ -1,6 +1,6 @@
 # AGENT.md — waffle Seeker Build Agent
 
-**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace scaffold authorized 24 Sep 2026; Neon DB, curated catalog with personal follows, and backend/auth/live architecture selected. Feature implementation is pending.
+**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace and shared score/API/live contracts exist; Neon DB, curated catalog with personal follows, and backend/auth/live architecture are selected. Runtime integrations are pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
@@ -25,10 +25,11 @@ Latency is instrumented, not promised: log_received → tx_available → scored 
 
 ## Decisions and remaining work
 
-* Neon Postgres is selected. No database has been provisioned in this task; the workspace now contains the initial package/folder scaffold only.
+* Neon Postgres is selected. No database has been provisioned in this task; the workspace contains the package scaffold and [shared contracts](docs/shared-contracts.md).
 * Wallet auth and foreground live delivery are specified in [docs/backend-architecture.md](docs/backend-architecture.md). Implement and verify them in M0/M2; a database insert alone does not reach a device.
 * Wallet selection is decided: a curated catalog of 5-10 wallets with personal follows and separate alert preferences. See docs/wallet-selection.md for behavior, schema requirements, and exclusions.
 * Score v1 weights, critical checks, freshness, liquidity floors, and paper/real caps are defined in [docs/scoring-policy.md](docs/scoring-policy.md) and the shared package. Watcher evidence collection and mobile/API trade integration remain to be built.
+* Shared payload schemas, program IDs, event cursors, API errors, and live frames are defined in [docs/shared-contracts.md](docs/shared-contracts.md). API and mobile route integration remain to be built.
 * Bun is selected for workspace/package management and both server runtimes. The API framework, migrations, demo deployment, and free-tier budget are recorded in [docs/backend-architecture.md](docs/backend-architecture.md). Provider limits and swap API behavior require current verification before implementation.
 
 ## MODULE M0 — Bootstrap

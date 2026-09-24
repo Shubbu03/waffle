@@ -79,5 +79,4 @@ export const scorePolicyV1 = {
   },
 } as const satisfies ScorePolicy;
 
-export const SPL_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+export { SPL_TOKEN_PROGRAM_ID, WRAPPED_SOL_MINT } from "../program-ids.ts";

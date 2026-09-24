@@ -43,24 +43,38 @@ export type ScoreInput = {
   };
 };
 
-export type ScoreReasonCode =
-  | "supported_buy"
-  | "unsupported_or_failed_transaction"
-  | "fresh_signal"
-  | "stale_signal"
-  | "mint_safe"
-  | "mint_unavailable_or_unsafe"
-  | "pool_liquid"
-  | "pool_unavailable_or_shallow"
-  | "quote_available"
-  | "quote_unavailable"
-  | "holders_acceptable"
-  | "holders_missing_stale_or_concentrated"
-  | "creator_acceptable"
-  | "creator_missing_stale_or_concentrated"
-  | "oracle_agrees"
-  | "oracle_none_or_stale"
-  | "oracle_deviation_high";
+export const SCORE_REASON_CODES = [
+  "supported_buy",
+  "unsupported_or_failed_transaction",
+  "fresh_signal",
+  "stale_signal",
+  "mint_safe",
+  "mint_unavailable_or_unsafe",
+  "pool_liquid",
+  "pool_unavailable_or_shallow",
+  "quote_available",
+  "quote_unavailable",
+  "holders_acceptable",
+  "holders_missing_stale_or_concentrated",
+  "creator_acceptable",
+  "creator_missing_stale_or_concentrated",
+  "oracle_agrees",
+  "oracle_none_or_stale",
+  "oracle_deviation_high",
+] as const;
+
+export type ScoreReasonCode = (typeof SCORE_REASON_CODES)[number];
+
+export const SCORE_REASON_GROUPS = [
+  { pass: "supported_buy", fail: "unsupported_or_failed_transaction", points: scorePolicyV1.weights.supportedBuy },
+  { pass: "fresh_signal", fail: "stale_signal", points: scorePolicyV1.weights.freshness },
+  { pass: "mint_safe", fail: "mint_unavailable_or_unsafe", points: scorePolicyV1.weights.mint },
+  { pass: "pool_liquid", fail: "pool_unavailable_or_shallow", points: scorePolicyV1.weights.pool },
+  { pass: "quote_available", fail: "quote_unavailable", points: scorePolicyV1.weights.quote },
+  { pass: "holders_acceptable", fail: "holders_missing_stale_or_concentrated", points: scorePolicyV1.weights.holders },
+  { pass: "creator_acceptable", fail: "creator_missing_stale_or_concentrated", points: scorePolicyV1.weights.creator },
+  { pass: "oracle_agrees", fail: "oracle_none_or_stale", alternateFail: "oracle_deviation_high", points: scorePolicyV1.weights.oracle },
+] as const;
 
 export type ScoreReason = { readonly code: ScoreReasonCode; readonly points: number };
 
