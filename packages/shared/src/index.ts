@@ -17,6 +17,7 @@ export * from "./contracts/primitives.ts";
 export * from "./contracts/wallet.ts";
 export * from "./contracts/auth.ts";
 export * from "./contracts/quote.ts";
+export * from "./contracts/jupiter.ts";
 export * from "./contracts/signal.ts";
 export * from "./contracts/position.ts";
 export * from "./contracts/trade.ts";

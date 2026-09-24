@@ -2,6 +2,8 @@
 
 Issue #5 adds the Bun/Hono API foundation. The only public route is `GET /health`: it returns `{ "status": "ok" }` after a database ping, or a `SERVICE_UNAVAILABLE` error with HTTP 503. Unknown routes and validation failures use the shared `apiErrorSchema` envelope and include `requestId`; the same ID is in the `X-Request-ID` response header. JSON body and query validators are available for later feature routes. Authentication, user-scoped transactions, signals, and trading routes are separate work.
 
+Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). It has no public route until authenticated wallet and trade authorization are available.
+
 ## Local setup
 
 1. Apply the [database migrations](database.md) to a disposable Neon branch. Create a separate login role with only membership in `waffle_api`; it must not own app tables or have superuser, `BYPASSRLS`, or `CREATEROLE` privileges. The API checks this on startup and refuses a privileged credential.

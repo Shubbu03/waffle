@@ -10,10 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@solana/web3.js": "1.99.0",
     "@waffle/db": "workspace:*",
     "@waffle/shared": "workspace:*",
     "dotenv": "17.4.2",
     "hono": "4.13.9",
+    "tweetnacl": "1.0.3",
     "zod": "4.6.5"
   },
   "devDependencies": {
