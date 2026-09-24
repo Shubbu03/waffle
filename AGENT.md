@@ -1,6 +1,6 @@
 # AGENT.md — waffle Seeker Build Agent
 
-**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, and reviewed Postgres migrations exist; a Neon branch and runtime integrations are pending.
+**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, reviewed Postgres migrations, and the API runtime foundation exist; a Neon branch and feature integrations are pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
@@ -29,7 +29,7 @@ Latency is instrumented, not promised: log_received → tx_available → scored 
 * Wallet auth and foreground live delivery are specified in [docs/backend-architecture.md](docs/backend-architecture.md). Implement and verify them in M0/M2; a database insert alone does not reach a device.
 * Wallet selection is decided: a curated catalog of 5-10 wallets with personal follows and separate alert preferences. See docs/wallet-selection.md for behavior, schema requirements, and exclusions.
 * Score v1 weights, critical checks, freshness, liquidity floors, and paper/real caps are defined in [docs/scoring-policy.md](docs/scoring-policy.md) and the shared package. Watcher evidence collection and mobile/API trade integration remain to be built.
-* Shared payload schemas, program IDs, event cursors, API errors, and live frames are defined in [docs/shared-contracts.md](docs/shared-contracts.md). API and mobile route integration remain to be built.
+* Shared payload schemas, program IDs, event cursors, API errors, and live frames are defined in [docs/shared-contracts.md](docs/shared-contracts.md). API feature routes and mobile integration remain to be built.
 * Bun is selected for workspace/package management and both server runtimes. The API framework, migrations, demo deployment, and free-tier budget are recorded in [docs/backend-architecture.md](docs/backend-architecture.md). Provider limits and swap API behavior require current verification before implementation.
 
 ## MODULE M0 — Bootstrap

@@ -16,6 +16,7 @@ export const apiErrorCodeSchema = z.enum([
   "QUOTE_UNAVAILABLE",
   "LIMIT_EXCEEDED",
   "UNSUPPORTED_ROUTE",
+  "SERVICE_UNAVAILABLE",
   "INTERNAL_ERROR",
 ]);
 

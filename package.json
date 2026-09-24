@@ -11,6 +11,9 @@
     "typecheck": "bun run --filter '@waffle/*' typecheck",
     "test:shared": "bun run --filter '@waffle/shared' test",
     "test:db": "bun run --filter '@waffle/db' test",
+    "test:api": "bun run --filter '@waffle/api' test",
+    "dev:api": "bun run --filter '@waffle/api' dev",
+    "start:api": "bun run --filter '@waffle/api' start",
     "db:check": "bun run --filter '@waffle/db' db:check",
     "db:generate": "bun run --filter '@waffle/db' db:generate",
     "db:migrate": "bun run --filter '@waffle/db' db:migrate"
