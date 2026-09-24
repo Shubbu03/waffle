@@ -1,6 +1,6 @@
 # AGENT.md — waffle Seeker Build Agent
 
-**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace scaffold authorized 24 Sep 2026; Neon DB and curated catalog with personal follows selected. Feature implementation and remaining architecture decisions are pending.
+**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace scaffold authorized 24 Sep 2026; Neon DB, curated catalog with personal follows, and backend/auth/live architecture selected. Feature implementation is pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
@@ -12,25 +12,24 @@ Solana mainnet → Helius standard WSS logsSubscribe mentions (1 wallet = 1 sub,
                  split across 2-3 conns, NOT one SPOF conn; free = 5 conns max)
                  → confirmed getTransaction + supported swap classifier (skip err != null)
                  → cached pool/token checks + deterministic score v1 (0-100 + reasons + data_status)
-                 → Neon Postgres signals + API live delivery (open app; design pending) + FCM (background)
+                 → Neon Postgres signals + API WebSocket (open app) + FCM (background)
                  → React Native Android feed → paper fill OR fresh Jupiter /order quote (excludeRouters=jupiterz)
                    → MWA signTransactions → /execute
 ```
 
-Stack: React Native + TS + MWA, Bun workspaces + TS watcher + small API (server runtime pending), Neon Postgres + wallet sign-in/session auth + API live delivery (auth/live designs pending discussion), FCM, Jupiter Swap V2 order/execute, Helius standard WSS/RPC. Shared TS package for schemas, program IDs, score reasons. No Rust, queue, custom program, LLM required for MVP.
+Stack: React Native + TS + MWA, Bun 1.3.13 watcher/API + Hono, Neon Postgres + Drizzle ORM/Kit + SIWS opaque sessions + API WebSocket and Postgres outbox ([decision](docs/backend-architecture.md)), FCM, Jupiter Swap V2 order/execute, Helius standard WSS/RPC. Shared TS package for schemas, program IDs, score reasons. No Rust, external queue, custom program, LLM required for MVP.
 
 Hard limits (free tier, verified): RPC 10 req/s total (getTransaction=1 credit, getProgramAccounts=5/sec, getSignaturesForAddress=1 credit, confirmed/finalized only), WSS 5 conns / 1000 subs each, FCM background only. Design around these, never exceed.
 
 Latency is instrumented, not promised: log_received → tx_available → scored → API_published → device_received → quote_ready → wallet_approved → confirmed (p50/p95 in docs/demo.md).
 
-## Decisions to settle before building
+## Decisions and remaining work
 
 * Neon Postgres is selected. No database has been provisioned in this task; the workspace now contains the initial package/folder scaffold only.
-* Wallet auth: choose the SIWS verification/session implementation, nonce expiry/replay protection, session storage, and how authenticated identity reaches Postgres RLS.
-* Foreground live delivery: choose the API transport, durable handoff from watcher to API, retries/deduplication for FCM, and reconnect recovery. Do not assume a database insert automatically reaches a device.
+* Wallet auth and foreground live delivery are specified in [docs/backend-architecture.md](docs/backend-architecture.md). Implement and verify them in M0/M2; a database insert alone does not reach a device.
 * Wallet selection is decided: a curated catalog of 5-10 wallets with personal follows and separate alert preferences. See docs/wallet-selection.md for behavior, schema requirements, and exclusions.
 * Score v1: define weights, critical mint/pool checks, freshness windows, liquidity floors, and separate paper/real size caps. Confirm score 70 is reachable when optional oracle/holder data is unavailable.
-* Bun is selected for workspace/package management. Server runtime, API framework, ORM/migrations, deployment host, and free-tier budget need confirmation. Provider limits and swap API behavior recorded below require current verification before implementation.
+* Bun is selected for workspace/package management and both server runtimes. The API framework, migrations, demo deployment, and free-tier budget are recorded in [docs/backend-architecture.md](docs/backend-architecture.md). Provider limits and swap API behavior require current verification before implementation.
 
 ## MODULE M0 — Bootstrap
 
@@ -41,7 +40,7 @@ Manual: `bun install && bun run typecheck` passes.
 Commit: `feat(m0): repo skeleton + shared schemas`
 
 ### C0.2 DB + config
-Work: Neon project, migrations for watched_wallets, signals(sig,wallet,mint,slot,observed_at,score_v, reasons, snapshot, status, unique(sig,wallet)), users/push_tokens, paper_positions, trade_attempts. Add user_wallet_subscriptions(user_id, watched_wallet_id, alerts_enabled, created_at), UNIQUE(user_id, watched_wallet_id), with owner-only access. Auth/session storage still depends on the decisions above. One checked-in config.ts for thresholds.
+Work: Neon project, Drizzle migrations for watched_wallets, signals(sig,wallet,mint,slot,observed_at,score_v, reasons, snapshot, status, unique(sig,wallet)), users/push_tokens, paper_positions, trade_attempts. Add user_wallet_subscriptions(user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at), UNIQUE(user_id, watched_wallet_id), with owner-only access. Add auth_challenges, sessions, signal_events, and push_deliveries from the [backend decision](docs/backend-architecture.md). One checked-in config.ts for thresholds.
 Unit tests: migration up/down, unique constraint violation test.
 Manual: insert + dupe rejected in Neon dashboard.
 Commit: `feat(m0): neon schema + versioned config`
@@ -74,13 +73,13 @@ Commit: `feat(watcher): versioned score + suppression rules + oracle-none bucket
 ## MODULE M2 — API + Live
 
 ### C2.1 Endpoints
-Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions, GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Wallet sign-in with single-use nonce + signature verification and sessions guards mutables (implementation pending discussion). API authorization and native Postgres RLS enforce ownership; set user identity transaction-locally using a non-owner runtime role. Database credentials stay server-side.
+Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions, GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Implement SIWS challenge/verify/logout and opaque sessions per [backend decision](docs/backend-architecture.md). API authorization and native Postgres RLS enforce ownership; set user identity transaction-locally using a non-owner runtime role. Database credentials stay server-side.
 Unit tests: RLS denies anon write and cross-user subscription access, allows owner read; following is idempotent, unfollowing preserves shared signals; paper insert validates size.
 Manual: curl list + detail, push-token register works.
 Commit: `feat(api): signals + paper + push-token endpoints`
 
 ### C2.2 Live (API delivery + FCM + permissions)
-Work: API-owned live delivery for committed signals to the open app (transport and durable fanout design pending discussion) — filter Following by the user's subscriptions (All signals remains public), cap initial history to recent N, and recover missed events via cursor on reconnect. FCM: only fresh, eligible signals for followers with alerts enabled and device permission; data message {id, score, wallet, mint, slot, age} on insert (background). Android: `google-services.json`, `POST_NOTIFICATIONS` runtime permission (API 33+), graceful denial, test on Play-Services emulator (Seeker has them).
+Work: API-owned Hono/Bun WebSocket delivery from the committed-signal outbox per [backend decision](docs/backend-architecture.md) — filter Following by the user's subscriptions (All signals remains public), cap initial history to recent N, and recover missed events via cursor on reconnect. FCM: only fresh, eligible signals for followers with alerts enabled and device permission; data message {id, score, wallet, mint, slot, age} after commit (background). Android: `google-services.json`, `POST_NOTIFICATIONS` runtime permission (API 33+), graceful denial, test on Play-Services emulator (Seeker has them).
 Unit tests: insert emits realtime payload (filtered); FCM payload contains id+score; permission-denial path returns "alerts off" not crash.
 Manual: device A open gets socket <2s; device B killed gets FCM; both taps land on same card; deny permission once → no crash, banner shows.
 Commit: `feat(api): realtime filter + FCM fanout + notification permission`

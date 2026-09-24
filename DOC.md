@@ -1,6 +1,6 @@
 # DOC.md — waffle official references
 
-Planning references, not proof of integration. Existing provider claims were recorded in Sep 2026 and must be rechecked before implementation. Neon references replace the previous database-provider references; auth/live delivery design is pending discussion (see AGENT.md).
+Planning references, not proof of integration. Existing provider claims were recorded in Sep 2026 and must be rechecked before implementation. The accepted auth/live delivery design is in [docs/backend-architecture.md](docs/backend-architecture.md).
 
 ## Workspace and accepted product decisions
 * Bun workspaces: https://bun.sh/docs/pm/workspaces
@@ -44,8 +44,13 @@ Planning references, not proof of integration. Existing provider claims were rec
 * Connection pooling: https://neon.com/docs/connect/connection-pooling
 * Database branches for migration tests: https://neon.com/docs/introduction/branching
 * Native Postgres row security policies: https://www.postgresql.org/docs/current/ddl-rowsecurity.html
-* Wallet sign-in: use the MWA SIWS references above; the auth/session implementation is pending discussion.
-* Foreground live delivery: choose an API-owned transport and durable delivery/reconnect strategy before C2.2. Neon is the selected database; wallet auth and foreground delivery are separate application responsibilities in this plan.
+* [Backend/auth/live decision](docs/backend-architecture.md): Bun + Hono, Drizzle migrations, SIWS sessions, Postgres outbox, WebSocket, FCM retries, reconnect cursor, and demo budget.
+* Hono Bun WebSocket adapter: https://hono.dev/docs/helpers/websocket
+* Drizzle migrations: https://orm.drizzle.team/docs/migrations
+* SIWS specification and verification flow: https://github.com/phantom/sign-in-with-solana
+* FCM retry guidance: https://firebase.google.com/docs/cloud-messaging/error-codes
+* Neon free-tier budget: https://neon.com/blog/neon-backend-is-ga
+* Cloudflare Quick Tunnel demo access: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/
 
 ## Push (background required — foreground live delivery alone will not wake app)
 * Firebase Cloud Messaging official: https://firebase.google.com/docs/cloud-messaging

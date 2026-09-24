@@ -17,7 +17,7 @@ Run one workspace's check:
 bun run --filter '@waffle/shared' typecheck
 ```
 
-All apps depend on `@waffle/shared` through `workspace:*`. Shared code must remain platform-independent. Bun manages packages; the mobile app will use React Native's native runtime and tooling. Server runtime and framework selection remain open.
+All apps depend on `@waffle/shared` through `workspace:*`. Shared code must remain platform-independent. Bun manages packages and is the selected watcher/API runtime; the mobile app will use React Native's native runtime and tooling. The Hono, Postgres, wallet auth, and live delivery choices are recorded in the [backend architecture decision](docs/backend-architecture.md).
 
 ## Layout
 
@@ -33,6 +33,7 @@ db/
 tests/
   fixtures/         Redacted transaction fixtures (pending)
 docs/
+  backend-architecture.md
   wallet-selection.md
 ```
 
@@ -41,6 +42,7 @@ Create environment examples alongside their consuming app when adding integratio
 ## Product decisions and plan
 
 * [Wallet selection](docs/wallet-selection.md): curated catalog, personal follows, separate opt-in alerts.
+* [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
 * [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.
 * [Milestones](MILESTONE.md): deliverables and progress.
 * [Schedule](PLAN.md): planned daily work; future commands become available as chapters are implemented.

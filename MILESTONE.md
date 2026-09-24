@@ -11,7 +11,7 @@ Deliverables:
 * waffle/ scaffold: apps/mobile, apps/api, apps/watcher, packages/shared, db/migrations, tests/fixtures, docs/, app-local .env.example files when integrations are configured (key names only), README skeleton.
 * shared: Signal, ScoreReason, ConfigLimits, ApiSchemas + program IDs (Pump.fun, PumpSwap, Raydium AMM/CPMM/CLMM IDs as constants, no hardcode in watcher).
 * Neon: watched_wallets (address, label, active), signals (signature, wallet, mint, slot, observed_at, score_v, reasons JSONB, snapshot JSONB, status, UNIQUE(signature,wallet)), users/push_tokens (user_id, token, platform), paper_positions (id, signal_id, size, quote, fees, ts, simulated=true), trade_attempts (id, signal_id, quote_id, requestId, signature, code, status).
-* user_wallet_subscriptions: user_id, watched_wallet_id, alerts_enabled, created_at, UNIQUE(user_id, watched_wallet_id); owner-only access. See docs/wallet-selection.md.
+* user_wallet_subscriptions: user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at, UNIQUE(user_id, watched_wallet_id); owner-only access. Auth challenges, sessions, signal outbox, and push jobs follow [docs/backend-architecture.md](docs/backend-architecture.md). See docs/wallet-selection.md.
 * config.ts: thresholds (score>=70, maxAgeSlots, liq floors TBD, dev cap TBD) — checked in, versioned.
 Auto tests:
 * `typecheck` passes on all workspaces.
@@ -23,7 +23,7 @@ Manual test:
 Commits:
 * `feat(m0): repo skeleton + shared schemas`
 * `feat(m0): neon schema + versioned config`
-Exit gate: typecheck green + tables visible + dupe test logged. Risk: wallet sign-in/session design and request-scoped RLS identity must be settled before C2.1; Neon does not select these application mechanisms for us.
+Exit gate: typecheck green + tables visible + dupe test logged. Implement the SIWS/session and request-scoped RLS design in [docs/backend-architecture.md](docs/backend-architecture.md) before C2.1; Neon does not provide these application mechanisms for us.
 
 ## MS1 — Watcher live (26-28 Sep) — done = real mainnet buys in Postgres with snapshots
 
@@ -54,13 +54,13 @@ Exit gate MS1: `bun run test:watcher` green + 10-min run yields >=3 real buys pe
 Objective: API serves cards, live socket + push both work, age/slot visible.
 
 ### 29 Sep — C2.1 endpoints + auth
-Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions (size, signal_id, quote ref), GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Wallet sign-in with single-use nonce + signature verification and sessions (implementation pending discussion). API allows public signal reads; authenticated owner-only access to paper positions/tokens, backed by Postgres RLS with transaction-scoped user identity and a non-owner runtime role.
+Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions (size, signal_id, quote ref), GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Implement SIWS challenge/verify and sessions per [backend decision](docs/backend-architecture.md). API allows public signal reads; authenticated owner-only access to paper positions/tokens, backed by Postgres RLS with transaction-scoped user identity and a non-owner runtime role.
 Auto: RLS tests (anon writes and cross-user subscription access denied, owner allowed), idempotent follows and unfollow preservation, paper validation (size<=cap, signal must exist + fresh).
 Manual: curl list/detail as anon, register push token as authed user.
 Commit: `feat(api): signals + paper + push-token endpoints`
 
 ### 30 Sep — C2.2 live fanout
-Work: API-owned live delivery of committed signals to the open app (transport and durable fanout design pending discussion) — filter Following by the user's subscriptions (All signals remains public), cap initial history to recent N, recover missed events via cursor on reconnect; backend fanout for fresh, eligible signals to followers with alerts enabled and device permission -> FCM data message {id, score, wallet, mint, slot, age} for background; client tap deep-links and reloads live card + fresh quote. Android: `google-services.json` + `POST_NOTIFICATIONS` runtime permission (API 33+), graceful denial, test on Play-Services emulator (Seeker has them).
+Work: API-owned WebSocket delivery of committed signals via Postgres outbox per [backend decision](docs/backend-architecture.md) — filter Following by the user's subscriptions (All signals remains public), cap initial history to recent N, recover missed events via cursor on reconnect; backend fanout for fresh, eligible signals to followers with alerts enabled and device permission -> FCM data message {id, score, wallet, mint, slot, age} for background; client tap deep-links and reloads live card + fresh quote. Android: `google-services.json` + `POST_NOTIFICATIONS` runtime permission (API 33+), graceful denial, test on Play-Services emulator (Seeker has them).
 Auto: insert test row emits realtime payload (filtered); FCM mock receives id+score; permission-denial path returns "alerts off" not crash.
 Manual: device A open gets socket <2s; device B killed gets FCM; both taps land on same card with live age; deny permission once → banner, no crash.
 Commit: `feat(api): realtime filter + FCM fanout + notification permission`

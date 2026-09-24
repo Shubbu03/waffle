@@ -33,12 +33,12 @@
 
 ## Tue 29 Sep — M2 C2.1 (API + auth)
 * GET /signals (cursor, wallet filter), GET /signals/:id, POST/GET paper-positions, POST /push-tokens.
-* Wallet sign-in + single-use nonce/signature verification + sessions (design pending); API authorization + Postgres RLS (public signals, owner-only paper/tokens, transaction-scoped identity).
+* Wallet sign-in + single-use nonce/signature verification + sessions per [backend decision](docs/backend-architecture.md); API authorization + Postgres RLS (public signals, owner-only paper/tokens, transaction-scoped identity).
 * Public wallet catalog + owner-only follow/unfollow and alert preferences (docs/wallet-selection.md).
 * RLS tests + paper validation. Manual curl checks. Commit.
 
 ## Wed 30 Sep — M2 C2.2 (live + push)
-* API-owned live delivery filtered by watched wallet + recent N + reconnect cursor; backend FCM fanout after commit. Settle transport and durable fanout/retry design before implementation.
+* API-owned WebSocket delivery filtered by watched wallet + recent N + reconnect cursor; Postgres outbox handoff and backend FCM fanout after commit per [backend decision](docs/backend-architecture.md).
 * Android: google-services.json, POST_NOTIFICATIONS (API 33+), graceful denial, Play-Services emulator test.
 * Tests: filtered realtime, FCM payload, denial path. Manual: open vs killed app, deny permission. Commit. **MS2 gate.**
 

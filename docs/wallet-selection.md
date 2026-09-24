@@ -25,7 +25,7 @@ Select wallets with recent buys on the supported swap family (initially PumpSwap
 
 `watched_wallets` is the global catalog: unique address, label, active status, and inclusion reason. Recent supported activity can be derived from persisted signals.
 
-`user_wallet_subscriptions` stores user_id, watched_wallet_id, alerts_enabled (default false), and created_at. The user/wallet pair must be unique and reference existing records. Users can read or mutate only their own subscriptions. The backend determines user identity from the authenticated session, never a client-supplied owner ID.
+`user_wallet_subscriptions` stores user_id, watched_wallet_id, alerts_enabled (default false), `alerts_enabled_at` (set when alerts change from off to on), and created_at. The user/wallet pair must be unique and reference existing records. Users can read or mutate only their own subscriptions. The backend determines user identity from the authenticated session, never a client-supplied owner ID. The alert timestamp prevents a newly enabled preference from triggering a delayed alert for an earlier signal.
 
 Proposed endpoint contract:
 
@@ -34,7 +34,7 @@ Proposed endpoint contract:
 * `PUT /wallet-subscriptions/:walletId`: idempotent follow or alert-preference update for an active catalog wallet.
 * `DELETE /wallet-subscriptions/:walletId`: idempotent unfollow.
 
-Database credentials remain server-side. Apply ownership checks through the API and native Postgres RLS. Final auth/session and live transport designs are still pending.
+Database credentials remain server-side. Apply ownership checks through the API and native Postgres RLS. The SIWS session and live transport decisions are in [backend-architecture.md](backend-architecture.md).
 
 ## Acceptance checks for implementation
 
