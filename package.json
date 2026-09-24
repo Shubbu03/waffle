@@ -12,6 +12,7 @@
     "test:shared": "bun run --filter '@waffle/shared' test",
     "test:db": "bun run --filter '@waffle/db' test",
     "test:api": "bun run --filter '@waffle/api' test",
+    "test:watcher": "bun run --filter '@waffle/watcher' test",
     "dev:api": "bun run --filter '@waffle/api' dev",
     "start:api": "bun run --filter '@waffle/api' start",
     "db:check": "bun run --filter '@waffle/db' db:check",
@@ -20,5 +21,8 @@
   },
   "devDependencies": {
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@types/bun": "^1.4.2"
   }
 }

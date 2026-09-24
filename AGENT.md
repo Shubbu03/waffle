@@ -1,6 +1,6 @@
 # AGENT.md — waffle Seeker Build Agent
 
-**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, reviewed Postgres migrations, and the API runtime foundation exist; a Neon branch and feature integrations are pending.
+**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, reviewed Postgres migrations, API runtime foundation, and watcher RPC scheduler exist; a Neon branch and feature integrations are pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
