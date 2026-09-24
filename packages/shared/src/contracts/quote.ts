@@ -35,7 +35,7 @@ const quoteFields = z.strictObject({
   }),
   slippageBps: z.number().int().min(0).max(5_000),
   priceImpactBps: z.number().int().min(0).max(10_000),
-  priceImpactPct: z.number().finite().min(-100).max(100),
+  priceImpactPct: z.number().min(-100).max(100),
   fetchedAt: timestampSchema,
   expiresAt: timestampSchema,
 });
