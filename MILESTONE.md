@@ -12,7 +12,7 @@ Deliverables:
 * shared: Signal, ScoreReason, ConfigLimits, ApiSchemas + program IDs (Pump.fun, PumpSwap, Raydium AMM/CPMM/CLMM IDs as constants, no hardcode in watcher).
 * Neon: watched_wallets (address, label, active), signals (signature, wallet, mint, slot, observed_at, score_v, reasons JSONB, snapshot JSONB, status, UNIQUE(signature,wallet)), users/push_tokens (user_id, token, platform), paper_positions (id, signal_id, size, quote, fees, ts, simulated=true), trade_attempts (id, signal_id, quote_id, requestId, signature, code, status).
 * user_wallet_subscriptions: user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at, UNIQUE(user_id, watched_wallet_id); owner-only access. Auth challenges, sessions, signal outbox, and push jobs follow [docs/backend-architecture.md](docs/backend-architecture.md). See docs/wallet-selection.md.
-* config.ts: thresholds (score>=70, maxAgeSlots, liq floors TBD, dev cap TBD) — checked in, versioned.
+* Versioned score v1 config and trade caps from [docs/scoring-policy.md](docs/scoring-policy.md): threshold 70, 150-slot/90-second freshness, $25,000 signal/paper and $75,000 real liquidity floors, 0.1 SOL paper and 0.05 SOL real cap.
 Auto tests:
 * `typecheck` passes on all workspaces.
 * migration up/down on fresh Neon branch passes.
