@@ -11,6 +11,7 @@ bun install --frozen-lockfile
 bun run typecheck
 bun run test:shared
 bun run test:db
+bun run test:api
 ```
 
 Run one workspace's check:
@@ -26,7 +27,7 @@ All apps depend on `@waffle/shared` through `workspace:*`. Shared code must rema
 ```text
 apps/
   mobile/           React Native app placeholder
-  api/              API placeholder
+  api/              Bun/Hono API foundation
   watcher/          Blockchain watcher placeholder
 packages/
   shared/           Validated API/live schemas, score policy, program IDs
@@ -39,15 +40,17 @@ docs/
   wallet-selection.md
   shared-contracts.md
   database.md
+  api.md
 ```
 
-Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). Create app-local environment examples when adding API and watcher integrations. Never put database or provider secrets in the mobile app.
+Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API now has an app-local environment example and a database-backed health route; see the [API runtime guide](docs/api.md). Add a watcher environment example when its integration is configured. Never put database or provider secrets in the mobile app.
 
 ## Product decisions and plan
 
 * [Wallet selection](docs/wallet-selection.md): curated catalog, personal follows, separate opt-in alerts.
 * [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
 * [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
+* [API runtime](docs/api.md): local environment, restricted database login, and health check.
 * [Scoring policy](docs/scoring-policy.md): versioned weights, critical checks, freshness windows, liquidity floors, and trade caps.
 * [Shared contracts](docs/shared-contracts.md): validated API and live payloads, cursors, errors, and program IDs.
 * [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.
