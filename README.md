@@ -12,6 +12,7 @@ bun run typecheck
 bun run test:shared
 bun run test:db
 bun run test:api
+bun run test:watcher
 ```
 
 Run one workspace's check:
@@ -28,7 +29,7 @@ All apps depend on `@waffle/shared` through `workspace:*`. Shared code must rema
 apps/
   mobile/           React Native app placeholder
   api/              Bun/Hono API foundation
-  watcher/          Blockchain watcher placeholder
+  watcher/          Shared RPC scheduler; WSS ingestion pending
 packages/
   shared/           Validated API/live schemas, score policy, program IDs
   db/               Typed Postgres schema, migrations, tests
@@ -41,9 +42,10 @@ docs/
   shared-contracts.md
   database.md
   api.md
+  watcher-rpc.md
 ```
 
-Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API now has an app-local environment example and a database-backed health route; see the [API runtime guide](docs/api.md). Add a watcher environment example when its integration is configured. Never put database or provider secrets in the mobile app.
+Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API now has an app-local environment example and a database-backed health route; see the [API runtime guide](docs/api.md). The watcher also has an app-local RPC environment example; see the [watcher RPC guide](docs/watcher-rpc.md). Never put database or provider secrets in the mobile app.
 
 ## Product decisions and plan
 
@@ -51,6 +53,7 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 * [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
 * [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
 * [API runtime](docs/api.md): local environment, restricted database login, and health check.
+* [Watcher RPC](docs/watcher-rpc.md): shared rate limits, retries, deduplication, and degraded status.
 * [Scoring policy](docs/scoring-policy.md): versioned weights, critical checks, freshness windows, liquidity floors, and trade caps.
 * [Shared contracts](docs/shared-contracts.md): validated API and live payloads, cursors, errors, and program IDs.
 * [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.
