@@ -28,7 +28,7 @@ Latency is instrumented, not promised: log_received → tx_available → scored 
 * Neon Postgres is selected. No database has been provisioned in this task; the workspace now contains the initial package/folder scaffold only.
 * Wallet auth and foreground live delivery are specified in [docs/backend-architecture.md](docs/backend-architecture.md). Implement and verify them in M0/M2; a database insert alone does not reach a device.
 * Wallet selection is decided: a curated catalog of 5-10 wallets with personal follows and separate alert preferences. See docs/wallet-selection.md for behavior, schema requirements, and exclusions.
-* Score v1: define weights, critical mint/pool checks, freshness windows, liquidity floors, and separate paper/real size caps. Confirm score 70 is reachable when optional oracle/holder data is unavailable.
+* Score v1 weights, critical checks, freshness, liquidity floors, and paper/real caps are defined in [docs/scoring-policy.md](docs/scoring-policy.md) and the shared package. Watcher evidence collection and mobile/API trade integration remain to be built.
 * Bun is selected for workspace/package management and both server runtimes. The API framework, migrations, demo deployment, and free-tier budget are recorded in [docs/backend-architecture.md](docs/backend-architecture.md). Provider limits and swap API behavior require current verification before implementation.
 
 ## MODULE M0 — Bootstrap
@@ -63,7 +63,7 @@ Commit: `feat(watcher): confirmed fetch + failed-tx invariant + single-family bu
 Risk: getTransaction rate limit (free 10rps total) — per-wallet queue + 200ms spacing + drop-if-queue>50 + dedupe-before-fetch (processed log and backfill can yield same sig).
 
 ### C1.3 Score v1
-Work: score(tx, caches) -> {score, reasons[], status}. Critical (must pass or suppress push): recognized buy + recent slot (<maxAgeSlots), mint state fetched for exact mint, pool+quote available for copy size. Optional (+pts only if fresh): holders/top10, creator %. Oracle: only if same-asset Pyth feed exists + freshness passes → else `oracle: none` = 0 points for that bucket, NEVER reject-on-missing (most memecoins have no feed; the gap check will rarely fire by design — score is pool-price-based for those). Threshold 70 + all critical complete.
+Work: integrate the [versioned score v1 policy](docs/scoring-policy.md) with confirmed classifier output, fetched mint/pool/quote evidence, optional holder/creator/oracle snapshots, and persisted reasons. Critical (must pass or suppress push): recognized buy + recent slot, mint state fetched for exact mint, pool+quote available for copy size. Optional data earns points only if fresh; missing oracle earns zero and never rejects by itself. Threshold 70 + all critical complete.
 Unit tests: mint-authority-present suppresses; missing optional = 0 pts not fail; old slot = history-only; missing oracle = 0 pts not reject; snapshot + score_v persisted.
 Manual: 10-min mainnet dry run, review Postgres reasons distribution (expect many `oracle: none`), confirm 0 pushes for unknown formats.
 Commit: `feat(watcher): versioned score + suppression rules + oracle-none bucket`

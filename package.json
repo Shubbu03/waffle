@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "bun run --filter '@waffle/*' typecheck"
+    "typecheck": "bun run --filter '@waffle/*' typecheck",
+    "test:shared": "bun run --filter '@waffle/shared' test"
   },
   "devDependencies": {
     "typescript": "7.0.2"
