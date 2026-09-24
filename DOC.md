@@ -7,6 +7,7 @@ Planning references, not proof of integration. Existing provider claims were rec
 * Bun project initialization: https://bun.com/docs/runtime/templating/init
 * Curated catalog and personal follows: [wallet-selection.md](docs/wallet-selection.md)
 * Shared API and live contracts: [shared-contracts.md](docs/shared-contracts.md)
+* Database schema and migrations: [database.md](docs/database.md)
 
 ## CLOCK IN
 * Announcement + rules + prizes + judging: https://solanamobile.com/blog/clock-in-the-solana-mobile-hackathon
