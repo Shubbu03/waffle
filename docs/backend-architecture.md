@@ -9,7 +9,7 @@ Accepted 24 September 2026 for the CLOCK IN MVP. This is the implementation cont
 | Server runtime | Bun 1.3.13 for both `apps/watcher` and `apps/api` | Matches the workspace and lets both processes share platform-independent TypeScript contracts. React Native still runs in its native JavaScript runtime. |
 | HTTP API and foreground live | Hono on Bun; Hono's `hono/bun` WebSocket adapter at `GET /live` | One API process owns REST, session checks, filtering, and live connections. WebSocket is supported by React Native and by Hono's Bun adapter. |
 | Database | Neon Postgres | Already selected. The committed signal row is the durable source of truth. |
-| Queries and migrations | Drizzle ORM with `postgres.js`; Drizzle Kit `generate` and `migrate` with reviewed SQL migration files in `db/migrations` | Typed queries, versioned migrations, and explicit SQL for roles, grants, indexes, and RLS policies. Write a matching down SQL script for each MVP migration and exercise it on a disposable Neon branch; Drizzle Kit does not generate rollback scripts. Do not use `drizzle-kit push` on shared or production databases. |
+| Queries and migrations | Drizzle ORM with `postgres.js`; Drizzle Kit `generate` and `migrate` with reviewed SQL migration files in `packages/db/migrations` | Typed queries, versioned migrations, and explicit SQL for roles, grants, indexes, and RLS policies. Exercise migrations on a disposable Neon branch. Do not use `drizzle-kit push` on shared or production databases. |
 | Background alerts | Firebase Cloud Messaging from the API process | Wakes Android when the app is not foregrounded. An FCM acceptance response is not proof that a device displayed an alert. |
 | Demo deployment | Watcher and API as two Bun processes on a developer machine during test/demo windows; Neon, Helius, and FCM free plans; temporary HTTPS/WSS Cloudflare Quick Tunnel to the API for a physical device | $0 incremental hosting cost for the short-lived hackathon demo. The tunnel hostname changes on restart and has no uptime guarantee. It is not a production deployment. |
 
@@ -57,7 +57,7 @@ As checked on 24 September 2026: [Helius Free](https://www.helius.dev/pricing) l
 
 ## Acceptance before M2 is called done
 
-* Fresh migration on a Neon branch creates tables, grants, indexes, and RLS policies; rollback/forward and runtime-role cross-user tests pass.
+* Fresh migration on a Neon branch creates tables, grants, indexes, and RLS policies; runtime-role cross-user tests pass.
 * Replayed SIWS proof fails; expired challenge fails; wrong domain/chain/address fails; expired and revoked sessions fail over REST and WebSocket.
 * Duplicate watcher event yields one signal/outbox row; API restart after commit still expands push and serves catch-up; FCM transient failure retries without losing the job.
 * Open device receives a fresh eligible event; disconnected device receives FCM only when opted in; reconnect fills a deliberately missed socket event without duplicate cards; stale and muted signals do not alert.

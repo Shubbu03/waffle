@@ -9,7 +9,11 @@
   ],
   "scripts": {
     "typecheck": "bun run --filter '@waffle/*' typecheck",
-    "test:shared": "bun run --filter '@waffle/shared' test"
+    "test:shared": "bun run --filter '@waffle/shared' test",
+    "test:db": "bun run --filter '@waffle/db' test",
+    "db:check": "bun run --filter '@waffle/db' db:check",
+    "db:generate": "bun run --filter '@waffle/db' db:generate",
+    "db:migrate": "bun run --filter '@waffle/db' db:migrate"
   },
   "devDependencies": {
     "typescript": "7.0.2"

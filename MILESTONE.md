@@ -8,14 +8,14 @@ Objective: monorepo + shared types + Neon schema + config so M1-M3 never block o
 
 Chapters: C0.1, C0.2.
 Deliverables:
-* waffle/ scaffold: apps/mobile, apps/api, apps/watcher, packages/shared, db/migrations, tests/fixtures, docs/, app-local .env.example files when integrations are configured (key names only), README skeleton.
+* waffle/ scaffold: apps/mobile, apps/api, apps/watcher, packages/shared, packages/db/migrations, tests/fixtures, docs/, app-local .env.example files when integrations are configured (key names only), README skeleton.
 * shared: Signal, ScoreReason, ConfigLimits, ApiSchemas + program IDs (Pump.fun, PumpSwap, Raydium AMM/CPMM/CLMM IDs as constants, no hardcode in watcher).
 * Neon: watched_wallets (address, label, active), signals (signature, wallet, mint, slot, observed_at, score_v, reasons JSONB, snapshot JSONB, status, UNIQUE(signature,wallet)), users/push_tokens (user_id, token, platform), paper_positions (id, signal_id, size, quote, fees, ts, simulated=true), trade_attempts (id, signal_id, quote_id, requestId, signature, code, status).
 * user_wallet_subscriptions: user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at, UNIQUE(user_id, watched_wallet_id); owner-only access. Auth challenges, sessions, signal outbox, and push jobs follow [docs/backend-architecture.md](docs/backend-architecture.md). See docs/wallet-selection.md.
 * Versioned score v1 config and trade caps from [docs/scoring-policy.md](docs/scoring-policy.md): threshold 70, 150-slot/90-second freshness, $25,000 signal/paper and $75,000 real liquidity floors, 0.1 SOL paper and 0.05 SOL real cap.
 Auto tests:
 * `typecheck` passes on all workspaces.
-* migration up/down on fresh Neon branch passes.
+* migration on a fresh Neon branch passes.
 * shared schema test: invalid signal rejected, reason codes enum-complete.
 * unique(sig,wallet) test: dupe insert fails.
 Manual test:
@@ -117,4 +117,4 @@ Auto TP/SL execution, hosted keys, LLM trading, paid API, Dodo subs, SKR staking
 
 ## Progress — 24 September 2026
 
-MS0 C0.1 partial | done: four Bun workspace packages, shared dependency links, strict TypeScript configuration, root lockfile, README, accepted wallet-selection decision, shared score policy, program IDs, validated API/live schemas, and schema tests | verified: shared tests and all four workspace typechecks pass | pending: native mobile initialization and integration environment examples; C0.2 database setup has not started.
+MS0 C0.1 partial | done: workspace scaffold, shared score/API/live contracts, and schema tests | C0.2 partial: typed Postgres schema, generated migrations, role/RLS SQL, local migration/duplicate tests, and migration environment example | verified: PGlite database tests, shared tests, and workspace typechecks pass | pending: native mobile initialization, Neon branch migration and login-role tests, and app-local integration environment examples.

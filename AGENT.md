@@ -1,6 +1,6 @@
 # AGENT.md — waffle Seeker Build Agent
 
-**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace and shared score/API/live contracts exist; Neon DB, curated catalog with personal follows, and backend/auth/live architecture are selected. Runtime integrations are pending.
+**Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, and reviewed Postgres migrations exist; a Neon branch and runtime integrations are pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
@@ -25,7 +25,7 @@ Latency is instrumented, not promised: log_received → tx_available → scored 
 
 ## Decisions and remaining work
 
-* Neon Postgres is selected. No database has been provisioned in this task; the workspace contains the package scaffold and [shared contracts](docs/shared-contracts.md).
+* Neon Postgres is selected. The typed schema, SQL migrations, roles, and local database tests are in [docs/database.md](docs/database.md). No Neon database has been provisioned or migrated in this task.
 * Wallet auth and foreground live delivery are specified in [docs/backend-architecture.md](docs/backend-architecture.md). Implement and verify them in M0/M2; a database insert alone does not reach a device.
 * Wallet selection is decided: a curated catalog of 5-10 wallets with personal follows and separate alert preferences. See docs/wallet-selection.md for behavior, schema requirements, and exclusions.
 * Score v1 weights, critical checks, freshness, liquidity floors, and paper/real caps are defined in [docs/scoring-policy.md](docs/scoring-policy.md) and the shared package. Watcher evidence collection and mobile/API trade integration remain to be built.
@@ -35,14 +35,14 @@ Latency is instrumented, not promised: log_received → tx_available → scored 
 ## MODULE M0 — Bootstrap
 
 ### C0.1 Repo + shared package
-Work: init waffle/ (apps/mobile, apps/api, apps/watcher, packages/shared, db/migrations, tests/fixtures, docs), app-local .env.example files when integrations are configured (key names only), README skeleton, shared types + program IDs + score reasons.
+Work: init waffle/ (apps/mobile, apps/api, apps/watcher, packages/shared, packages/db/migrations, tests/fixtures, docs), app-local .env.example files when integrations are configured (key names only), README skeleton, shared types + program IDs + score reasons.
 Unit tests: shared schema validation (signal, score reasons, config limits).
 Manual: `bun install && bun run typecheck` passes.
 Commit: `feat(m0): repo skeleton + shared schemas`
 
 ### C0.2 DB + config
 Work: Neon project, Drizzle migrations for watched_wallets, signals(sig,wallet,mint,slot,observed_at,score_v, reasons, snapshot, status, unique(sig,wallet)), users/push_tokens, paper_positions, trade_attempts. Add user_wallet_subscriptions(user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at), UNIQUE(user_id, watched_wallet_id), with owner-only access. Add auth_challenges, sessions, signal_events, and push_deliveries from the [backend decision](docs/backend-architecture.md). One checked-in config.ts for thresholds.
-Unit tests: migration up/down, unique constraint violation test.
+Unit tests: fresh migration and unique constraint violation test.
 Manual: insert + dupe rejected in Neon dashboard.
 Commit: `feat(m0): neon schema + versioned config`
 

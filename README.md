@@ -10,6 +10,7 @@ Use Bun 1.3.13 (the version recorded in package.json):
 bun install --frozen-lockfile
 bun run typecheck
 bun run test:shared
+bun run test:db
 ```
 
 Run one workspace's check:
@@ -29,8 +30,7 @@ apps/
   watcher/          Blockchain watcher placeholder
 packages/
   shared/           Validated API/live schemas, score policy, program IDs
-db/
-  migrations/       Neon Postgres migrations (pending)
+  db/               Typed Postgres schema, migrations, tests
 tests/
   fixtures/         Redacted transaction fixtures (pending)
 docs/
@@ -38,14 +38,16 @@ docs/
   scoring-policy.md
   wallet-selection.md
   shared-contracts.md
+  database.md
 ```
 
-Create environment examples alongside their consuming app when adding integrations. No credentials are needed for the current scaffold. Never put database or provider secrets in the mobile app.
+Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). Create app-local environment examples when adding API and watcher integrations. Never put database or provider secrets in the mobile app.
 
 ## Product decisions and plan
 
 * [Wallet selection](docs/wallet-selection.md): curated catalog, personal follows, separate opt-in alerts.
 * [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
+* [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
 * [Scoring policy](docs/scoring-policy.md): versioned weights, critical checks, freshness windows, liquidity floors, and trade caps.
 * [Shared contracts](docs/shared-contracts.md): validated API and live payloads, cursors, errors, and program IDs.
 * [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.
