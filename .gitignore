@@ -18,3 +18,4 @@ npm-debug.*
 /android
 /ios
 local.properties
+android/

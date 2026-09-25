@@ -24,10 +24,14 @@ function useSignInMutation() {
   const { signIn } = useMobileWallet()
 
   return useMutation({
-    mutationFn: async () =>
-      await signIn({
+    mutationFn: async () => {
+      if (!AppConfig.uri) {
+        throw new Error('Set EXPO_PUBLIC_WAFFLE_APP_URI to your public HTTPS app URL before signing in.')
+      }
+      return await signIn({
         uri: AppConfig.uri,
-      }),
+      })
+    },
   })
 }
 

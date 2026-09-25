@@ -1,7 +1,7 @@
 import { Button } from '@react-navigation/elements'
 import { Image } from 'expo-image'
 import { router } from 'expo-router'
-import { View } from 'react-native'
+import { Alert, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
@@ -35,10 +35,12 @@ export default function SignIn() {
             variant="filled"
             style={{ marginHorizontal: 16 }}
             onPress={async () => {
-              await signIn()
-              // Navigate after signing in. You may want to tweak this to ensure sign-in is
-              // successful before navigating.
-              router.replace('/')
+              try {
+                await signIn()
+                router.replace('/')
+              } catch (error) {
+                Alert.alert('Wallet sign-in failed', error instanceof Error ? error.message : 'Please try again.')
+              }
             }}
           >
             Connect

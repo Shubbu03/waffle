@@ -5,11 +5,18 @@ import { ActivityIndicator } from 'react-native'
 import { useRequestAirdrop } from '@/components/account/use-request-airdrop'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
+import { ClusterNetwork } from '@/components/cluster/cluster-network'
+import { useCluster } from '@/components/cluster/cluster-provider'
 
 export function AccountFeatureAirdrop({ back }: { back: () => void }) {
   const { account } = useMobileWallet()
+  const { selectedCluster } = useCluster()
   const amount = 1
   const requestAirdrop = useRequestAirdrop({ address: account?.address as PublicKey })
+
+  if (selectedCluster.network === ClusterNetwork.Mainnet) {
+    return <AppText>Airdrops are unavailable on mainnet.</AppText>
+  }
 
   return (
     <AppView>

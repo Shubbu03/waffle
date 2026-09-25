@@ -22,6 +22,11 @@ export async function createTransaction({
   latestBlockhash: { blockhash: string; lastValidBlockHeight: number }
   minContextSlot: number
 }> {
+  const lamports = amount * LAMPORTS_PER_SOL
+  if (!Number.isSafeInteger(lamports) || lamports <= 0) {
+    throw new Error('Enter a valid positive SOL amount.')
+  }
+
   // Get the latest blockhash and slot to use in our transaction
   const {
     context: { slot: minContextSlot },
@@ -33,7 +38,7 @@ export async function createTransaction({
     SystemProgram.transfer({
       fromPubkey: address,
       toPubkey: destination,
-      lamports: amount * LAMPORTS_PER_SOL,
+      lamports,
     }),
   ]
 
