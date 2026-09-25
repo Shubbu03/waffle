@@ -26,6 +26,12 @@ bun run --filter '@waffle/shared' typecheck
 
 All apps depend on `@waffle/shared` through `workspace:*`. Shared code must remain platform-independent. Bun manages packages and is the selected watcher/API runtime; the mobile app will use React Native's native runtime and tooling. The Hono, Postgres, wallet auth, and live delivery choices are recorded in the [backend architecture decision](docs/backend-architecture.md).
 
+### Mobile wallet configuration
+
+The mobile app starts on Solana mainnet. Copy `apps/mobile/.env.example` to `apps/mobile/.env` and set `EXPO_PUBLIC_WAFFLE_APP_URI` to the public HTTPS URL you control. Configure its Android Digital Asset Links file for the app signing key so wallets can verify the MWA identity. The app shows a sign-in error until this URL is set. `EXPO_PUBLIC_SOLANA_MAINNET_RPC_URL` is optional; without it, the app uses Solana's public mainnet RPC, which is suitable only for light development use. Both variables are bundled into the mobile app, so never put a secret RPC key or server credential in either one.
+
+MWA wallet connection and signing are wired through Wallet UI. API challenge/verification and bearer sessions from the backend architecture decision are not implemented in the mobile app yet; a connected wallet is currently only a local wallet state, not an API-authenticated session. Devnet and testnet remain available in Settings for wallet testing, but the planned API sign-in accepts mainnet only. Test the wallet flow on an Android development build with an MWA-compatible wallet; Expo Go and iOS do not support this MWA flow.
+
 ## Layout
 
 ```text

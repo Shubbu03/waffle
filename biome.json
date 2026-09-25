@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!packages/db/migrations/meta"]
+    "includes": [
+      "**",
+      "!packages/db/migrations/meta",
+      "!apps/mobile/.expo",
+      "!apps/mobile/android",
+      "!apps/mobile/ios",
+      "!apps/mobile/tmp"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -33,5 +40,17 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/mobile/**"],
+      "javascript": {
+        "formatter": {
+          "quoteStyle": "single",
+          "semicolons": "asNeeded",
+          "trailingCommas": "all"
+        }
+      }
+    }
+  ]
 }

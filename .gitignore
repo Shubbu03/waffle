@@ -10,3 +10,12 @@ coverage/
 google-services.json
 *.keystore
 *.jks
+web-build/
+expo-env.d.ts
+.metro-health-check*
+npm-debug.*
+.env*.local
+/android
+/ios
+local.properties
+android/
