@@ -24,11 +24,13 @@ const quoteFields = z.strictObject({
   fees: z.strictObject({
     totalBps: z.number().int().min(0).max(10_000),
     mint: solanaAddressSchema.nullable(),
-    platform: z.strictObject({
-      amountRaw: rawAmountSchema,
-      bps: z.number().int().min(0).max(10_000),
-      mint: solanaAddressSchema,
-    }).nullable(),
+    platform: z
+      .strictObject({
+        amountRaw: rawAmountSchema,
+        bps: z.number().int().min(0).max(10_000),
+        mint: solanaAddressSchema,
+      })
+      .nullable(),
     signatureLamports: rawAmountSchema,
     prioritizationLamports: rawAmountSchema,
     rentLamports: rawAmountSchema,
@@ -43,48 +45,55 @@ const quoteFields = z.strictObject({
 function quoteIsConsistent(quote: z.infer<typeof quoteFields>): boolean {
   const minimum = parseRawAmount(quote.minOutputAmountRaw);
   const output = parseRawAmount(quote.outputAmountRaw);
-  const networkFees = (parseRawAmount(quote.fees.signatureLamports) ?? 0n) +
+  const networkFees =
+    (parseRawAmount(quote.fees.signatureLamports) ?? 0n) +
     (parseRawAmount(quote.fees.prioritizationLamports) ?? 0n) +
     (parseRawAmount(quote.fees.rentLamports) ?? 0n);
-  return minimum !== null && output !== null && minimum <= output &&
+  return (
+    minimum !== null &&
+    output !== null &&
+    minimum <= output &&
     Date.parse(quote.expiresAt) > Date.parse(quote.fetchedAt) &&
     parseRawAmount(quote.feeLamports) === networkFees &&
     (quote.fees.platform === null || quote.fees.platform.bps <= quote.fees.totalBps) &&
-    quote.priceImpactBps === Math.round(Math.abs(quote.priceImpactPct) * 100);
+    quote.priceImpactBps === Math.round(Math.abs(quote.priceImpactPct) * 100)
+  );
 }
 
 /** Quote-only snapshot for simulated fills; no transaction or taker is present. */
-export const paperQuoteSchema = quoteFields.extend({
-  kind: z.literal("paper"),
-  providerQuoteId: z.string().max(200).nullable(),
-}).refine(
-  (quote) => {
+export const paperQuoteSchema = quoteFields
+  .extend({
+    kind: z.literal("paper"),
+    providerQuoteId: z.string().max(200).nullable(),
+  })
+  .refine((quote) => {
     const input = parseRawAmount(quote.inputAmountLamports);
     return quoteIsConsistent(quote) && input !== null && input <= scorePolicyV1.sizeLamports.paperMax;
-  },
-  "Invalid paper quote bounds or amount",
-);
+  }, "Invalid paper quote bounds or amount");
 
 /** Normalized, accepted Jupiter order; unsafe routes never enter this contract. */
-export const realOrderSchema = quoteFields.extend({
-  kind: z.literal("real"),
-  taker: solanaAddressSchema,
-  signatureFeePayer: solanaAddressSchema,
-  prioritizationFeePayer: solanaAddressSchema.nullable(),
-  rentFeePayer: solanaAddressSchema.nullable(),
-  gasless: z.literal(false),
-  requiredSignatures: z.literal(1),
-  router: z.enum(["metis", "dflow", "okx"]),
-  lastValidBlockHeight: positiveRawAmountSchema,
-  transactionBase64: z.base64().max(8192),
-}).refine(
-  (order) => {
+export const realOrderSchema = quoteFields
+  .extend({
+    kind: z.literal("real"),
+    taker: solanaAddressSchema,
+    signatureFeePayer: solanaAddressSchema,
+    prioritizationFeePayer: solanaAddressSchema.nullable(),
+    rentFeePayer: solanaAddressSchema.nullable(),
+    gasless: z.literal(false),
+    requiredSignatures: z.literal(1),
+    router: z.enum(["metis", "dflow", "okx"]),
+    lastValidBlockHeight: positiveRawAmountSchema,
+    transactionBase64: z.base64().max(8192),
+  })
+  .refine((order) => {
     const input = parseRawAmount(order.inputAmountLamports);
-    return quoteIsConsistent(order) && input !== null &&
-      input <= scorePolicyV1.sizeLamports.realMax && order.signatureFeePayer === order.taker;
-  },
-  "Invalid real order bounds, size, or fee payer",
-);
+    return (
+      quoteIsConsistent(order) &&
+      input !== null &&
+      input <= scorePolicyV1.sizeLamports.realMax &&
+      order.signatureFeePayer === order.taker
+    );
+  }, "Invalid real order bounds, size, or fee payer");
 
 export const quoteSchema = z.discriminatedUnion("kind", [paperQuoteSchema, realOrderSchema]);
 

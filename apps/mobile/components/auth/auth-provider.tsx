@@ -1,7 +1,7 @@
-import { createContext, type PropsWithChildren, use, useMemo } from 'react'
-import { SignInOutput, useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { AppConfig } from '@/constants/app-config'
 import { useMutation } from '@tanstack/react-query'
+import { type SignInOutput, useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { createContext, type PropsWithChildren, use, useMemo } from 'react'
+import { AppConfig } from '@/constants/app-config'
 
 export interface AuthState {
   isAuthenticated: boolean

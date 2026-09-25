@@ -1,8 +1,7 @@
-import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { AppText } from '@/components/app-text'
-import { Cluster } from '@/components/cluster/cluster'
+import type { Cluster } from '@/components/cluster/cluster'
 
 export function ClusterUiVersion({ selectedCluster }: { selectedCluster: Cluster }) {
   const { connection } = useMobileWallet()

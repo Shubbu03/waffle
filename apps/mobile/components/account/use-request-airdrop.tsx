@@ -1,4 +1,4 @@
-import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js'
+import { LAMPORTS_PER_SOL, type PublicKey } from '@solana/web3.js'
 import { useMutation } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { useGetBalanceInvalidate } from './use-get-balance'

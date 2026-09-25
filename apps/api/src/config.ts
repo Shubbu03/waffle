@@ -5,10 +5,13 @@ const portSchema = z.string().regex(/^\d+$/).default("3000").transform(Number).p
 const databaseUrlSchema = z.url().refine((value) => {
   try {
     const url = new URL(value);
-    return ["postgres:", "postgresql:"].includes(url.protocol) &&
-      url.username.length > 0 && url.password.length > 0 &&
+    return (
+      ["postgres:", "postgresql:"].includes(url.protocol) &&
+      url.username.length > 0 &&
+      url.password.length > 0 &&
       url.searchParams.getAll("sslmode").length === 1 &&
-      ["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? "");
+      ["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? "")
+    );
   } catch {
     return false;
   }

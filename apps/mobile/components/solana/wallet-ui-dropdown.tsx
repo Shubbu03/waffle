@@ -1,14 +1,14 @@
-import React, { Fragment } from 'react'
-import { Linking, StyleSheet } from 'react-native'
 import Clipboard from '@react-native-clipboard/clipboard'
-import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { ellipsify } from '@/utils/ellipsify'
-import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
-import { useCluster } from '@/components/cluster/cluster-provider'
-import { AppText } from '@/components/app-text'
 import * as Dropdown from '@rn-primitives/dropdown-menu'
-import { WalletUiButtonConnect } from './wallet-ui-button-connect'
+import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { Fragment } from 'react'
+import { Linking, StyleSheet } from 'react-native'
+import { AppText } from '@/components/app-text'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { useWalletUiTheme } from '@/components/solana/use-wallet-ui-theme'
+import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
+import { ellipsify } from '@/utils/ellipsify'
+import { WalletUiButtonConnect } from './wallet-ui-button-connect'
 
 function useDropdownItems() {
   const { getExplorerUrl } = useCluster()

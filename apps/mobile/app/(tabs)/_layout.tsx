@@ -1,5 +1,4 @@
 import { Tabs } from 'expo-router'
-import React from 'react'
 import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
 
 export default function TabLayout() {

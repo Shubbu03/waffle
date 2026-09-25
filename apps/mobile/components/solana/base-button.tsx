@@ -1,8 +1,7 @@
-import React from 'react'
-import { AppText } from '@/components/app-text'
 import { StyleSheet, TouchableOpacity } from 'react-native'
-import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
+import { AppText } from '@/components/app-text'
 import { useWalletUiTheme } from '@/components/solana/use-wallet-ui-theme'
+import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
 
 export function BaseButton({ label, onPress }: { label: string; onPress?: () => void }) {
   const { backgroundColor, borderColor, textColor } = useWalletUiTheme()

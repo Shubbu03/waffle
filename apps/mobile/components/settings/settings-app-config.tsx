@@ -1,7 +1,7 @@
-import { AppConfig } from '@/constants/app-config'
+import { AppExternalLink, type AppExternalLinkProps } from '@/components/app-external-link'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
-import { AppExternalLink, AppExternalLinkProps } from '@/components/app-external-link'
+import { AppConfig } from '@/constants/app-config'
 
 export function SettingsAppConfig() {
   return (

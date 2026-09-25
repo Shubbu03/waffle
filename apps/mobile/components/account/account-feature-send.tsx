@@ -1,10 +1,10 @@
-import { AppView } from '@/components/app-view'
-import { AppText } from '@/components/app-text'
-import { PublicKey } from '@solana/web3.js'
-import { ActivityIndicator, TextInput, View } from 'react-native'
-import React, { useState } from 'react'
 import { Button } from '@react-navigation/elements'
+import { PublicKey } from '@solana/web3.js'
+import { useState } from 'react'
+import { ActivityIndicator, TextInput, View } from 'react-native'
 import { useTransferSol } from '@/components/account/use-transfer-sol'
+import { AppText } from '@/components/app-text'
+import { AppView } from '@/components/app-view'
 import { useThemeColor } from '@/hooks/use-theme-color'
 
 export function AccountFeatureSend({ address }: { address: PublicKey }) {

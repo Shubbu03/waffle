@@ -1,4 +1,4 @@
-import { PublicKey } from '@solana/web3.js'
+import type { PublicKey } from '@solana/web3.js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 

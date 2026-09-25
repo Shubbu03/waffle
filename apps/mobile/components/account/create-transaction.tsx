@@ -1,7 +1,7 @@
 import {
-  Connection,
+  type Connection,
   LAMPORTS_PER_SOL,
-  PublicKey,
+  type PublicKey,
   SystemProgram,
   TransactionMessage,
   VersionedTransaction,

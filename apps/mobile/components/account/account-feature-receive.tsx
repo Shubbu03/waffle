@@ -1,9 +1,9 @@
-import { AppView } from '@/components/app-view'
-import { AppText } from '@/components/app-text'
-import { PublicKey } from '@solana/web3.js'
-import { AppQrCode } from '@/components/app-qr-code'
-import { Button } from '@react-navigation/elements'
 import Clipboard from '@react-native-clipboard/clipboard'
+import { Button } from '@react-navigation/elements'
+import type { PublicKey } from '@solana/web3.js'
+import { AppQrCode } from '@/components/app-qr-code'
+import { AppText } from '@/components/app-text'
+import { AppView } from '@/components/app-view'
 
 export function AccountFeatureReceive({ address }: { address: PublicKey }) {
   return (

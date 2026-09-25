@@ -1,13 +1,13 @@
-import { PublicKey } from '@solana/web3.js'
-import { AppText } from '@/components/app-text'
+import type { PublicKey } from '@solana/web3.js'
 import { ActivityIndicator, View } from 'react-native'
-import { AppView } from '@/components/app-view'
-import { ellipsify } from '@/utils/ellipsify'
 import { AccountUiTokenBalance } from '@/components/account/account-ui-token-balance'
 import { useGetTokenAccounts } from '@/components/account/use-get-token-accounts'
+import { AppText } from '@/components/app-text'
+import { AppView } from '@/components/app-view'
+import { ellipsify } from '@/utils/ellipsify'
 
 export function AccountUiTokenAccounts({ address }: { address: PublicKey }) {
-  let query = useGetTokenAccounts({ address })
+  const query = useGetTokenAccounts({ address })
   const items = query.data ?? []
 
   return (

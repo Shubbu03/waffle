@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { useRouter } from 'expo-router'
 import { AccountFeatureReceive } from '@/components/account/account-feature-receive'
 import { AppView } from '@/components/app-view'
 

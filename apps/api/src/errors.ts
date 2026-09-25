@@ -10,17 +10,22 @@ export function apiError(
   message: string,
   fieldErrors?: Record<string, string[]>,
 ) {
-  return c.json({
-    error: { code, message, ...(fieldErrors ? { fieldErrors } : {}) },
-    requestId: c.get("requestId"),
-  }, status);
+  return c.json(
+    {
+      error: { code, message, ...(fieldErrors ? { fieldErrors } : {}) },
+      requestId: c.get("requestId"),
+    },
+    status,
+  );
 }
 
 export function validationError(c: Context<AppEnv>, error: z.ZodError) {
   const fieldErrors: Record<string, string[]> = {};
   for (const issue of error.issues) {
     const key = issue.path.join(".") || "body";
-    (fieldErrors[key] ??= []).push(issue.message);
+    const messages = fieldErrors[key] ?? [];
+    messages.push(issue.message);
+    fieldErrors[key] = messages;
   }
   return apiError(c, 400, "VALIDATION_ERROR", "Request validation failed", fieldErrors);
 }

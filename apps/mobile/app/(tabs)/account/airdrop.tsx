@@ -1,7 +1,7 @@
-import { AppView } from '@/components/app-view'
-import { useRouter } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { useRouter } from 'expo-router'
 import { AccountFeatureAirdrop } from '@/components/account/account-feature-airdrop'
+import { AppView } from '@/components/app-view'
 
 export default function Airdrop() {
   const router = useRouter()

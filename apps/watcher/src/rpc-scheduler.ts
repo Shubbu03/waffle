@@ -1,8 +1,4 @@
-export type RpcMethod =
-  | "getTransaction"
-  | "getSignaturesForAddress"
-  | "getAccountInfo"
-  | "getProgramAccounts";
+export type RpcMethod = "getTransaction" | "getSignaturesForAddress" | "getAccountInfo" | "getProgramAccounts";
 
 export type RpcPriority = "provisional" | "evidence" | "backfill";
 
@@ -70,10 +66,13 @@ export class RpcNotReadyError extends Error {
 }
 
 function retryable(error: unknown): boolean {
-  return error instanceof RpcTimeoutError || error instanceof RpcNotReadyError ||
-    error instanceof RpcHttpError && (error.status === 429 || error.status >= 500) ||
-    error instanceof RpcRemoteError && error.code === -32005 ||
-    error instanceof TypeError;
+  return (
+    error instanceof RpcTimeoutError ||
+    error instanceof RpcNotReadyError ||
+    (error instanceof RpcHttpError && (error.status === 429 || error.status >= 500)) ||
+    (error instanceof RpcRemoteError && error.code === -32005) ||
+    error instanceof TypeError
+  );
 }
 
 function boundedInteger(value: number, min: number, max: number, name: string): number {
@@ -106,7 +105,12 @@ export class RpcScheduler {
 
   constructor(options: RpcSchedulerOptions = {}) {
     this.requestsPerSecond = boundedInteger(options.requestsPerSecond ?? 10, 1, 10, "requestsPerSecond");
-    this.programAccountsPerSecond = boundedInteger(options.programAccountsPerSecond ?? 5, 1, 5, "programAccountsPerSecond");
+    this.programAccountsPerSecond = boundedInteger(
+      options.programAccountsPerSecond ?? 5,
+      1,
+      5,
+      "programAccountsPerSecond",
+    );
     this.maxConcurrent = boundedInteger(options.maxConcurrent ?? 4, 1, 10, "maxConcurrent");
     this.timeoutMs = boundedInteger(options.timeoutMs ?? 4000, 1, 30000, "timeoutMs");
     this.retryDelayMs = boundedInteger(options.retryDelayMs ?? 250, 0, 30000, "retryDelayMs");
@@ -124,8 +128,11 @@ export class RpcScheduler {
     };
   }
 
-  submit<T>(method: RpcMethod, priority: RpcPriority, run: (signal: AbortSignal) => Promise<T>):
-    { accepted: true; result: Promise<T> } | { accepted: false } {
+  submit<T>(
+    method: RpcMethod,
+    priority: RpcPriority,
+    run: (signal: AbortSignal) => Promise<T>,
+  ): { accepted: true; result: Promise<T> } | { accepted: false } {
     if (this.closed) throw new Error("RPC scheduler is closed");
     if (priority === "provisional" && this.status.provisionalQueued >= this.maxProvisionalQueued) {
       this.degraded = true;
@@ -143,8 +150,14 @@ export class RpcScheduler {
 
     const result = new Promise<T>((resolve, reject) => {
       this.pending.push({
-        method, priority, sequence: this.sequence++, readyAt: 0, attempt: 0,
-        run, resolve: (value) => resolve(value as T), reject,
+        method,
+        priority,
+        sequence: this.sequence++,
+        readyAt: 0,
+        attempt: 0,
+        run,
+        resolve: (value) => resolve(value as T),
+        reject,
       });
     });
     this.pump();
@@ -169,22 +182,26 @@ export class RpcScheduler {
     let earliest = Infinity;
     const eligible: number[] = [];
     for (const [index, job] of this.pending.entries()) {
-      const at = Math.max(job.readyAt, this.nextRequestAt,
-        job.method === "getProgramAccounts" ? this.nextProgramAccountsAt : 0);
+      const at = Math.max(
+        job.readyAt,
+        this.nextRequestAt,
+        job.method === "getProgramAccounts" ? this.nextProgramAccountsAt : 0,
+      );
       earliest = Math.min(earliest, at);
       if (at <= now) eligible.push(index);
     }
     const fairTurn = this.dispatchCount % 5 === 4;
-    const candidates = fairTurn
-      ? eligible.filter((index) => this.pending[index]?.priority !== "provisional")
-      : [];
+    const candidates = fairTurn ? eligible.filter((index) => this.pending[index]?.priority !== "provisional") : [];
     for (const index of candidates.length > 0 ? candidates : eligible) {
-      const job = this.pending[index]!;
+      const job = this.pending[index];
+      if (job === undefined) continue;
       const current = this.pending[selected];
-      if (current === undefined ||
+      if (
+        current === undefined ||
         (candidates.length === 0 && priorityOrder[job.priority] < priorityOrder[current.priority]) ||
-        (candidates.length > 0 || priorityOrder[job.priority] === priorityOrder[current.priority]) &&
-          job.sequence < current.sequence) {
+        ((candidates.length > 0 || priorityOrder[job.priority] === priorityOrder[current.priority]) &&
+          job.sequence < current.sequence)
+      ) {
         selected = index;
       }
     }
@@ -257,13 +274,15 @@ export class RpcScheduler {
         controller.abort();
       }, this.timeoutMs);
       this.cancelActive.add(cancel);
-      Promise.resolve().then(() => {
-        if (controller.signal.aborted) throw new Error("RPC scheduler closed");
-        return run(controller.signal);
-      }).then(
-        (value) => finish(resolve, value),
-        (error: unknown) => finish(reject, error),
-      );
+      Promise.resolve()
+        .then(() => {
+          if (controller.signal.aborted) throw new Error("RPC scheduler closed");
+          return run(controller.signal);
+        })
+        .then(
+          (value) => finish(resolve, value),
+          (error: unknown) => finish(reject, error),
+        );
     });
   }
 }

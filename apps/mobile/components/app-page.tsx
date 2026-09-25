@@ -1,7 +1,7 @@
-import React, { PropsWithChildren } from 'react'
+import type { PropsWithChildren } from 'react'
+import type { ViewProps } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppView } from '@/components/app-view'
-import type { ViewProps } from 'react-native'
 
 export function AppPage({ children, ...props }: PropsWithChildren<ViewProps>) {
   return (

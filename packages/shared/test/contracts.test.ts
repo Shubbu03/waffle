@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  PROGRAM_IDS,
-  PUMP_SWAP_PROGRAM_ID,
-  SPL_TOKEN_PROGRAM_ID,
-  WRAPPED_SOL_MINT,
   authChallengeResponseSchema,
   authVerifyRequestSchema,
   createPaperPositionRequestSchema,
@@ -12,18 +8,22 @@ import {
   getSignalsQuerySchema,
   liveClientMessageSchema,
   liveServerEventSchema,
+  PROGRAM_IDS,
+  PUMP_SWAP_PROGRAM_ID,
   paperPositionSchema,
   paperQuoteSchema,
+  putWalletSubscriptionRequestSchema,
   rawAmountSchema,
   realOrderSchema,
+  SPL_TOKEN_PROGRAM_ID,
   scoreReasonSchema,
   signalDetailSchema,
   signalPageSchema,
   solanaAddressSchema,
   tradeAttemptSchema,
+  WRAPPED_SOL_MINT,
   walletSchema,
   walletSubscriptionSchema,
-  putWalletSubscriptionRequestSchema,
 } from "../src/index.ts";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -46,8 +46,12 @@ const paperQuote = {
   router: "metis" as const,
   feeLamports: "5000",
   fees: {
-    totalBps: 0, mint: null, platform: null,
-    signatureLamports: "5000", prioritizationLamports: "0", rentLamports: "0",
+    totalBps: 0,
+    mint: null,
+    platform: null,
+    signatureLamports: "5000",
+    prioritizationLamports: "0",
+    rentLamports: "0",
   },
   slippageBps: 500,
   priceImpactBps: 100,
@@ -96,9 +100,14 @@ describe("on-chain primitives and catalog", () => {
     expect(walletSchema.safeParse({ ...wallet, userId: otherId }).success).toBe(false);
     expect(putWalletSubscriptionRequestSchema.safeParse({}).success).toBe(true);
     expect(putWalletSubscriptionRequestSchema.safeParse({ alertsEnabled: true, userId: id }).success).toBe(false);
-    expect(walletSubscriptionSchema.safeParse({
-      walletId: id, alertsEnabled: true, alertsEnabledAt: null, createdAt: timestamp,
-    }).success).toBe(false);
+    expect(
+      walletSubscriptionSchema.safeParse({
+        walletId: id,
+        alertsEnabled: true,
+        alertsEnabledAt: null,
+        createdAt: timestamp,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -118,25 +127,33 @@ describe("auth and JSON-safe cursors", () => {
       },
     };
     expect(authChallengeResponseSchema.safeParse(challenge).success).toBe(true);
-    expect(authChallengeResponseSchema.safeParse({
-      ...challenge,
-      signInInput: { ...challenge.signInInput, chainId: "devnet" },
-    }).success).toBe(false);
-    expect(authChallengeResponseSchema.safeParse({
-      ...challenge,
-      signInInput: { ...challenge.signInInput, domain: "other.example" },
-    }).success).toBe(false);
-    expect(authChallengeResponseSchema.safeParse({
-      ...challenge,
-      signInInput: { ...challenge.signInInput, expirationTime: "2026-09-24T08:06:00.000Z" },
-    }).success).toBe(false);
-    expect(authVerifyRequestSchema.safeParse({
-      challengeId: id,
-      accountAddress: address,
-      signedMessageBase64: "c2lnbmVk",
-      signatureBase64: "c2lnbmF0dXJl",
-      userId: otherId,
-    }).success).toBe(false);
+    expect(
+      authChallengeResponseSchema.safeParse({
+        ...challenge,
+        signInInput: { ...challenge.signInInput, chainId: "devnet" },
+      }).success,
+    ).toBe(false);
+    expect(
+      authChallengeResponseSchema.safeParse({
+        ...challenge,
+        signInInput: { ...challenge.signInInput, domain: "other.example" },
+      }).success,
+    ).toBe(false);
+    expect(
+      authChallengeResponseSchema.safeParse({
+        ...challenge,
+        signInInput: { ...challenge.signInInput, expirationTime: "2026-09-24T08:06:00.000Z" },
+      }).success,
+    ).toBe(false);
+    expect(
+      authVerifyRequestSchema.safeParse({
+        challengeId: id,
+        accountAddress: address,
+        signedMessageBase64: "c2lnbmVk",
+        signatureBase64: "c2lnbmF0dXJl",
+        userId: otherId,
+      }).success,
+    ).toBe(false);
   });
 
   test("event cursors stay decimal strings and query pages are bounded", () => {
@@ -195,23 +212,40 @@ describe("signals, quotes, and positions", () => {
     };
     expect(signalDetailSchema.safeParse(detail).success).toBe(true);
     expect(signalDetailSchema.safeParse({ ...detail, score: 81 }).success).toBe(false);
-    expect(signalDetailSchema.safeParse({
-      ...detail, snapshot: { ...detail.snapshot, mint: null },
-    }).success).toBe(false);
-    expect(signalDetailSchema.safeParse({
-      ...detail, snapshot: { ...detail.snapshot, mint: { ...detail.snapshot.mint, tokenProgramId: WRAPPED_SOL_MINT } },
-    }).success).toBe(false);
-    expect(signalDetailSchema.safeParse({
-      ...detail, snapshot: { ...detail.snapshot, quote: { ...detail.snapshot.quote, inputLamports: "bad" } },
-    }).success).toBe(false);
-    expect(signalDetailSchema.safeParse({
-      ...detail,
-      reasons: detail.reasons.map((reason, index) => index === 0 ? { ...reason, points: 100 } : reason),
-    }).success).toBe(false);
+    expect(
+      signalDetailSchema.safeParse({
+        ...detail,
+        snapshot: { ...detail.snapshot, mint: null },
+      }).success,
+    ).toBe(false);
+    expect(
+      signalDetailSchema.safeParse({
+        ...detail,
+        snapshot: { ...detail.snapshot, mint: { ...detail.snapshot.mint, tokenProgramId: WRAPPED_SOL_MINT } },
+      }).success,
+    ).toBe(false);
+    expect(
+      signalDetailSchema.safeParse({
+        ...detail,
+        snapshot: { ...detail.snapshot, quote: { ...detail.snapshot.quote, inputLamports: "bad" } },
+      }).success,
+    ).toBe(false);
+    expect(
+      signalDetailSchema.safeParse({
+        ...detail,
+        reasons: detail.reasons.map((reason, index) => (index === 0 ? { ...reason, points: 100 } : reason)),
+      }).success,
+    ).toBe(false);
     expect(scoreReasonSchema.safeParse({ code: "made_up", points: 1 }).success).toBe(false);
-    expect(signalPageSchema.safeParse({
-      view: "all", direction: "after", items: [signal], nextCursor: "123", hasMore: false,
-    }).success).toBe(true);
+    expect(
+      signalPageSchema.safeParse({
+        view: "all",
+        direction: "after",
+        items: [signal],
+        nextCursor: "123",
+        hasMore: false,
+      }).success,
+    ).toBe(true);
   });
 
   test("paper quotes and positions reject excess size or inconsistent output", () => {
@@ -219,17 +253,37 @@ describe("signals, quotes, and positions", () => {
     expect(paperQuoteSchema.safeParse({ ...paperQuote, inputAmountLamports: "100000001" }).success).toBe(false);
     expect(paperQuoteSchema.safeParse({ ...paperQuote, inputAmountLamports: "bad" }).success).toBe(false);
     expect(paperQuoteSchema.safeParse({ ...paperQuote, minOutputAmountRaw: "1001" }).success).toBe(false);
-    expect(createPaperPositionRequestSchema.safeParse({
-      signalId: otherId, quoteId: id, sizeLamports: "100000000",
-    }).success).toBe(true);
-    expect(paperPositionSchema.safeParse({
-      id, signalId: otherId, sizeLamports: "100000000", entryQuote: paperQuote,
-      simulated: true, status: "open", createdAt: timestamp, closedAt: null,
-    }).success).toBe(true);
-    expect(paperPositionSchema.safeParse({
-      id, signalId: otherId, sizeLamports: "100000000", entryQuote: paperQuote,
-      simulated: false, status: "open", createdAt: timestamp, closedAt: null,
-    }).success).toBe(false);
+    expect(
+      createPaperPositionRequestSchema.safeParse({
+        signalId: otherId,
+        quoteId: id,
+        sizeLamports: "100000000",
+      }).success,
+    ).toBe(true);
+    expect(
+      paperPositionSchema.safeParse({
+        id,
+        signalId: otherId,
+        sizeLamports: "100000000",
+        entryQuote: paperQuote,
+        simulated: true,
+        status: "open",
+        createdAt: timestamp,
+        closedAt: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      paperPositionSchema.safeParse({
+        id,
+        signalId: otherId,
+        sizeLamports: "100000000",
+        entryQuote: paperQuote,
+        simulated: false,
+        status: "open",
+        createdAt: timestamp,
+        closedAt: null,
+      }).success,
+    ).toBe(false);
   });
 
   test("real order contract rejects other routers, fee payers, and size above 0.05 SOL", () => {
@@ -254,17 +308,30 @@ describe("signals, quotes, and positions", () => {
     expect(realOrderSchema.safeParse({ ...order, signatureFeePayer: PUMP_SWAP_PROGRAM_ID }).success).toBe(false);
     expect(realOrderSchema.safeParse({ ...order, requiredSignatures: 2 }).success).toBe(false);
     expect(realOrderSchema.safeParse({ ...order, inputAmountLamports: "50000001" }).success).toBe(false);
-    expect(createTradeAttemptRequestSchema.safeParse({
-      signalId: id, quoteId: otherId, inputAmountLamports: "50000001",
-    }).success).toBe(false);
+    expect(
+      createTradeAttemptRequestSchema.safeParse({
+        signalId: id,
+        quoteId: otherId,
+        inputAmountLamports: "50000001",
+      }).success,
+    ).toBe(false);
   });
 
   test("confirmed trade attempt needs a signature", () => {
     const attempt = {
-      id, signalId: otherId, quoteId: id, requestId: "jupiter-request",
-      taker: address, router: "metis", inputAmountLamports: "50000000",
-      status: "confirmed", signature: null, executeCode: 0, failureReason: null,
-      createdAt: timestamp, updatedAt: later,
+      id,
+      signalId: otherId,
+      quoteId: id,
+      requestId: "jupiter-request",
+      taker: address,
+      router: "metis",
+      inputAmountLamports: "50000000",
+      status: "confirmed",
+      signature: null,
+      executeCode: 0,
+      failureReason: null,
+      createdAt: timestamp,
+      updatedAt: later,
     };
     expect(tradeAttemptSchema.safeParse(attempt).success).toBe(false);
     expect(tradeAttemptSchema.safeParse({ ...attempt, signature }).success).toBe(true);
@@ -273,26 +340,62 @@ describe("signals, quotes, and positions", () => {
 
 describe("live protocol", () => {
   test("Following requires an auth frame; public All has no token", () => {
-    expect(liveClientMessageSchema.safeParse({
-      v: 1, type: "subscribe", view: "all", cursor: null,
-    }).success).toBe(true);
-    expect(liveClientMessageSchema.safeParse({
-      v: 1, type: "subscribe", view: "following", cursor: null,
-    }).success).toBe(false);
-    expect(liveClientMessageSchema.safeParse({
-      v: 1, type: "auth", view: "following", accessToken: "a".repeat(43), cursor: "123",
-    }).success).toBe(true);
-    expect(liveClientMessageSchema.safeParse({
-      v: 1, type: "subscribe", view: "all", cursor: null, accessToken: "a".repeat(43),
-    }).success).toBe(false);
+    expect(
+      liveClientMessageSchema.safeParse({
+        v: 1,
+        type: "subscribe",
+        view: "all",
+        cursor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      liveClientMessageSchema.safeParse({
+        v: 1,
+        type: "subscribe",
+        view: "following",
+        cursor: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      liveClientMessageSchema.safeParse({
+        v: 1,
+        type: "auth",
+        view: "following",
+        accessToken: "a".repeat(43),
+        cursor: "123",
+      }).success,
+    ).toBe(true);
+    expect(
+      liveClientMessageSchema.safeParse({
+        v: 1,
+        type: "subscribe",
+        view: "all",
+        cursor: null,
+        accessToken: "a".repeat(43),
+      }).success,
+    ).toBe(false);
   });
 
   test("live signal carries stable IDs for card fetch and deduplication", () => {
-    expect(liveServerEventSchema.safeParse({
-      v: 1, type: "signal", view: "following", eventId: "123", signalId: id, walletId: otherId,
-    }).success).toBe(true);
-    expect(liveServerEventSchema.safeParse({
-      v: 1, type: "signal", view: "following", eventId: 123, signalId: id, walletId: otherId,
-    }).success).toBe(false);
+    expect(
+      liveServerEventSchema.safeParse({
+        v: 1,
+        type: "signal",
+        view: "following",
+        eventId: "123",
+        signalId: id,
+        walletId: otherId,
+      }).success,
+    ).toBe(true);
+    expect(
+      liveServerEventSchema.safeParse({
+        v: 1,
+        type: "signal",
+        view: "following",
+        eventId: 123,
+        signalId: id,
+        walletId: otherId,
+      }).success,
+    ).toBe(false);
   });
 });

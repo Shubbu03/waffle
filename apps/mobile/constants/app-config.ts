@@ -1,11 +1,11 @@
 import { clusterApiUrl } from '@solana/web3.js'
-import { Cluster } from '@/components/cluster/cluster'
+import type { Cluster } from '@/components/cluster/cluster'
 import { ClusterNetwork } from '@/components/cluster/cluster-network'
 
-export class AppConfig {
-  static name = '/tmp/waffle-template'
-  static uri = 'https://example.com'
-  static clusters: Cluster[] = [
+export const AppConfig: { name: string; uri: string; clusters: Cluster[] } = {
+  name: '/tmp/waffle-template',
+  uri: 'https://example.com',
+  clusters: [
     {
       id: 'solana:devnet',
       name: 'Devnet',
@@ -18,5 +18,5 @@ export class AppConfig {
       endpoint: clusterApiUrl('testnet'),
       network: ClusterNetwork.Testnet,
     },
-  ]
+  ],
 }

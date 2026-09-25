@@ -1,5 +1,5 @@
-import { SolanaClusterId } from '@wallet-ui/react-native-web3js'
-import { ClusterNetwork } from '@/components/cluster/cluster-network'
+import type { SolanaClusterId } from '@wallet-ui/react-native-web3js'
+import type { ClusterNetwork } from '@/components/cluster/cluster-network'
 
 export interface Cluster {
   id: SolanaClusterId

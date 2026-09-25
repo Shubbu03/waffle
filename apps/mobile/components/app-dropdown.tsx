@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useThemeColor } from '@/hooks/use-theme-color'
 
@@ -26,9 +26,9 @@ export function AppDropdown({
       </TouchableOpacity>
       {isOpen && (
         <View style={[styles.list, { backgroundColor: listBackgroundColor, borderColor }]}>
-          {items.map((option, index) => (
+          {items.map((option) => (
             <TouchableOpacity
-              key={index}
+              key={option}
               style={[styles.item, { borderBottomColor: borderColor }]}
               onPress={() => {
                 selectItem(option)

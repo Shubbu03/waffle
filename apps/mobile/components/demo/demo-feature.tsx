@@ -1,9 +1,8 @@
-import { AppView } from '@/components/app-view'
-import { AppText } from '@/components/app-text'
-import { DemoFeatureSignMessage } from './demo-feature-sign-message'
+import type { PublicKey } from '@solana/web3.js'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { PublicKey } from '@solana/web3.js'
-import * as React from 'react'
+import { AppText } from '@/components/app-text'
+import { AppView } from '@/components/app-view'
+import { DemoFeatureSignMessage } from './demo-feature-sign-message'
 
 export function DemoFeature() {
   const { account } = useMobileWallet()

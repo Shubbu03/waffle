@@ -15,8 +15,16 @@ type ApiLoginFacts = {
 
 /** The API must connect with a dedicated login, never the migration owner. */
 export function isRestrictedApiLogin(role: ApiLoginFacts): boolean {
-  return role.canLogin && !role.superuser && !role.bypassRls && !role.createRole &&
-    !role.ownsAppTables && role.apiRoleUsable && !role.watcherMember && !role.deliveryMember;
+  return (
+    role.canLogin &&
+    !role.superuser &&
+    !role.bypassRls &&
+    !role.createRole &&
+    !role.ownsAppTables &&
+    role.apiRoleUsable &&
+    !role.watcherMember &&
+    !role.deliveryMember
+  );
 }
 
 export function createApiDatabase(databaseUrl: string) {

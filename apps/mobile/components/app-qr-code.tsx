@@ -1,7 +1,6 @@
-import React from 'react'
+import type { ViewProps } from 'react-native'
 import QRCode from 'react-qr-code'
 import { AppView } from '@/components/app-view'
-import { ViewProps } from 'react-native'
 
 export function AppQrCode({ value, style = {}, ...props }: ViewProps & { value: string }) {
   return (

@@ -1,12 +1,12 @@
+import { Button } from '@react-navigation/elements'
+import { Image } from 'expo-image'
 import { router } from 'expo-router'
-import { useAuth } from '@/components/auth/auth-provider'
+import { View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
+import { useAuth } from '@/components/auth/auth-provider'
 import { AppConfig } from '@/constants/app-config'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { View } from 'react-native'
-import { Image } from 'expo-image'
-import { Button } from '@react-navigation/elements'
 
 export default function SignIn() {
   const { signIn } = useAuth()

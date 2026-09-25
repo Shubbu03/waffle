@@ -4,7 +4,7 @@ import { WatcherRpc } from "../src/rpc.ts";
 import { RpcHttpError, RpcScheduler, RpcTimeoutError } from "../src/rpc-scheduler.ts";
 
 const wallet = "1".repeat(32);
-const otherWallet = "1".repeat(31) + "2";
+const otherWallet = `${"1".repeat(31)}2`;
 const signature = "1".repeat(64);
 const rpcUrl = "https://rpc.example.test/?api-key=test-only";
 
@@ -54,10 +54,14 @@ describe("shared scheduler", () => {
       return submitted.result;
     });
     expect(await Promise.all(jobs)).toEqual(Array.from({ length: 11 }, (_, index) => index));
-    for (let index = 1; index < starts.length; index++) {
-      expect(starts[index]! - starts[index - 1]!).toBeGreaterThanOrEqual(80);
+    const firstStart = starts[0];
+    if (firstStart === undefined) throw new Error("Expected scheduler calls");
+    let previousStart = firstStart;
+    for (const start of starts.slice(1)) {
+      expect(start - previousStart).toBeGreaterThanOrEqual(80);
+      previousStart = start;
     }
-    expect(starts[10]! - starts[0]!).toBeGreaterThanOrEqual(950);
+    expect(previousStart - firstStart).toBeGreaterThanOrEqual(950);
     scheduler.close();
   });
 
@@ -73,8 +77,12 @@ describe("shared scheduler", () => {
       return submitted.result;
     });
     await Promise.all(jobs);
-    for (let index = 1; index < starts.length; index++) {
-      expect(starts[index]! - starts[index - 1]!).toBeGreaterThanOrEqual(180);
+    const firstStart = starts[0];
+    if (firstStart === undefined) throw new Error("Expected scheduler calls");
+    let previousStart = firstStart;
+    for (const start of starts.slice(1)) {
+      expect(start - previousStart).toBeGreaterThanOrEqual(180);
+      previousStart = start;
     }
     scheduler.close();
   });
@@ -134,8 +142,7 @@ describe("shared scheduler", () => {
 
   test("closing cancels an active call", async () => {
     const scheduler = new RpcScheduler();
-    const submitted = scheduler.submit("getAccountInfo", "evidence", async () =>
-      new Promise<never>(() => {}));
+    const submitted = scheduler.submit("getAccountInfo", "evidence", async () => new Promise<never>(() => {}));
     if (!submitted.accepted) throw new Error("Unexpected drop");
     scheduler.close();
     await expect(submitted.result).rejects.toThrow("RPC scheduler closed");
@@ -145,13 +152,14 @@ describe("shared scheduler", () => {
     const scheduler = new RpcScheduler({ timeoutMs: 20, retryDelayMs: 0 });
     const jobs: Promise<unknown>[] = [];
     for (let index = 0; index < 52; index++) {
-      const submitted = scheduler.submit("getTransaction", "provisional", async () =>
-        new Promise<never>(() => {}));
+      const submitted = scheduler.submit("getTransaction", "provisional", async () => new Promise<never>(() => {}));
       if (submitted.accepted) jobs.push(submitted.result.catch(() => undefined));
       else expect(index).toBe(51);
     }
     expect(scheduler.status).toMatchObject({
-      degraded: true, provisionalQueued: 50, droppedProvisional: 1,
+      degraded: true,
+      provisionalQueued: 50,
+      droppedProvisional: 1,
     });
     scheduler.close();
     await Promise.all(jobs);
@@ -165,10 +173,11 @@ describe("watcher RPC client", () => {
       url: rpcUrl,
       fetchImpl: fakeFetch((request) => {
         methods.push(request.method);
-        if (request.method === "getSignaturesForAddress") return [
-          { signature, slot: 123, err: null },
-          { signature: "1".repeat(63) + "2", slot: 122, err: { InstructionError: [0, "failed"] } },
-        ];
+        if (request.method === "getSignaturesForAddress")
+          return [
+            { signature, slot: 123, err: null },
+            { signature: `${"1".repeat(63)}2`, slot: 122, err: { InstructionError: [0, "failed"] } },
+          ];
         if (request.method === "getTransaction") return { slot: 123, meta: { err: null } };
         throw new Error("Unexpected method");
       }),
@@ -194,11 +203,7 @@ describe("watcher RPC client", () => {
         return { value: null };
       }),
     });
-    await Promise.all([
-      rpc.getTokenAccount(wallet),
-      rpc.getPoolAccount(otherWallet),
-      rpc.getProgramAccounts(wallet),
-    ]);
+    await Promise.all([rpc.getTokenAccount(wallet), rpc.getPoolAccount(otherWallet), rpc.getProgramAccounts(wallet)]);
     expect(methods.sort()).toEqual(["getAccountInfo", "getAccountInfo", "getProgramAccounts"]);
     rpc.close();
   });
@@ -206,7 +211,8 @@ describe("watcher RPC client", () => {
   test("does not cache a not-ready transaction and retries on a later sighting", async () => {
     let calls = 0;
     const rpc = new WatcherRpc({
-      url: rpcUrl, retryDelayMs: 0,
+      url: rpcUrl,
+      retryDelayMs: 0,
       fetchImpl: fakeFetch((request) => {
         if (request.method !== "getTransaction") throw new Error("Unexpected method");
         calls++;

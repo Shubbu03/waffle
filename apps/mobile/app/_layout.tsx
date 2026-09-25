@@ -3,13 +3,13 @@ import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
-import { AppProviders } from '@/components/app-providers'
-import { useCallback } from 'react'
 import * as SplashScreen from 'expo-splash-screen'
+import { useCallback } from 'react'
 import { View } from 'react-native'
-import { useTrackLocations } from '@/hooks/use-track-locations'
+import { AppProviders } from '@/components/app-providers'
 import { AppSplashController } from '@/components/app-splash-controller'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useTrackLocations } from '@/hooks/use-track-locations'
 
 SplashScreen.preventAutoHideAsync()
 

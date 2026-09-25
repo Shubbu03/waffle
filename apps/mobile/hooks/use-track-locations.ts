@@ -1,4 +1,4 @@
-import { UnknownOutputParams, useGlobalSearchParams, usePathname } from 'expo-router'
+import { type UnknownOutputParams, useGlobalSearchParams, usePathname } from 'expo-router'
 import { useEffect } from 'react'
 
 // Hook to track the location for analytics

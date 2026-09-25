@@ -16,8 +16,16 @@ beforeAll(async () => {
   pg = new PGlite();
   await pg.waitReady;
   await migrate(drizzle(pg), { migrationsFolder: "./migrations" });
-  await pg.query("INSERT INTO users (id, wallet_address) VALUES ($1, $2), ($3, $4)", [userA, watchedAddress, userB, otherAddress]);
-  await pg.query("INSERT INTO watched_wallets (id, address, label, inclusion_reason) VALUES ($1, $2, 'Catalog wallet', 'Fixture')", [walletA, watchedAddress]);
+  await pg.query("INSERT INTO users (id, wallet_address) VALUES ($1, $2), ($3, $4)", [
+    userA,
+    watchedAddress,
+    userB,
+    otherAddress,
+  ]);
+  await pg.query(
+    "INSERT INTO watched_wallets (id, address, label, inclusion_reason) VALUES ($1, $2, 'Catalog wallet', 'Fixture')",
+    [walletA, watchedAddress],
+  );
 });
 
 afterAll(async () => {
@@ -45,7 +53,9 @@ describe("initial migration", () => {
       VALUES ($1, $2, $3, $4, $5, 350000000, now(), 1, 0, 'suppressed', 'unknown', '[]', '{}')`;
     await pg.query(insert, args);
     await expect(pg.query(insert, ["55555555-5555-4555-8555-555555555555", ...args.slice(1)])).rejects.toThrow();
-    const event = await pg.query<{ id: string }>("INSERT INTO signal_events (signal_id) VALUES ($1) RETURNING id", [signalA]);
+    const event = await pg.query<{ id: string }>("INSERT INTO signal_events (signal_id) VALUES ($1) RETURNING id", [
+      signalA,
+    ]);
     expect(event.rows).toHaveLength(1);
     await expect(pg.query("INSERT INTO signal_events (signal_id) VALUES ($1)", [signalA])).rejects.toThrow();
   });
@@ -56,12 +66,15 @@ describe("initial migration", () => {
       [userA, walletA],
     );
     expect(first.rows[0]).toEqual({ alerts_enabled: false, alerts_enabled_at: null });
-    await expect(pg.query(
-      "INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id) VALUES ($1, $2)", [userA, walletA],
-    )).rejects.toThrow();
-    await expect(pg.query(
-      "INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id, alerts_enabled) VALUES ($1, $2, true)", [userB, walletA],
-    )).rejects.toThrow();
+    await expect(
+      pg.query("INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id) VALUES ($1, $2)", [userA, walletA]),
+    ).rejects.toThrow();
+    await expect(
+      pg.query(
+        "INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id, alerts_enabled) VALUES ($1, $2, true)",
+        [userB, walletA],
+      ),
+    ).rejects.toThrow();
   });
 
   test("API role denies missing identity and cross-user reads/writes", async () => {
@@ -69,9 +82,12 @@ describe("initial migration", () => {
     try {
       const anonymous = await pg.query("SELECT * FROM user_wallet_subscriptions");
       expect(anonymous.rows).toHaveLength(0);
-      await expect(pg.query(
-        "INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id) VALUES ($1, $2)", [userB, walletA],
-      )).rejects.toThrow();
+      await expect(
+        pg.query("INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id) VALUES ($1, $2)", [
+          userB,
+          walletA,
+        ]),
+      ).rejects.toThrow();
 
       await pg.exec("BEGIN");
       await pg.query("SELECT set_config('app.user_id', $1, true)", [userA]);
@@ -87,10 +103,12 @@ describe("initial migration", () => {
         await pg.query("SELECT set_config('app.user_id', $1, true)", [userA]);
         const mine = await pg.query("SELECT * FROM user_wallet_subscriptions");
         expect(mine.rows).toHaveLength(1);
-        await expect(pg.query(
-          "INSERT INTO push_tokens (user_id, token_hash, token, notification_permission) VALUES ($1, $2, 'other-device', 'granted')",
-          [userB, "a".repeat(64)],
-        )).rejects.toThrow();
+        await expect(
+          pg.query(
+            "INSERT INTO push_tokens (user_id, token_hash, token, notification_permission) VALUES ($1, $2, 'other-device', 'granted')",
+            [userB, "a".repeat(64)],
+          ),
+        ).rejects.toThrow();
       } finally {
         await pg.exec("ROLLBACK");
       }
@@ -105,12 +123,19 @@ describe("initial migration", () => {
   test("watcher can return inserted IDs but cannot read auth storage", async () => {
     await pg.exec("SET ROLE waffle_watcher");
     try {
-      const inserted = await pg.query<{ id: string }>(`INSERT INTO signals
+      const inserted = await pg.query<{ id: string }>(
+        `INSERT INTO signals
         (signature, wallet_id, mint_address, source_program_id, slot, observed_at, score_version, score, status, data_status, reasons, snapshot)
         VALUES ($1, $2, $3, $4, 350000001, now(), 1, 0, 'suppressed', 'unknown', '[]', '{}')
-        RETURNING id`, ["2".repeat(64), walletA, otherAddress, watchedAddress]);
+        RETURNING id`,
+        ["2".repeat(64), walletA, otherAddress, watchedAddress],
+      );
       expect(inserted.rows).toHaveLength(1);
-      const outbox = await pg.query<{ id: string }>("INSERT INTO signal_events (signal_id) VALUES ($1) RETURNING id", [inserted.rows[0]!.id]);
+      const signal = inserted.rows[0];
+      if (!signal) throw new Error("Expected inserted signal");
+      const outbox = await pg.query<{ id: string }>("INSERT INTO signal_events (signal_id) VALUES ($1) RETURNING id", [
+        signal.id,
+      ]);
       expect(outbox.rows).toHaveLength(1);
       await expect(pg.query("SELECT * FROM auth_challenges")).rejects.toThrow();
       await expect(pg.query("SELECT * FROM push_tokens")).rejects.toThrow();
@@ -122,12 +147,14 @@ describe("initial migration", () => {
   test("delivery role can disable an invalid token but cannot access auth storage", async () => {
     await pg.exec("SET ROLE waffle_delivery");
     try {
-      const disabled = await pg.query<{ active: boolean }>("UPDATE push_tokens SET active = false WHERE token_hash = $1 RETURNING active", ["b".repeat(64)]);
+      const disabled = await pg.query<{ active: boolean }>(
+        "UPDATE push_tokens SET active = false WHERE token_hash = $1 RETURNING active",
+        ["b".repeat(64)],
+      );
       expect(disabled.rows).toEqual([{ active: false }]);
       await expect(pg.query("SELECT * FROM sessions")).rejects.toThrow();
     } finally {
       await pg.exec("RESET ROLE");
     }
   });
-
 });

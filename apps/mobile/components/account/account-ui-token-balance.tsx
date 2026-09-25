@@ -1,7 +1,7 @@
-import { PublicKey } from '@solana/web3.js'
+import type { PublicKey } from '@solana/web3.js'
 import { ActivityIndicator } from 'react-native'
-import { AppText } from '@/components/app-text'
 import { useGetTokenAccountBalance } from '@/components/account/use-get-token-account-balance'
+import { AppText } from '@/components/app-text'
 
 export function AccountUiTokenBalance({ address }: { address: PublicKey }) {
   const query = useGetTokenAccountBalance({ address })

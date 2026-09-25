@@ -1,4 +1,4 @@
-import { PublicKey, TransactionSignature } from '@solana/web3.js'
+import type { PublicKey, TransactionSignature } from '@solana/web3.js'
 import { useMutation } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { createTransaction } from './create-transaction'

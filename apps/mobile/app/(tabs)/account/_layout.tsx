@@ -1,5 +1,5 @@
-import { WalletUiDropdown } from '@/components/solana/wallet-ui-dropdown'
 import { Stack } from 'expo-router'
+import { WalletUiDropdown } from '@/components/solana/wallet-ui-dropdown'
 
 export default function Layout() {
   return (

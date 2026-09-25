@@ -1,5 +1,5 @@
-import { PropsWithChildren } from 'react'
 import { DarkTheme as AppThemeDark, DefaultTheme as AppThemeLight, ThemeProvider } from '@react-navigation/native'
+import type { PropsWithChildren } from 'react'
 import { useColorScheme } from 'react-native'
 
 export function useAppTheme() {

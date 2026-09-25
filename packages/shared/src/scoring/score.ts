@@ -1,4 +1,4 @@
-import { scorePolicyV1, SPL_TOKEN_PROGRAM_ID, WRAPPED_SOL_MINT } from "./config.ts";
+import { SPL_TOKEN_PROGRAM_ID, scorePolicyV1, WRAPPED_SOL_MINT } from "./config.ts";
 
 export type ScoreInput = {
   readonly mintAddress: string;
@@ -73,7 +73,12 @@ export const SCORE_REASON_GROUPS = [
   { pass: "quote_available", fail: "quote_unavailable", points: scorePolicyV1.weights.quote },
   { pass: "holders_acceptable", fail: "holders_missing_stale_or_concentrated", points: scorePolicyV1.weights.holders },
   { pass: "creator_acceptable", fail: "creator_missing_stale_or_concentrated", points: scorePolicyV1.weights.creator },
-  { pass: "oracle_agrees", fail: "oracle_none_or_stale", alternateFail: "oracle_deviation_high", points: scorePolicyV1.weights.oracle },
+  {
+    pass: "oracle_agrees",
+    fail: "oracle_none_or_stale",
+    alternateFail: "oracle_deviation_high",
+    points: scorePolicyV1.weights.oracle,
+  },
 ] as const;
 
 export type ScoreReason = { readonly code: ScoreReasonCode; readonly points: number };
@@ -88,13 +93,9 @@ export type ScoreResult = {
 };
 
 const isFresh = (nowMs: number, fetchedAtMs: number, maxAgeMs: number): boolean =>
-  Number.isFinite(nowMs) &&
-  Number.isFinite(fetchedAtMs) &&
-  fetchedAtMs <= nowMs &&
-  nowMs - fetchedAtMs <= maxAgeMs;
+  Number.isFinite(nowMs) && Number.isFinite(fetchedAtMs) && fetchedAtMs <= nowMs && nowMs - fetchedAtMs <= maxAgeMs;
 
-const validPercent = (value: number): boolean =>
-  Number.isFinite(value) && value >= 0 && value <= 100;
+const validPercent = (value: number): boolean => Number.isFinite(value) && value >= 0 && value <= 100;
 
 /** Scores a confirmed, classified transaction snapshot; no network calls or mutable state. */
 export function scoreSignal(input: ScoreInput): ScoreResult {
@@ -111,81 +112,97 @@ export function scoreSignal(input: ScoreInput): ScoreResult {
 
   const buyOkay = award(
     input.supportedBuy && input.transactionSucceeded,
-    "supported_buy", "unsupported_or_failed_transaction", weights.supportedBuy,
+    "supported_buy",
+    "unsupported_or_failed_transaction",
+    weights.supportedBuy,
   );
   if (!buyOkay) criticalFailed = true;
 
   const slotLag = input.currentSlot - input.transactionSlot;
   const signalFresh = award(
     Number.isSafeInteger(input.currentSlot) &&
-    Number.isSafeInteger(input.transactionSlot) &&
-    input.transactionSlot >= 0 &&
-    slotLag >= 0 && slotLag <= freshness.signalSlots &&
-    isFresh(input.nowMs, input.observedAtMs, freshness.signalMs),
-    "fresh_signal", "stale_signal", weights.freshness,
+      Number.isSafeInteger(input.transactionSlot) &&
+      input.transactionSlot >= 0 &&
+      slotLag >= 0 &&
+      slotLag <= freshness.signalSlots &&
+      isFresh(input.nowMs, input.observedAtMs, freshness.signalMs),
+    "fresh_signal",
+    "stale_signal",
+    weights.freshness,
   );
 
   const mintOkay = award(
     input.mint !== null &&
-    input.mint.address === input.mintAddress &&
-    input.mint.tokenProgramId === SPL_TOKEN_PROGRAM_ID &&
-    input.mint.mintAuthority === null &&
-    input.mint.freezeAuthority === null &&
-    isFresh(input.nowMs, input.mint.fetchedAtMs, freshness.mintMs),
-    "mint_safe", "mint_unavailable_or_unsafe", weights.mint,
+      input.mint.address === input.mintAddress &&
+      input.mint.tokenProgramId === SPL_TOKEN_PROGRAM_ID &&
+      input.mint.mintAuthority === null &&
+      input.mint.freezeAuthority === null &&
+      isFresh(input.nowMs, input.mint.fetchedAtMs, freshness.mintMs),
+    "mint_safe",
+    "mint_unavailable_or_unsafe",
+    weights.mint,
   );
   if (!mintOkay) criticalFailed = true;
 
   const poolOkay = award(
     input.pool !== null &&
-    input.pool.baseMint === input.mintAddress &&
-    input.pool.quoteMint === WRAPPED_SOL_MINT &&
-    Number.isFinite(input.pool.liquidityUsd) &&
-    input.pool.liquidityUsd >= scorePolicyV1.liquidityUsd.signalAndPaper &&
-    isFresh(input.nowMs, input.pool.fetchedAtMs, freshness.poolMs),
-    "pool_liquid", "pool_unavailable_or_shallow", weights.pool,
+      input.pool.baseMint === input.mintAddress &&
+      input.pool.quoteMint === WRAPPED_SOL_MINT &&
+      Number.isFinite(input.pool.liquidityUsd) &&
+      input.pool.liquidityUsd >= scorePolicyV1.liquidityUsd.signalAndPaper &&
+      isFresh(input.nowMs, input.pool.fetchedAtMs, freshness.poolMs),
+    "pool_liquid",
+    "pool_unavailable_or_shallow",
+    weights.pool,
   );
   if (!poolOkay) criticalFailed = true;
 
   const quoteOkay = award(
     input.quote !== null &&
-    input.quote.inputMint === WRAPPED_SOL_MINT &&
-    input.quote.outputMint === input.mintAddress &&
-    input.quote.inputLamports >= scorePolicyV1.sizeLamports.quoteProbe &&
-    input.quote.outputAmountRaw > 0n &&
-    isFresh(input.nowMs, input.quote.fetchedAtMs, freshness.quoteMs),
-    "quote_available", "quote_unavailable", weights.quote,
+      input.quote.inputMint === WRAPPED_SOL_MINT &&
+      input.quote.outputMint === input.mintAddress &&
+      input.quote.inputLamports >= scorePolicyV1.sizeLamports.quoteProbe &&
+      input.quote.outputAmountRaw > 0n &&
+      isFresh(input.nowMs, input.quote.fetchedAtMs, freshness.quoteMs),
+    "quote_available",
+    "quote_unavailable",
+    weights.quote,
   );
   if (!quoteOkay) criticalFailed = true;
 
   const holdersOkay = award(
     input.holders !== null &&
-    validPercent(input.holders.top10Pct) &&
-    input.holders.top10Pct <= optional.maxTop10HolderPct &&
-    isFresh(input.nowMs, input.holders.fetchedAtMs, freshness.holdersMs),
-    "holders_acceptable", "holders_missing_stale_or_concentrated", weights.holders,
+      validPercent(input.holders.top10Pct) &&
+      input.holders.top10Pct <= optional.maxTop10HolderPct &&
+      isFresh(input.nowMs, input.holders.fetchedAtMs, freshness.holdersMs),
+    "holders_acceptable",
+    "holders_missing_stale_or_concentrated",
+    weights.holders,
   );
 
   const creatorOkay = award(
     input.creator !== null &&
-    validPercent(input.creator.holdingPct) &&
-    input.creator.holdingPct <= optional.maxCreatorHoldingPct &&
-    isFresh(input.nowMs, input.creator.fetchedAtMs, freshness.creatorMs),
-    "creator_acceptable", "creator_missing_stale_or_concentrated", weights.creator,
+      validPercent(input.creator.holdingPct) &&
+      input.creator.holdingPct <= optional.maxCreatorHoldingPct &&
+      isFresh(input.nowMs, input.creator.fetchedAtMs, freshness.creatorMs),
+    "creator_acceptable",
+    "creator_missing_stale_or_concentrated",
+    weights.creator,
   );
 
   const oracle = input.oracle;
-  const oracleUsable = oracle !== null &&
+  const oracleUsable =
+    oracle !== null &&
     oracle.mintAddress === input.mintAddress &&
     Number.isFinite(oracle.deviationBps) &&
     oracle.deviationBps >= 0 &&
     isFresh(input.nowMs, oracle.fetchedAtMs, freshness.oracleMs);
-  const oracleDeviationHigh = oracle !== null && oracleUsable &&
-    oracle.deviationBps > optional.suppressOracleDeviationBps;
+  const oracleDeviationHigh =
+    oracle !== null && oracleUsable && oracle.deviationBps > optional.suppressOracleDeviationBps;
   const oracleOkay = award(
-    oracle !== null && oracleUsable &&
-    oracle.deviationBps <= optional.maxOracleDeviationBpsForPoints,
-    "oracle_agrees", oracleDeviationHigh ? "oracle_deviation_high" : "oracle_none_or_stale",
+    oracle !== null && oracleUsable && oracle.deviationBps <= optional.maxOracleDeviationBpsForPoints,
+    "oracle_agrees",
+    oracleDeviationHigh ? "oracle_deviation_high" : "oracle_none_or_stale",
     weights.oracle,
   );
   if (oracleDeviationHigh) criticalFailed = true;

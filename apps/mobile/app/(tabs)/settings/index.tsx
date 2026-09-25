@@ -1,9 +1,8 @@
-import { SettingsUiCluster } from '@/components/settings/settings-ui-cluster'
+import { AppPage } from '@/components/app-page'
 import { AppText } from '@/components/app-text'
 import { SettingsAppConfig } from '@/components/settings/settings-app-config'
 import { SettingsUiAccount } from '@/components/settings/settings-ui-account'
-
-import { AppPage } from '@/components/app-page'
+import { SettingsUiCluster } from '@/components/settings/settings-ui-cluster'
 
 export default function TabSettingsScreen() {
   return (

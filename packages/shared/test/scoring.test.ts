@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   checkTradeLimits,
+  type ScoreInput,
+  SPL_TOKEN_PROGRAM_ID,
   scorePolicyV1,
   scoreSignal,
-  SPL_TOKEN_PROGRAM_ID,
   WRAPPED_SOL_MINT,
-  type ScoreInput,
 } from "../src/index.ts";
 
 const mintAddress = "test-mint";
@@ -80,10 +80,11 @@ describe("versioned score policy", () => {
 
   test("mint authority, freeze authority, and mint mismatch suppress alerts", () => {
     const ready = readyInput();
+    if (!ready.mint) throw new Error("Expected mint evidence");
     for (const mint of [
-      { ...ready.mint!, mintAuthority: "authority" },
-      { ...ready.mint!, freezeAuthority: "authority" },
-      { ...ready.mint!, address: "another-mint" },
+      { ...ready.mint, mintAuthority: "authority" },
+      { ...ready.mint, freezeAuthority: "authority" },
+      { ...ready.mint, address: "another-mint" },
     ]) {
       const result = scoreSignal({ ...ready, mint });
       expect(result.status).toBe("suppressed");
@@ -92,10 +93,7 @@ describe("versioned score policy", () => {
   });
 
   test("stale transaction is history-only even with a high score", () => {
-    for (const stale of [
-      { currentSlot: 1_151 },
-      { observedAtMs: nowMs - 90_001 },
-    ]) {
+    for (const stale of [{ currentSlot: 1_151 }, { observedAtMs: nowMs - 90_001 }]) {
       const result = scoreSignal({ ...readyInput(), ...stale });
       expect(result.status).toBe("history-only");
       expect(result.canAlert).toBe(false);
@@ -104,14 +102,19 @@ describe("versioned score policy", () => {
 
   test("shallow pool and missing probe quote suppress alerts", () => {
     const ready = readyInput();
-    expect(scoreSignal({
-      ...ready,
-      pool: { ...ready.pool!, liquidityUsd: 24_999 },
-    }).canAlert).toBe(false);
-    expect(scoreSignal({
-      ...ready,
-      quote: { ...ready.quote!, inputLamports: 49_999_999n },
-    }).canAlert).toBe(false);
+    if (!ready.pool || !ready.quote) throw new Error("Expected pool and quote evidence");
+    expect(
+      scoreSignal({
+        ...ready,
+        pool: { ...ready.pool, liquidityUsd: 24_999 },
+      }).canAlert,
+    ).toBe(false);
+    expect(
+      scoreSignal({
+        ...ready,
+        quote: { ...ready.quote, inputLamports: 49_999_999n },
+      }).canAlert,
+    ).toBe(false);
   });
 
   test("failed or unsupported transaction cannot be promoted by optional points", () => {
@@ -137,14 +140,26 @@ describe("trade limits", () => {
     expect(checkTradeLimits("paper", 100_000_000n, 25_000, nowMs, nowMs)).toEqual({ allowed: true });
     expect(checkTradeLimits("real", 50_000_000n, 75_000, nowMs, nowMs)).toEqual({ allowed: true });
     expect(checkTradeLimits("real", 50_000_001n, 75_000, nowMs, nowMs)).toEqual({ allowed: false, reason: "size_cap" });
-    expect(checkTradeLimits("paper", 100_000_001n, 75_000, nowMs, nowMs)).toEqual({ allowed: false, reason: "size_cap" });
+    expect(checkTradeLimits("paper", 100_000_001n, 75_000, nowMs, nowMs)).toEqual({
+      allowed: false,
+      reason: "size_cap",
+    });
   });
 
   test("real trade requires higher and fresh liquidity", () => {
-    expect(checkTradeLimits("unexpected", 50_000_000n, 100_000, nowMs, nowMs)).toEqual({ allowed: false, reason: "invalid_mode" });
+    expect(checkTradeLimits("unexpected", 50_000_000n, 100_000, nowMs, nowMs)).toEqual({
+      allowed: false,
+      reason: "invalid_mode",
+    });
     expect(checkTradeLimits("paper", 50_000_000n, 30_000, nowMs, nowMs)).toEqual({ allowed: true });
-    expect(checkTradeLimits("real", 50_000_000n, 30_000, nowMs, nowMs)).toEqual({ allowed: false, reason: "liquidity_floor" });
-    expect(checkTradeLimits("real", 50_000_000n, 100_000, nowMs - 15_001, nowMs)).toEqual({ allowed: false, reason: "liquidity_stale" });
+    expect(checkTradeLimits("real", 50_000_000n, 30_000, nowMs, nowMs)).toEqual({
+      allowed: false,
+      reason: "liquidity_floor",
+    });
+    expect(checkTradeLimits("real", 50_000_000n, 100_000, nowMs - 15_001, nowMs)).toEqual({
+      allowed: false,
+      reason: "liquidity_stale",
+    });
     expect(checkTradeLimits("real", 0n, 100_000, nowMs, nowMs)).toEqual({ allowed: false, reason: "invalid_size" });
   });
 });

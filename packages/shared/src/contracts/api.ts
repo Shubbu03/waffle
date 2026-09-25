@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { eventCursorSchema, idSchema } from "./primitives.ts";
 import { paperPositionSchema } from "./position.ts";
+import { eventCursorSchema, idSchema } from "./primitives.ts";
 import { signalSummarySchema } from "./signal.ts";
 import { tradeAttemptSchema } from "./trade.ts";
 
@@ -34,7 +34,12 @@ export const getSignalsQuerySchema = z.strictObject({
   view: z.enum(["all", "following"]).default("all"),
   direction: z.enum(["before", "after"]).default("before"),
   cursor: eventCursorSchema.optional(),
-  limit: z.string().regex(/^[1-9]\d?$/).transform(Number).pipe(z.number().int().min(1).max(50)).default(50),
+  limit: z
+    .string()
+    .regex(/^[1-9]\d?$/)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(50))
+    .default(50),
   walletId: idSchema.optional(),
 });
 

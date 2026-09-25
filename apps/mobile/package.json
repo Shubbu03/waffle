@@ -26,14 +26,14 @@
     "android": "expo run:android",
     "android:build": "expo prebuild -p android",
     "build": "tsc --noEmit && npm run android:build",
-    "ci": "tsc --noEmit && npm run lint:check && npm run format:check && npm run android:build",
+    "ci": "tsc --noEmit && bun run lint && bun run android:build",
     "dev": "expo start",
     "doctor": "npx -y expo-doctor@latest",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "ios": "expo run:ios",
-    "lint": "expo lint --fix",
-    "lint:check": "expo lint",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "start": "expo start",
     "typecheck": "tsc --noEmit",
     "web": "expo start --web"
@@ -86,9 +86,6 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.14",
-    "eslint": "^9.33.0",
-    "eslint-config-expo": "~55.0.0",
-    "prettier": "^3.7.4",
     "typescript": "^5.9.3"
   }
 }

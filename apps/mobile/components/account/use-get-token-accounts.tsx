@@ -1,5 +1,5 @@
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token'
-import { PublicKey } from '@solana/web3.js'
+import type { PublicKey } from '@solana/web3.js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 

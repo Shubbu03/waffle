@@ -8,12 +8,15 @@ Use Bun 1.3.13 (the version recorded in package.json):
 
 ```sh
 bun install --frozen-lockfile
+bun run lint
 bun run typecheck
 bun run test:shared
 bun run test:db
 bun run test:api
 bun run test:watcher
 ```
+
+Biome checks formatting, imports, and lint rules through `bun run lint`. Run `bun run lint:fix` to apply safe fixes.
 
 Run one workspace's check:
 

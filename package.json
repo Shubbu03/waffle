@@ -8,6 +8,8 @@
     "packages/*"
   ],
   "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "typecheck": "bun run --filter '@waffle/*' typecheck",
     "test:shared": "bun run --filter '@waffle/shared' test",
     "test:db": "bun run --filter '@waffle/db' test",
@@ -20,6 +22,7 @@
     "db:migrate": "bun run --filter '@waffle/db' db:migrate"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "typescript": "7.0.2"
   },
   "dependencies": {
