@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "file": "pumpswap-buy.json",
+      "signature": "4CXDvKkXcbuKJnW3awqVjuxKWj467mg9rgjc74kdWRFAn2NmqbegZdvsQbpEzxRRApYM7kTyXVzDQbjZFPr2nBBb",
+      "slot": 450349942,
+      "expected": "buy"
+    },
+    {
+      "file": "pumpswap-sell.json",
+      "signature": "53xwYJUZvoEo3tEfaxA9KBE9B41dJPu5dVA4XhUpqVQTFyNqRQiynBWwDkwPuD8qvoFKHWVnQLjGXX1deHCgDBNj",
+      "slot": 450350064,
+      "expected": "sell-skipped"
+    },
+    {
+      "file": "pumpswap-fail.json",
+      "signature": "5nMyRvg6LmK7hJ8zetUYYMEK6WcCPpLPg8U1HdmafxuTaKWy48ggE1zZ3AZ7tUMQaRmPhXjZLRfYwUsGDUaLtzoE",
+      "slot": 450353741,
+      "expected": "fail-skipped"
+    },
+    {
+      "file": "unknown-raydium.json",
+      "signature": "36FFcqAxM22Cv4WLUa3LbtLATWLGojRocxZsV5y2HH2ySmDAETW3b2K2T8bYBuSbsAETNgar8wZLJfup2ntzwjxD",
+      "slot": 449873738,
+      "expected": "unknown-skipped"
+    },
+    {
+      "file": "transfer-sol.json",
+      "signature": "4AjLSbQzzwK9hKKTzF4qfzqPAsDMFSnSfA98sA9pSoXbmTh6gick6fipwCBW4pdNSGoXowPLVaNb2u1ndWpwFtja",
+      "slot": 450353092,
+      "expected": "transfer-skipped"
+    }
+  ]
+}
