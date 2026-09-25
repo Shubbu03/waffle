@@ -1,4 +1,5 @@
 import { solanaAddressSchema, transactionSignatureSchema } from "@waffle/shared";
+import { type ClassificationSkipReason, classifyPumpSwapBuy, type PumpSwapBuy } from "./classify.ts";
 import { parseWatcherRpcEnv } from "./config.ts";
 import {
   RpcHttpError,
@@ -11,7 +12,8 @@ import {
 } from "./rpc-scheduler.ts";
 
 export type TransactionOutcome =
-  | { status: "fetched"; wallet: string; signature: string; transaction: unknown }
+  | { status: "buy"; wallet: string; signature: string; buy: PumpSwapBuy; transaction: unknown }
+  | { status: "ignored"; wallet: string; signature: string; reason: ClassificationSkipReason }
   | { status: "not-ready"; wallet: string; signature: string }
   | { status: "dropped"; wallet: string; signature: string }
   | { status: "duplicate"; wallet: string; signature: string };
@@ -100,14 +102,17 @@ export class WatcherRpc {
           signature,
           {
             commitment: "confirmed",
-            encoding: "json",
+            encoding: "jsonParsed",
             maxSupportedTransactionVersion: 0,
           },
         ],
         signal,
       );
       if (transaction === null) throw new RpcNotReadyError();
-      return { status: "fetched", wallet, signature, transaction } satisfies TransactionOutcome;
+      const classification = classifyPumpSwapBuy(transaction, wallet, signature);
+      return classification.status === "buy"
+        ? ({ status: "buy", wallet, signature, buy: classification.buy, transaction } satisfies TransactionOutcome)
+        : ({ status: "ignored", wallet, signature, reason: classification.reason } satisfies TransactionOutcome);
     });
     if (!submitted.accepted) return Promise.resolve({ status: "dropped", wallet, signature });
 
@@ -118,7 +123,7 @@ export class WatcherRpc {
         throw error;
       })
       .then((outcome) => {
-        if (outcome.status === "fetched") this.remember(key);
+        if (outcome.status === "buy" || outcome.status === "ignored") this.remember(key);
         return outcome;
       })
       .finally(() => {

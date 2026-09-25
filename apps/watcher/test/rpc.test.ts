@@ -167,6 +167,25 @@ describe("shared scheduler", () => {
 });
 
 describe("watcher RPC client", () => {
+  test("requests jsonParsed and exposes only classified buys", async () => {
+    const transaction = await Bun.file(new URL("../../../tests/fixtures/pumpswap-buy.json", import.meta.url)).json();
+    const signer = transaction.transaction.message.accountKeys.find((key: { signer: boolean }) => key.signer)
+      .pubkey as string;
+    const txSignature = transaction.transaction.signatures[0] as string;
+    let encoding: unknown;
+    const rpc = new WatcherRpc({
+      url: rpcUrl,
+      fetchImpl: fakeFetch((request) => {
+        encoding = (request.params[1] as { encoding?: unknown }).encoding;
+        return transaction;
+      }),
+    });
+    const result = await rpc.queueTransaction(signer, txSignature, "provisional");
+    expect(encoding).toBe("jsonParsed");
+    expect(result).toMatchObject({ status: "buy", buy: { wallet: signer, baseAmountRaw: "392237471" } });
+    rpc.close();
+  });
+
   test("dedupes provisional events and overlapping backfill before transaction fetch", async () => {
     const methods: string[] = [];
     const rpc = new WatcherRpc({
@@ -186,7 +205,7 @@ describe("watcher RPC client", () => {
     const duplicate = rpc.queueTransaction(wallet, signature, "provisional");
     expect((await duplicate).status).toBe("duplicate");
     const backfill = rpc.backfill(wallet);
-    expect((await first).status).toBe("fetched");
+    expect(await first).toMatchObject({ status: "ignored", reason: "invalid-transaction" });
     expect((await backfill)[0]?.status).toBe("duplicate");
     expect((await rpc.queueTransaction(wallet, signature, "provisional")).status).toBe("duplicate");
     expect(methods.filter((method) => method === "getTransaction")).toHaveLength(1);
@@ -220,7 +239,7 @@ describe("watcher RPC client", () => {
       }),
     });
     expect((await rpc.queueTransaction(wallet, signature, "provisional")).status).toBe("not-ready");
-    expect((await rpc.queueTransaction(wallet, signature, "backfill")).status).toBe("fetched");
+    expect((await rpc.queueTransaction(wallet, signature, "backfill")).status).toBe("ignored");
     expect(calls).toBe(3);
     rpc.close();
   });
