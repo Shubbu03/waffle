@@ -2,11 +2,11 @@ import { solanaAddressSchema, transactionSignatureSchema } from "@waffle/shared"
 import { parseWatcherRpcEnv } from "./config.ts";
 import {
   RpcHttpError,
+  type RpcMethod,
   RpcNotReadyError,
   RpcProvisionalDroppedError,
   RpcRemoteError,
   RpcScheduler,
-  type RpcMethod,
   type RpcSchedulerOptions,
 } from "./rpc-scheduler.ts";
 
@@ -63,8 +63,12 @@ export class WatcherRpc {
     this.scheduler = new RpcScheduler(options);
     this.dedupeTtlMs = options.dedupeTtlMs ?? 300_000;
     this.maxRemembered = options.maxRemembered ?? 10_000;
-    if (!Number.isSafeInteger(this.dedupeTtlMs) || this.dedupeTtlMs < 1 ||
-      !Number.isSafeInteger(this.maxRemembered) || this.maxRemembered < 1) {
+    if (
+      !Number.isSafeInteger(this.dedupeTtlMs) ||
+      this.dedupeTtlMs < 1 ||
+      !Number.isSafeInteger(this.maxRemembered) ||
+      this.maxRemembered < 1
+    ) {
       throw new Error("Invalid RPC deduplication settings");
     }
   }
@@ -90,45 +94,73 @@ export class WatcherRpc {
     }
 
     const submitted = this.scheduler.submit("getTransaction", source, async (signal) => {
-      const transaction = await this.call("getTransaction", [signature, {
-        commitment: "confirmed", encoding: "json", maxSupportedTransactionVersion: 0,
-      }], signal);
+      const transaction = await this.call(
+        "getTransaction",
+        [
+          signature,
+          {
+            commitment: "confirmed",
+            encoding: "json",
+            maxSupportedTransactionVersion: 0,
+          },
+        ],
+        signal,
+      );
       if (transaction === null) throw new RpcNotReadyError();
       return { status: "fetched", wallet, signature, transaction } satisfies TransactionOutcome;
     });
     if (!submitted.accepted) return Promise.resolve({ status: "dropped", wallet, signature });
 
-    const result: Promise<TransactionOutcome> = submitted.result.catch((error: unknown) => {
-      if (error instanceof RpcNotReadyError) return { status: "not-ready", wallet, signature } as const;
-      if (error instanceof RpcProvisionalDroppedError) return { status: "dropped", wallet, signature } as const;
-      throw error;
-    }).then((outcome) => {
-      if (outcome.status === "fetched") this.remember(key);
-      return outcome;
-    }).finally(() => {
-      this.pendingTransactions.delete(key);
-    });
+    const result: Promise<TransactionOutcome> = submitted.result
+      .catch((error: unknown) => {
+        if (error instanceof RpcNotReadyError) return { status: "not-ready", wallet, signature } as const;
+        if (error instanceof RpcProvisionalDroppedError) return { status: "dropped", wallet, signature } as const;
+        throw error;
+      })
+      .then((outcome) => {
+        if (outcome.status === "fetched") this.remember(key);
+        return outcome;
+      })
+      .finally(() => {
+        this.pendingTransactions.delete(key);
+      });
     this.pendingTransactions.add(key);
     return result;
   }
 
   /** Backfill discovery uses the same budget; overlapping signatures reuse in-flight or recent fetches. */
   async backfill(wallet: string, options: { before?: string; limit?: number } = {}): Promise<TransactionOutcome[]> {
-    if (options.limit !== undefined && options.limit > 50) throw new Error("Backfill page must be at most 50 signatures");
+    if (options.limit !== undefined && options.limit > 50)
+      throw new Error("Backfill page must be at most 50 signatures");
     const signatures = await this.getSignaturesForAddress(wallet, options);
-    return Promise.all(signatures.filter((entry) => entry.err === null)
-      .map((entry) => Promise.resolve().then(() => this.queueTransaction(wallet, entry.signature, "backfill"))));
+    return Promise.all(
+      signatures
+        .filter((entry) => entry.err === null)
+        .map((entry) => Promise.resolve().then(() => this.queueTransaction(wallet, entry.signature, "backfill"))),
+    );
   }
 
-  async getSignaturesForAddress(wallet: string, options: { before?: string; limit?: number } = {}): Promise<BackfillSignature[]> {
+  async getSignaturesForAddress(
+    wallet: string,
+    options: { before?: string; limit?: number } = {},
+  ): Promise<BackfillSignature[]> {
     solanaAddressSchema.parse(wallet);
     if (options.before !== undefined) transactionSignatureSchema.parse(options.before);
     const limit = options.limit ?? 50;
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Backfill limit must be 1 to 1000");
     const submitted = this.scheduler.submit("getSignaturesForAddress", "backfill", async (signal) => {
-      const result = await this.call("getSignaturesForAddress", [wallet, {
-        commitment: "confirmed", limit, ...(options.before ? { before: options.before } : {}),
-      }], signal);
+      const result = await this.call(
+        "getSignaturesForAddress",
+        [
+          wallet,
+          {
+            commitment: "confirmed",
+            limit,
+            ...(options.before ? { before: options.before } : {}),
+          },
+        ],
+        signal,
+      );
       return parseSignatures(result);
     });
     if (!submitted.accepted) throw new Error("Backfill request was dropped");
@@ -146,7 +178,8 @@ export class WatcherRpc {
   async getProgramAccounts(programId: string, filters: readonly unknown[] = []): Promise<unknown> {
     solanaAddressSchema.parse(programId);
     const submitted = this.scheduler.submit("getProgramAccounts", "evidence", (signal) =>
-      this.call("getProgramAccounts", [programId, { commitment: "confirmed", encoding: "base64", filters }], signal));
+      this.call("getProgramAccounts", [programId, { commitment: "confirmed", encoding: "base64", filters }], signal),
+    );
     if (!submitted.accepted) throw new Error("Program accounts request was dropped");
     return submitted.result;
   }
@@ -154,7 +187,8 @@ export class WatcherRpc {
   private async getAccountInfo(address: string): Promise<unknown> {
     solanaAddressSchema.parse(address);
     const submitted = this.scheduler.submit("getAccountInfo", "evidence", (signal) =>
-      this.call("getAccountInfo", [address, { commitment: "confirmed", encoding: "base64" }], signal));
+      this.call("getAccountInfo", [address, { commitment: "confirmed", encoding: "base64" }], signal),
+    );
     if (!submitted.accepted) throw new Error("Account request was dropped");
     return submitted.result;
   }

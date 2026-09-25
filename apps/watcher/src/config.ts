@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 const rate = (maximum: number, fallback: string) =>
-  z.string().regex(/^[1-9]\d*$/).default(fallback).transform(Number).pipe(z.number().int().min(1).max(maximum));
+  z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .default(fallback)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(maximum));
 
 const envSchema = z.strictObject({
   HELIUS_RPC_URL: z.url().refine((value) => new URL(value).protocol === "https:", "Expected an HTTPS RPC URL"),

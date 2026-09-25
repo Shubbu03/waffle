@@ -14,15 +14,17 @@ export const walletCatalogResponseSchema = z.strictObject({
   items: z.array(walletSchema).max(100),
 });
 
-export const walletSubscriptionSchema = z.strictObject({
-  walletId: idSchema,
-  alertsEnabled: z.boolean(),
-  alertsEnabledAt: timestampSchema.nullable(),
-  createdAt: timestampSchema,
-}).refine(
-  (subscription) => subscription.alertsEnabled === (subscription.alertsEnabledAt !== null),
-  { path: ["alertsEnabledAt"], message: "Alert opt-in timestamp must match alert state" },
-);
+export const walletSubscriptionSchema = z
+  .strictObject({
+    walletId: idSchema,
+    alertsEnabled: z.boolean(),
+    alertsEnabledAt: timestampSchema.nullable(),
+    createdAt: timestampSchema,
+  })
+  .refine((subscription) => subscription.alertsEnabled === (subscription.alertsEnabledAt !== null), {
+    path: ["alertsEnabledAt"],
+    message: "Alert opt-in timestamp must match alert state",
+  });
 
 /** Omission preserves the existing preference; a new follow defaults to alerts off. */
 export const putWalletSubscriptionRequestSchema = z.strictObject({

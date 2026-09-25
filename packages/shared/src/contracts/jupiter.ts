@@ -10,26 +10,31 @@ import {
   transactionSignatureSchema,
 } from "./primitives.ts";
 
-const amountAtMost = (maximum: bigint) => positiveRawAmountSchema.refine(
-  (value) => (parseRawAmount(value) ?? 0n) <= maximum,
-  "Amount exceeds the allowed size",
-);
+const amountAtMost = (maximum: bigint) =>
+  positiveRawAmountSchema.refine(
+    (value) => (parseRawAmount(value) ?? 0n) <= maximum,
+    "Amount exceeds the allowed size",
+  );
 
 const quoteRequestFields = {
   signalId: idSchema,
   outputMint: solanaAddressSchema,
 } as const;
 
-export const jupiterPaperQuoteRequestSchema = z.strictObject({
-  ...quoteRequestFields,
-  inputAmountLamports: amountAtMost(scorePolicyV1.sizeLamports.paperMax),
-}).refine((request) => request.outputMint !== WRAPPED_SOL_MINT, "Output mint must differ from SOL");
+export const jupiterPaperQuoteRequestSchema = z
+  .strictObject({
+    ...quoteRequestFields,
+    inputAmountLamports: amountAtMost(scorePolicyV1.sizeLamports.paperMax),
+  })
+  .refine((request) => request.outputMint !== WRAPPED_SOL_MINT, "Output mint must differ from SOL");
 
-export const jupiterRealOrderRequestSchema = z.strictObject({
-  ...quoteRequestFields,
-  inputAmountLamports: amountAtMost(scorePolicyV1.sizeLamports.realMax),
-  taker: solanaAddressSchema,
-}).refine((request) => request.outputMint !== WRAPPED_SOL_MINT, "Output mint must differ from SOL");
+export const jupiterRealOrderRequestSchema = z
+  .strictObject({
+    ...quoteRequestFields,
+    inputAmountLamports: amountAtMost(scorePolicyV1.sizeLamports.realMax),
+    taker: solanaAddressSchema,
+  })
+  .refine((request) => request.outputMint !== WRAPPED_SOL_MINT, "Output mint must differ from SOL");
 
 export const jupiterExecuteRequestSchema = z.strictObject({
   orderId: idSchema,

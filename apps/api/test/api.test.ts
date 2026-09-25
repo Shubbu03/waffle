@@ -21,7 +21,11 @@ describe("API environment", () => {
   });
 
   test("rejects missing or unsafe configuration without revealing credentials", () => {
-    for (const databaseUrl of [undefined, "postgresql://owner:secret@localhost/waffle", "http://owner:secret@localhost/waffle?sslmode=require"]) {
+    for (const databaseUrl of [
+      undefined,
+      "postgresql://owner:secret@localhost/waffle",
+      "http://owner:secret@localhost/waffle?sslmode=require",
+    ]) {
       expect(() => parseApiEnv({ DATABASE_URL: databaseUrl })).toThrow("DATABASE_URL");
     }
     expect(() => parseApiEnv({ DATABASE_URL: validUrl, API_PORT: "0" })).toThrow("API_PORT");
@@ -37,7 +41,11 @@ describe("API environment", () => {
 describe("API responses", () => {
   test("health confirms database connectivity", async () => {
     let pings = 0;
-    const app = createApp({ async ping() { pings++; } });
+    const app = createApp({
+      async ping() {
+        pings++;
+      },
+    });
     const response = await app.request(request("/health"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "ok" });
@@ -46,7 +54,11 @@ describe("API responses", () => {
   });
 
   test("database failures have a safe standard response", async () => {
-    const app = createApp({ async ping() { throw new Error("database password secret"); } });
+    const app = createApp({
+      async ping() {
+        throw new Error("database password secret");
+      },
+    });
     const response = await app.request(request("/health"));
     expect(response.status).toBe(503);
     const body = apiErrorSchema.parse(await response.json());
@@ -73,9 +85,13 @@ describe("API responses", () => {
     app.post("/test-only", validateJson(z.strictObject({ count: z.number().int().positive() })), (c) => {
       return c.json(c.req.valid("json"));
     });
-    const valid = await app.request(request("/test-only", {
-      method: "POST", headers: { "content-type": "application/json" }, body: '{"count":2}',
-    }));
+    const valid = await app.request(
+      request("/test-only", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{"count":2}',
+      }),
+    );
     expect(valid.status).toBe(200);
     expect(await valid.json()).toEqual({ count: 2 });
 
@@ -83,7 +99,7 @@ describe("API responses", () => {
       [{ "content-type": "application/json" }, '{"count":0}', 400],
       [{ "content-type": "application/json" }, '{"count":2,"extra":true}', 400],
       [{ "content-type": "text/plain" }, '{"count":2}', 415],
-      [{ "content-type": "application/json" }, '{', 400],
+      [{ "content-type": "application/json" }, "{", 400],
     ] as const) {
       const response = await app.request(request("/test-only", { method: "POST", headers, body }));
       expect(response.status).toBe(status);
@@ -93,7 +109,9 @@ describe("API responses", () => {
 
   test("unexpected handler failures do not expose details", async () => {
     const app = createApp({ async ping() {} });
-    app.get("/test-only-error", () => { throw new Error("private internal detail"); });
+    app.get("/test-only-error", () => {
+      throw new Error("private internal detail");
+    });
     const response = await app.request(request("/test-only-error"));
     expect(response.status).toBe(500);
     const body = apiErrorSchema.parse(await response.json());

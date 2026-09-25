@@ -3,7 +3,10 @@ import { scorePolicyV1 } from "./config.ts";
 export type TradeMode = "paper" | "real";
 export type TradeLimitResult =
   | { readonly allowed: true }
-  | { readonly allowed: false; readonly reason: "invalid_mode" | "invalid_size" | "size_cap" | "liquidity_stale" | "liquidity_floor" };
+  | {
+      readonly allowed: false;
+      readonly reason: "invalid_mode" | "invalid_size" | "size_cap" | "liquidity_stale" | "liquidity_floor";
+    };
 
 /** Final quote and wallet-route checks remain separate from this size/liquidity gate. */
 export function checkTradeLimits(
