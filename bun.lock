@@ -16,15 +16,15 @@
       "name": "@waffle/api",
       "version": "0.0.0",
       "dependencies": {
-        "@solana/web3.js": "1.99.0",
         "@waffle/db": "workspace:*",
+        "@waffle/jupiter": "workspace:*",
         "@waffle/shared": "workspace:*",
         "dotenv": "17.4.2",
         "hono": "4.13.9",
-        "tweetnacl": "1.0.3",
         "zod": "4.6.5",
       },
       "devDependencies": {
+        "@solana/web3.js": "1.99.0",
         "@types/bun": "1.3.13",
       },
     },
@@ -88,7 +88,9 @@
       "name": "@waffle/watcher",
       "version": "0.0.0",
       "dependencies": {
+        "@solana/web3.js": "1.99.0",
         "@waffle/db": "workspace:*",
+        "@waffle/jupiter": "workspace:*",
         "@waffle/shared": "workspace:*",
         "dotenv": "17.4.2",
         "zod": "4.6.5",
@@ -110,6 +112,19 @@
         "@types/bun": "1.3.13",
         "dotenv": "17.4.2",
         "drizzle-kit": "0.31.11",
+      },
+    },
+    "packages/jupiter": {
+      "name": "@waffle/jupiter",
+      "version": "0.0.0",
+      "dependencies": {
+        "@solana/web3.js": "1.99.0",
+        "@waffle/shared": "workspace:*",
+        "tweetnacl": "1.0.3",
+        "zod": "4.6.5",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
       },
     },
     "packages/shared": {
@@ -806,6 +821,8 @@
     "@waffle/api": ["@waffle/api@workspace:apps/api"],
 
     "@waffle/db": ["@waffle/db@workspace:packages/db"],
+
+    "@waffle/jupiter": ["@waffle/jupiter@workspace:packages/jupiter"],
 
     "@waffle/mobile": ["@waffle/mobile@workspace:apps/mobile"],
 
@@ -2159,6 +2176,8 @@
 
     "@waffle/db/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
+    "@waffle/jupiter/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
     "@waffle/mobile/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@waffle/watcher/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
@@ -2762,6 +2781,8 @@
     "@waffle/api/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@waffle/db/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@waffle/jupiter/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@waffle/watcher/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 

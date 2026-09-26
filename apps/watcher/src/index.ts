@@ -1,5 +1,9 @@
 export type { ClassificationSkipReason, PumpSwapBuy, PumpSwapClassification } from "./classify.ts";
 export { classifyPumpSwapBuy } from "./classify.ts";
+export type { TokenChecks } from "./evidence.ts";
+export { TokenEvidenceCollector, toScoreEvidence } from "./evidence.ts";
+export type { Evidence } from "./evidence-cache.ts";
+export { PythPrices } from "./pyth.ts";
 export type { BackfillSignature, TransactionOutcome } from "./rpc.ts";
 export { createWatcherRpc, WatcherRpc } from "./rpc.ts";
 export type { WalletWatcherOptions, WatcherEvent } from "./watcher.ts";

@@ -19,7 +19,7 @@ Run `bun run test:watcher` for rate-limit, retry, duplicate, and degradation che
 
 ## Run the catalog watcher
 
-1. Copy `apps/watcher/.env.example` to `apps/watcher/.env` and configure Helius HTTPS/WSS URLs for the **same Solana network**.
+1. Copy `apps/watcher/.env.example` to `apps/watcher/.env` and configure Helius HTTPS/WSS URLs for the **same Solana mainnet network**, plus the required server-side `JUPITER_API_KEY` for [evidence probes](watcher-evidence.md).
 2. Use a dedicated database login granted `waffle_watcher`, with no membership in `waffle_api` or `waffle_delivery`. Startup rejects owners, superusers, role creators, and RLS bypass. Apply the existing migrations and seed the catalog first; see [database setup](database.md).
 3. Run `bun run dev:watcher` (watch mode) or `bun run start:watcher`.
 4. Read `http://127.0.0.1:3002/health` with a local HTTP client. It returns 503 while degraded and 200 when active wallets are caught up. `WATCHER_STATUS_PORT` changes the port; the listener stays on loopback.
@@ -38,7 +38,7 @@ Live events never advance the recovery checkpoint. Live and recovery sightings s
 
 Status includes each connection's state/slot/retry, each wallet's checkpoint/recovery/error/stale flag, catalog health, and RPC queue/drop metrics. A wallet is stale until subscription and recovery succeed, while its connection is unavailable, or when its connection trails the highest observed connection slot by more than `WATCHER_STALE_SLOTS` (150 by default). Quiet wallets do not become stale just because they have no transactions. A 30-second slot-progress timeout also detects all connections stalling together. Classified events carry `source` and `stale`; a confirmed buy whose transaction slot is beyond the same lag threshold also remains stale even if its socket is current. Downstream scoring/delivery must not alert on stale events.
 
-The process logs status every 30 seconds and logs classified buy identifiers. It does **not** persist scored signals or send alerts; those are subsequent pipeline stages. Watcher status is available in memory and through the health endpoint, not stored on signal rows.
+The process logs status every 30 seconds and logs classified buy identifiers with their [token/pool evidence status](watcher-evidence.md). It does **not** persist scored signals or send alerts; those are subsequent pipeline stages. Watcher status is available in memory and through the health endpoint, not stored on signal rows.
 
 ### Recovery bounds
 

@@ -1,6 +1,9 @@
 import { createWatcherDatabase } from "@waffle/db";
+import { JupiterService } from "@waffle/jupiter";
 import { config } from "dotenv";
 import { parseWatcherEnv } from "./config.ts";
+import { TokenEvidenceCollector } from "./evidence.ts";
+import { PythPrices } from "./pyth.ts";
 import { createWatcherRpc } from "./rpc.ts";
 import { WalletWatcher } from "./watcher.ts";
 
@@ -10,18 +13,44 @@ async function main(): Promise<void> {
   const env = parseWatcherEnv(process.env);
   const database = createWatcherDatabase(env.DATABASE_URL);
   const rpc = createWatcherRpc(process.env);
+  const evidence = new TokenEvidenceCollector({
+    rpc,
+    jupiter: new JupiterService(env.JUPITER_API_KEY),
+    pyth: new PythPrices({ apiKey: env.PYTH_API_KEY, feeds: env.PYTH_PRICE_FEEDS_JSON }),
+    copySizeLamports: env.WATCHER_COPY_SIZE_LAMPORTS,
+  });
   const watcher = new WalletWatcher({
     url: env.HELIUS_WSS_URL,
     connectionCount: env.WATCHER_CONNECTIONS,
     staleSlots: env.WATCHER_STALE_SLOTS,
     rpc,
     loadActiveWallets: database.loadActiveWallets,
-    onEvent: ({ outcome, source, stale }) => {
+    onEvent: async ({ outcome, source, stale }) => {
       // Scoring/persistence is a separate pipeline stage. Never log credentials or raw transactions.
-      if (outcome.status === "buy")
+      if (outcome.status === "buy") {
+        const checks = await evidence.collect({
+          mintAddress: outcome.buy.mintAddress,
+          poolAddress: outcome.buy.poolAddress,
+          slot: outcome.buy.slot,
+        });
         console.info(
-          JSON.stringify({ event: "watcher.buy", wallet: outcome.wallet, signature: outcome.signature, source, stale }),
+          JSON.stringify({
+            event: "watcher.buy",
+            wallet: outcome.wallet,
+            signature: outcome.signature,
+            source,
+            stale,
+            evidence: {
+              mint: checks.mint.status,
+              pool: checks.pool.status,
+              quote: checks.quote.status,
+              holders: checks.holders.status,
+              creator: checks.creator.status,
+              oracle: checks.oracle,
+            },
+          }),
         );
+      }
     },
   });
   let server: ReturnType<typeof Bun.serve> | undefined;

@@ -489,6 +489,7 @@ describe("catalog watcher", () => {
 
 test("watcher environment accepts only secure URLs and two or three connections with sanitized errors", () => {
   const env = {
+    JUPITER_API_KEY: "private",
     HELIUS_RPC_URL: "https://rpc.test/?api-key=private",
     HELIUS_WSS_URL: "wss://rpc.test/?api-key=private",
     DATABASE_URL: "postgresql://private@db.test/waffle",

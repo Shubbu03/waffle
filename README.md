@@ -42,6 +42,7 @@ apps/
 packages/
   shared/           Validated API/live schemas, score policy, program IDs
   db/               Typed Postgres schema, migrations, tests
+  jupiter/          Server-only quote, price, and execution service
 tests/
   fixtures/         Redacted transaction fixtures (pending)
 docs/
@@ -63,6 +64,7 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 * [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
 * [API runtime](docs/api.md): local environment, restricted database login, and health check.
 * [Watcher RPC](docs/watcher-rpc.md): catalog subscriptions, reconnect recovery, rate limits, and health status.
+* [Watcher evidence](docs/watcher-evidence.md): mint and pool validation, quote probes, optional data, and freshness.
 * [Scoring policy](docs/scoring-policy.md): versioned weights, critical checks, freshness windows, liquidity floors, and trade caps.
 * [Shared contracts](docs/shared-contracts.md): validated API and live payloads, cursors, errors, and program IDs.
 * [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.

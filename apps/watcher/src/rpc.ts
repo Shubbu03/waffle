@@ -181,6 +181,33 @@ export class WatcherRpc {
     return this.getAccountInfo(address);
   }
 
+  async getMultipleAccounts(addresses: readonly string[], minContextSlot = 0): Promise<unknown> {
+    if (addresses.length < 1 || addresses.length > 100) throw new Error("Expected 1 to 100 accounts");
+    for (const address of addresses) solanaAddressSchema.parse(address);
+    if (!Number.isSafeInteger(minContextSlot) || minContextSlot < 0) throw new Error("Invalid minimum context slot");
+    const submitted = this.scheduler.submit("getMultipleAccounts", "evidence", (signal) =>
+      this.call(
+        "getMultipleAccounts",
+        [addresses, { commitment: "confirmed", encoding: "base64", minContextSlot }],
+        signal,
+      ),
+    );
+    if (!submitted.accepted) throw new Error("Account request was dropped");
+    return submitted.result;
+  }
+
+  async getBlockTime(slot: number): Promise<number> {
+    if (!Number.isSafeInteger(slot) || slot < 0) throw new Error("Invalid block slot");
+    const submitted = this.scheduler.submit("getBlockTime", "evidence", (signal) =>
+      this.call("getBlockTime", [slot], signal),
+    );
+    if (!submitted.accepted) throw new Error("Block time request was dropped");
+    const result = await submitted.result;
+    if (typeof result !== "number" || !Number.isSafeInteger(result) || result < 0)
+      throw new Error("Block time unavailable");
+    return result;
+  }
+
   async getPoolAccount(address: string): Promise<unknown> {
     return this.getAccountInfo(address);
   }

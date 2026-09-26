@@ -1,6 +1,8 @@
 # Jupiter quote and execution service
 
-Issue #12 adds an internal `JupiterService` in [`apps/api/src/jupiter.ts`](../apps/api/src/jupiter.ts). It uses Jupiter Swap V2 on mainnet. Configure `JUPITER_API_KEY` in `apps/api/.env`; the key is sent only in the server's `x-api-key` header. The service is not exposed as a public HTTP route while the API has no authenticated wallet session or trade authorization route. Do not call `execute` from a public handler without supplying a wallet address verified against that session.
+Issue #12 adds an internal `JupiterService` in [`packages/jupiter/src/index.ts`](../packages/jupiter/src/index.ts), re-exported by `apps/api/src/jupiter.ts`. It uses Jupiter Swap V2 on mainnet. Configure `JUPITER_API_KEY` in `apps/api/.env`; the key is sent only in the server's `x-api-key` header. The service is not exposed as a public HTTP route while the API has no authenticated wallet session or trade authorization route. Do not call `execute` from a public handler without supplying a wallet address verified against that session.
+
+The watcher also consumes this server-only package for quote probes and SOL/USD price reads. `getUsdPrice` returns the exact mint’s price, decimals, and source block ID; callers must verify that block’s age before using the price. See [watcher evidence](watcher-evidence.md).
 
 ## Flow
 
