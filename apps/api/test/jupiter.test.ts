@@ -302,3 +302,23 @@ describe("Jupiter quote and order service", () => {
     });
   });
 });
+
+test("USD price requests preserve exact mint identity and source block", async () => {
+  const service = new JupiterService("private", (async (url, init) => {
+    expect(new URL(String(url)).pathname).toBe("/price/v3");
+    expect(new URL(String(url)).searchParams.get("ids")).toBe(WRAPPED_SOL_MINT);
+    expect(new Headers(init?.headers).get("x-api-key")).toBe("private");
+    expect(init?.redirect).toBe("error");
+    return Response.json({ [WRAPPED_SOL_MINT]: { usdPrice: 150, blockId: 100, decimals: 9 } });
+  }) as typeof fetch);
+  expect(await service.getUsdPrice(WRAPPED_SOL_MINT)).toEqual({ usdPrice: 150, blockId: 100, decimals: 9 });
+  for (const payload of [
+    {},
+    { [WRAPPED_SOL_MINT]: null },
+    { [WRAPPED_SOL_MINT]: { usdPrice: -1, blockId: 100, decimals: 9 } },
+  ]) {
+    const invalid = new JupiterService("private", (async (_url: Parameters<typeof fetch>[0]) =>
+      Response.json(payload)) as typeof fetch);
+    await expect(invalid.getUsdPrice(WRAPPED_SOL_MINT)).rejects.toThrow("UPSTREAM_INVALID");
+  }
+});

@@ -1,4 +1,10 @@
-export type RpcMethod = "getTransaction" | "getSignaturesForAddress" | "getAccountInfo" | "getProgramAccounts";
+export type RpcMethod =
+  | "getTransaction"
+  | "getSignaturesForAddress"
+  | "getAccountInfo"
+  | "getProgramAccounts"
+  | "getMultipleAccounts"
+  | "getBlockTime";
 
 export type RpcPriority = "provisional" | "evidence" | "backfill";
 

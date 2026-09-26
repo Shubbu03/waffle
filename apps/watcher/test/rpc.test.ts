@@ -253,3 +253,23 @@ test("in-flight duplicates wait for confirmation and propagate retryable outcome
   expect((await recovery).status).toBe("not-ready");
   rpc.close();
 });
+
+test("account snapshots and block timestamps use the shared evidence scheduler", async () => {
+  const requests: RpcRequest[] = [];
+  const rpc = new WatcherRpc({
+    url: rpcUrl,
+    fetchImpl: fakeFetch((request) => {
+      requests.push(request);
+      return request.method === "getBlockTime" ? 1_800_000_000 : { context: { slot: 500 }, value: [null, null] };
+    }),
+  });
+  await Promise.all([rpc.getMultipleAccounts([wallet, otherWallet], 499), rpc.getBlockTime(500)]);
+  expect(requests.find((r) => r.method === "getMultipleAccounts")?.params).toEqual([
+    [wallet, otherWallet],
+    { commitment: "confirmed", encoding: "base64", minContextSlot: 499 },
+  ]);
+  expect(requests.find((r) => r.method === "getBlockTime")?.params).toEqual([500]);
+  await expect(rpc.getMultipleAccounts([], 0)).rejects.toThrow();
+  await expect(rpc.getBlockTime(-1)).rejects.toThrow();
+  rpc.close();
+});

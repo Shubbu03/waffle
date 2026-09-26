@@ -1,0 +1,21 @@
+{
+  "name": "@waffle/jupiter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solana/web3.js": "1.99.0",
+    "@waffle/shared": "workspace:*",
+    "tweetnacl": "1.0.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.13"
+  }
+}
