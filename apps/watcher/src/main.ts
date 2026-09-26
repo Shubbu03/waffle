@@ -5,6 +5,7 @@ import { parseWatcherEnv } from "./config.ts";
 import { TokenEvidenceCollector } from "./evidence.ts";
 import { PythPrices } from "./pyth.ts";
 import { createWatcherRpc } from "./rpc.ts";
+import { SignalPipeline } from "./signals.ts";
 import { WalletWatcher } from "./watcher.ts";
 
 config({ path: new URL("../.env", import.meta.url), quiet: true });
@@ -25,32 +26,26 @@ async function main(): Promise<void> {
     staleSlots: env.WATCHER_STALE_SLOTS,
     rpc,
     loadActiveWallets: database.loadActiveWallets,
-    onEvent: async ({ outcome, source, stale }) => {
-      // Scoring/persistence is a separate pipeline stage. Never log credentials or raw transactions.
-      if (outcome.status === "buy") {
-        const checks = await evidence.collect({
-          mintAddress: outcome.buy.mintAddress,
-          poolAddress: outcome.buy.poolAddress,
-          slot: outcome.buy.slot,
-        });
+    onEvent: async (event) => {
+      const result = await signals.handle(event);
+      if (result)
         console.info(
           JSON.stringify({
-            event: "watcher.buy",
-            wallet: outcome.wallet,
-            signature: outcome.signature,
-            source,
-            stale,
-            evidence: {
-              mint: checks.mint.status,
-              pool: checks.pool.status,
-              quote: checks.quote.status,
-              holders: checks.holders.status,
-              creator: checks.creator.status,
-              oracle: checks.oracle,
-            },
+            event: "watcher.signal",
+            wallet: event.outcome.wallet,
+            signature: event.outcome.signature,
+            ...result,
           }),
         );
-      }
+    },
+  });
+  const signals = new SignalPipeline({
+    evidence,
+    database,
+    context(wallet) {
+      const status = watcher.status;
+      const tracked = status.wallets.find((entry) => entry.address === wallet);
+      return { currentSlot: status.headSlot, stale: !status.running || !tracked || tracked.stale };
     },
   });
   let server: ReturnType<typeof Bun.serve> | undefined;
@@ -63,6 +58,7 @@ async function main(): Promise<void> {
     server?.stop(true);
     watcher.stop();
     rpc.close();
+    await signals.close();
     await database.close();
   }
   try {

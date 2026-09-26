@@ -38,7 +38,7 @@ Live events never advance the recovery checkpoint. Live and recovery sightings s
 
 Status includes each connection's state/slot/retry, each wallet's checkpoint/recovery/error/stale flag, catalog health, and RPC queue/drop metrics. A wallet is stale until subscription and recovery succeed, while its connection is unavailable, or when its connection trails the highest observed connection slot by more than `WATCHER_STALE_SLOTS` (150 by default). Quiet wallets do not become stale just because they have no transactions. A 30-second slot-progress timeout also detects all connections stalling together. Classified events carry `source` and `stale`; a confirmed buy whose transaction slot is beyond the same lag threshold also remains stale even if its socket is current. Downstream scoring/delivery must not alert on stale events.
 
-The process logs status every 30 seconds and logs classified buy identifiers with their [token/pool evidence status](watcher-evidence.md). It does **not** persist scored signals or send alerts; those are subsequent pipeline stages. Watcher status is available in memory and through the health endpoint, not stored on signal rows.
+The process logs status every 30 seconds and reports committed [signal writes](watcher-signals.md) through `watcher.signal`. It persists scored signals with evidence snapshots and an outbox event; API realtime and push delivery remain separate work. Current watcher status is available in memory and through the health endpoint; each signal snapshot records stream health at assessment time.
 
 ### Recovery bounds
 
@@ -58,3 +58,7 @@ bun run lint
 ```
 
 Manual live acceptance (not performed by the coding agent): configure the app-local credentials, start the watcher, and watch `/health` and its structured logs. Use a network proxy to interrupt **one established WSS connection** for 30 seconds. Its wallets should become stale while the other connection keeps delivering. Restore the connection and check recovery completes without duplicate `(wallet, signature)` events. Pause a catalog wallet using an administrative DB session and verify it disappears from health/subscriptions within 15 seconds of a successful catalog refresh. No browser is required.
+
+## Scoring and persistence
+
+The runtime now consumes buy events through the [signal pipeline](watcher-signals.md). It saves the v1 score, reasons, evidence snapshot, source slot, and status once per signature/wallet, with an atomic outbox event. Failed writes remain retryable; successful duplicate retries leave the original signal unchanged. `watcher.signal` replaces the earlier buy-only evidence log.
