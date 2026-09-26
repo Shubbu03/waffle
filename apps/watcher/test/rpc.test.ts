@@ -244,3 +244,12 @@ describe("watcher RPC client", () => {
     rpc.close();
   });
 });
+
+test("in-flight duplicates wait for confirmation and propagate retryable outcomes", async () => {
+  const rpc = new WatcherRpc({ url: rpcUrl, retryDelayMs: 0, fetchImpl: fakeFetch(() => null) });
+  const original = rpc.queueTransaction(wallet, signature, "provisional");
+  const recovery = rpc.queueTransaction(wallet, signature, "backfill");
+  expect((await original).status).toBe("not-ready");
+  expect((await recovery).status).toBe("not-ready");
+  rpc.close();
+});

@@ -19,7 +19,9 @@
     "start:api": "bun run --filter '@waffle/api' start",
     "db:check": "bun run --filter '@waffle/db' db:check",
     "db:generate": "bun run --filter '@waffle/db' db:generate",
-    "db:migrate": "bun run --filter '@waffle/db' db:migrate"
+    "db:migrate": "bun run --filter '@waffle/db' db:migrate",
+    "dev:watcher": "bun run --filter '@waffle/watcher' dev",
+    "start:watcher": "bun run --filter '@waffle/watcher' start"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

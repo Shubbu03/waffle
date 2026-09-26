@@ -6,11 +6,15 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test test",
-    "replay": "bun src/replay.ts"
+    "replay": "bun src/replay.ts",
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts"
   },
   "dependencies": {
     "@waffle/shared": "workspace:*",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@waffle/db": "workspace:*",
+    "dotenv": "17.4.2"
   },
   "devDependencies": {
     "@types/bun": "1.3.13"

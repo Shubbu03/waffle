@@ -49,7 +49,7 @@ export class WatcherRpc {
   private readonly dedupeTtlMs: number;
   private readonly maxRemembered: number;
   private requestId = 0;
-  private readonly pendingTransactions = new Set<string>();
+  private readonly pendingTransactions = new Map<string, Promise<TransactionOutcome>>();
   private readonly completedTransactions = new Map<string, number>();
 
   constructor(options: RpcOptions) {
@@ -88,7 +88,12 @@ export class WatcherRpc {
     wallet = solanaAddressSchema.parse(wallet);
     signature = transactionSignatureSchema.parse(signature);
     const key = `${wallet}:${signature}`;
-    if (this.pendingTransactions.has(key)) return Promise.resolve({ status: "duplicate", wallet, signature });
+    const pending = this.pendingTransactions.get(key);
+    // Recovery must not acknowledge an in-flight transaction that later fails or remains unconfirmed.
+    if (pending)
+      return pending.then((outcome) =>
+        outcome.status === "buy" || outcome.status === "ignored" ? { status: "duplicate", wallet, signature } : outcome,
+      );
     const expiresAt = this.completedTransactions.get(key);
     if (expiresAt !== undefined) {
       if (expiresAt > Date.now()) return Promise.resolve({ status: "duplicate", wallet, signature });
@@ -129,7 +134,7 @@ export class WatcherRpc {
       .finally(() => {
         this.pendingTransactions.delete(key);
       });
-    this.pendingTransactions.add(key);
+    this.pendingTransactions.set(key, result);
     return result;
   }
 

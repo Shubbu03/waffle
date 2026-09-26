@@ -26,3 +26,25 @@ export function parseWatcherRpcEnv(env: Record<string, string | undefined>) {
   }
   return result.data;
 }
+
+const watcherEnvSchema = envSchema.extend({
+  DATABASE_URL: z.url().refine((value) => ["postgres:", "postgresql:"].includes(new URL(value).protocol)),
+  HELIUS_WSS_URL: z.url().refine((value) => new URL(value).protocol === "wss:"),
+  WATCHER_CONNECTIONS: z
+    .enum(["2", "3"])
+    .default("2")
+    .transform((value) => (value === "2" ? (2 as const) : (3 as const))),
+  WATCHER_STALE_SLOTS: rate(10_000, "150"),
+  WATCHER_STATUS_PORT: rate(65_535, "3002"),
+});
+
+export function parseWatcherEnv(env: Record<string, string | undefined>) {
+  const result = watcherEnvSchema.safeParse(
+    Object.fromEntries(Object.keys(watcherEnvSchema.shape).map((key) => [key, env[key]])),
+  );
+  if (!result.success) {
+    const fields = [...new Set(result.error.issues.map((issue) => issue.path[0]).filter(Boolean))].join(", ");
+    throw new Error(`Invalid watcher environment: ${fields}`);
+  }
+  return result.data;
+}
