@@ -1,6 +1,4 @@
-import type { ScoredSignal } from "@waffle/shared";
 import postgres from "postgres";
-import { type SignalQuery, type SignalWriteResult, storeSignal } from "./signal-store.ts";
 
 type WatcherLoginFacts = {
   canLogin: boolean;
@@ -26,7 +24,7 @@ export function isRestrictedWatcherLogin(role: WatcherLoginFacts): boolean {
   );
 }
 
-/** Catalog reads and signal writes use the existing waffle_watcher privilege group. */
+/** Catalog access uses the existing waffle_watcher privilege group. */
 export function createWatcherDatabase(databaseUrl: string) {
   const client = postgres(databaseUrl, {
     max: 2,
@@ -35,29 +33,7 @@ export function createWatcherDatabase(databaseUrl: string) {
     prepare: false,
     connection: { statement_timeout: 5000 },
   });
-  // Serial short writes keep connection pressure bounded; the transaction lock also covers other processes.
-  let writes: Promise<unknown> = Promise.resolve();
   return {
-    storeSignal(walletAddress: string, prepare: () => ScoredSignal): Promise<SignalWriteResult> {
-      const write = writes.then(() =>
-        storeSignal(
-          async (run) => {
-            const result = await client.begin(async (transaction) => {
-              const query: SignalQuery = async <T extends Record<string, unknown>>(
-                text: string,
-                parameters: (string | number)[] = [],
-              ) => Array.from(await transaction.unsafe<T[]>(text, parameters));
-              return run(query);
-            });
-            return result;
-          },
-          walletAddress,
-          prepare,
-        ),
-      );
-      writes = write.catch(() => undefined);
-      return write;
-    },
     async assertRestrictedLogin(): Promise<void> {
       const [row] = await client<WatcherLoginFacts[]>`
         SELECT r.rolcanlogin AS "canLogin", r.rolsuper AS superuser,
@@ -82,7 +58,6 @@ export function createWatcherDatabase(databaseUrl: string) {
       return rows.map((row) => row.address);
     },
     async close(): Promise<void> {
-      await writes;
       await client.end({ timeout: 5 });
     },
   };

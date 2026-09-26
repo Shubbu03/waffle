@@ -413,11 +413,6 @@ describe("catalog watcher", () => {
     expect(
       h.events.filter((event) => event.outcome.wallet === firstWallet && event.outcome.signature === signature(2)),
     ).toHaveLength(1);
-    expect(h.events.find((event) => event.outcome.signature === signature(2))).toMatchObject({
-      observedAtMs: 1000,
-      source: "provisional",
-      stale: true,
-    });
   });
 
   test("recovery waits for a live fetch before advancing and retries if that fetch is not ready", async () => {

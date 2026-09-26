@@ -1,6 +1,6 @@
 # Token and pool evidence
 
-Issue #13 adds `TokenEvidenceCollector` in `apps/watcher/src/evidence.ts`. The executable watcher calls it for confirmed PumpSwap buys. Each result has separate mint, pool, quote, holder, creator, and oracle evidence; the [signal pipeline](watcher-signals.md) scores and persists these observations. `toScoreEvidence(checks, nowMs)` converts only usable observations into the existing score v1 input shape.
+Issue #13 adds `TokenEvidenceCollector` in `apps/watcher/src/evidence.ts`. The executable watcher calls it for confirmed PumpSwap buys. Each result has separate mint, pool, quote, holder, creator, and oracle evidence; scoring/persistence remains a subsequent pipeline stage. `toScoreEvidence(checks, nowMs)` converts only usable observations into the existing score v1 input shape.
 
 ## Configuration
 
@@ -74,4 +74,4 @@ Each resource cache holds at most 256 entries and 256 pending keys, shares concu
 
 Run `bun run test:watcher`, `bun run test:api`, and `bun run typecheck`. Tests use synthetic binary accounts and injected transports; they cover authority and owner validation, pool PDA/mint/vault mismatches, unsupported modes, shared cache loads, stale refreshes, exact quote size, optional-data timestamps, oracle identity/freshness, and the shared RPC path. No live trade is executed.
 
-Manual verification remains: configure credentials, run `bun run start:watcher`, and inspect the `watcher.signal` insertion logs and stored snapshot evidence statuses. Compare a known live mint/pool with an explorer and confirm unavailable optional data is shown honestly. [Scored-signal persistence](watcher-signals.md) is wired by #14; user trade integration remains pending.
+Manual verification remains: configure credentials, run `bun run start:watcher`, and inspect the `watcher.buy` evidence statuses. Compare a known live mint/pool with an explorer and confirm unavailable optional data is shown honestly. Scored-signal persistence and user trade integration are outside #13.

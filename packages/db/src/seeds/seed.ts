@@ -3,12 +3,11 @@
  * Default is a dry run (prints planned rows, writes nothing).
  * --apply upserts into watched_wallets. DB_URL must be the MIGRATION-OWNER
  * direct connection (packages/db/.env) — never an app login (they lack writes). */
-
-import { config as loadDotenv } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import * as schema from "../schema/index.ts";
+import { config as loadDotenv } from "dotenv";
 import { CATALOG, seedCatalog } from "./catalog.ts";
+import * as schema from "../schema/index.ts";
 
 async function main(): Promise<void> {
   const apply = Bun.argv.includes("--apply");

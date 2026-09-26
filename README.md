@@ -38,7 +38,7 @@ MWA wallet connection and signing are wired through Wallet UI. API challenge/ver
 apps/
   mobile/           React Native app placeholder
   api/              Bun/Hono API foundation
-  watcher/          Catalog ingestion, recovery, evidence, scored signal persistence
+  watcher/          Catalog WSS ingestion, recovery, shared RPC scheduler
 packages/
   shared/           Validated API/live schemas, score policy, program IDs
   db/               Typed Postgres schema, migrations, tests
@@ -65,7 +65,6 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 * [API runtime](docs/api.md): local environment, restricted database login, and health check.
 * [Watcher RPC](docs/watcher-rpc.md): catalog subscriptions, reconnect recovery, rate limits, and health status.
 * [Watcher evidence](docs/watcher-evidence.md): mint and pool validation, quote probes, optional data, and freshness.
-* [Watcher signals](docs/watcher-signals.md): score assessment, suppression, atomic outbox writes, and deduplication.
 * [Scoring policy](docs/scoring-policy.md): versioned weights, critical checks, freshness windows, liquidity floors, and trade caps.
 * [Shared contracts](docs/shared-contracts.md): validated API and live payloads, cursors, errors, and program IDs.
 * [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.

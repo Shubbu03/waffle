@@ -87,16 +87,9 @@ export async function seedCatalog(db: any): Promise<{ upserted: number; deactiva
   const deactivated = (await db
     .update(watchedWallets)
     .set({ active: false })
-    .where(
-      sql`${watchedWallets.address} NOT IN (${sql.join(
-        addresses.map((a) => sql`${a}`),
-        sql`, `,
-      )})`,
-    )
+    .where(sql`${watchedWallets.address} NOT IN (${sql.join(addresses.map((a) => sql`${a}`), sql`, `)})`)
     .returning({ id: watchedWallets.id })) as Array<{ id: string }>;
   for (const row of deactivated) console.log(`[seed] deactivate: ${row.id} (removed from catalog, history preserved)`);
-  console.log(
-    `[seed] seedCatalog: upserted=${upserted} deactivated=${deactivated.length} (re-run must change nothing)`,
-  );
+  console.log(`[seed] seedCatalog: upserted=${upserted} deactivated=${deactivated.length} (re-run must change nothing)`);
   return { upserted, deactivated: deactivated.length };
 }
