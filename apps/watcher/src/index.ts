@@ -2,3 +2,5 @@ export type { ClassificationSkipReason, PumpSwapBuy, PumpSwapClassification } fr
 export { classifyPumpSwapBuy } from "./classify.ts";
 export type { BackfillSignature, TransactionOutcome } from "./rpc.ts";
 export { createWatcherRpc, WatcherRpc } from "./rpc.ts";
+export type { WalletWatcherOptions, WatcherEvent } from "./watcher.ts";
+export { WalletWatcher } from "./watcher.ts";
