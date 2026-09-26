@@ -3,7 +3,12 @@ import { type SocketFactory, WatcherConnection } from "./connection.ts";
 import type { TransactionOutcome, WatcherRpc } from "./rpc.ts";
 
 type CompletedOutcome = Extract<TransactionOutcome, { status: "buy" | "ignored" }>;
-export type WatcherEvent = { outcome: CompletedOutcome; source: "provisional" | "backfill"; stale: boolean };
+export type WatcherEvent = {
+  outcome: CompletedOutcome;
+  source: "provisional" | "backfill";
+  stale: boolean;
+  observedAtMs: number;
+};
 type Wallet = {
   address: string;
   connection: WatcherConnection;
@@ -16,7 +21,7 @@ type Wallet = {
   error: "recovery-failed" | "history-gap" | null;
   completed: Set<string>;
   pending: Map<string, Promise<boolean>>;
-  undelivered: Map<string, CompletedOutcome>;
+  undelivered: Map<string, WatcherEvent>;
 };
 export type WalletWatcherOptions = {
   url: string;
@@ -201,12 +206,12 @@ export class WalletWatcher {
       this.invalidate(wallet);
       return Promise.resolve(false);
     }
+    const previous = wallet.undelivered.get(signature);
+    const observedAtMs = previous?.observedAtMs ?? this.now();
     const result = Promise.resolve()
       .then(() => {
         if (!this.active(wallet)) return null;
-        return (
-          wallet.undelivered.get(signature) ?? this.options.rpc.queueTransaction(wallet.address, signature, source)
-        );
+        return previous?.outcome ?? this.options.rpc.queueTransaction(wallet.address, signature, source);
       })
       .then(async (outcome) => {
         if (!outcome || !this.active(wallet)) return false;
@@ -215,10 +220,13 @@ export class WalletWatcher {
           return false;
         }
         if (outcome.status === "buy" || outcome.status === "ignored") {
-          wallet.undelivered.set(signature, outcome);
           const stale =
-            this.isStale(wallet) || (outcome.status === "buy" && this.headSlot - outcome.buy.slot > this.staleSlots);
-          await this.options.onEvent({ outcome, source, stale });
+            previous?.stale === true ||
+            this.isStale(wallet) ||
+            (outcome.status === "buy" && this.headSlot - outcome.buy.slot > this.staleSlots);
+          const event = { outcome, source: previous?.source ?? source, stale, observedAtMs };
+          wallet.undelivered.set(signature, event);
+          await this.options.onEvent(event);
           wallet.undelivered.delete(signature);
         }
         wallet.completed.add(signature);

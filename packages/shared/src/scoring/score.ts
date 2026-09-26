@@ -8,6 +8,10 @@ export type ScoreInput = {
   readonly observedAtMs: number;
   readonly currentSlot: number;
   readonly nowMs: number;
+  /** Transport health is separate from slot age; a caught-up slot alone cannot prove a healthy stream. */
+  readonly streamStale?: boolean;
+  /** Present for ingested transactions; null means block time is unavailable. */
+  readonly transactionAtMs?: number | null;
   readonly mint: null | {
     readonly address: string;
     readonly tokenProgramId: string;
@@ -120,7 +124,10 @@ export function scoreSignal(input: ScoreInput): ScoreResult {
 
   const slotLag = input.currentSlot - input.transactionSlot;
   const signalFresh = award(
-    Number.isSafeInteger(input.currentSlot) &&
+    input.streamStale !== true &&
+      (input.transactionAtMs === undefined ||
+        (input.transactionAtMs !== null && isFresh(input.nowMs, input.transactionAtMs, freshness.signalMs))) &&
+      Number.isSafeInteger(input.currentSlot) &&
       Number.isSafeInteger(input.transactionSlot) &&
       input.transactionSlot >= 0 &&
       slotLag >= 0 &&
