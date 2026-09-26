@@ -71,7 +71,9 @@ type Body = {
     preTokenBalances?: Array<{ mint?: unknown; owner?: unknown; uiTokenAmount?: { uiAmount?: unknown } }>;
     postTokenBalances?: Array<{ mint?: unknown; owner?: unknown; uiTokenAmount?: { uiAmount?: unknown } }>;
   };
-  transaction?: { message?: { accountKeys?: Array<{ pubkey?: string }>; instructions?: Array<{ programId?: string }> } };
+  transaction?: {
+    message?: { accountKeys?: Array<{ pubkey?: string }>; instructions?: Array<{ programId?: string }> };
+  };
 };
 
 /** One body, jsonParsed. Null = not rooted yet. */
@@ -166,7 +168,8 @@ async function assessWallet(url: string, address: string, head: number): Promise
   }
   const stats = `txs=${history.length} examined=${examined} swaps=${swaps} buys=${buys} sells=${sells} failed=${failed}`;
   console.log(`[verify] assessWallet: ${stats}`);
-  if (history.length > MAX_TXS_7D) return { decision: "REJECT", reason: `too-hot (${history.length}>${MAX_TXS_7D}/window)`, stats };
+  if (history.length > MAX_TXS_7D)
+    return { decision: "REJECT", reason: `too-hot (${history.length}>${MAX_TXS_7D}/window)`, stats };
   if (buys < MIN_BUYS_7D) return { decision: "REJECT", reason: `only ${buys} buys (<${MIN_BUYS_7D})`, stats };
   if (failed > ok.length) return { decision: "REJECT", reason: "mostly-failed (bot-like)", stats };
   return { decision: "ACCEPT", reason: `${buys} PumpSwap buys, manageable volume`, stats };

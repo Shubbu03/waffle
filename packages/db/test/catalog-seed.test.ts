@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { BANNED_REASON_WORDS, CATALOG, seedCatalog } from "../src/seeds/catalog.ts";
 import { watchedWallets } from "../src/schema/catalog.ts";
+import { BANNED_REASON_WORDS, CATALOG, seedCatalog } from "../src/seeds/catalog.ts";
 
 let pg: PGlite;
 
@@ -71,11 +71,10 @@ describe("wallet catalog seed", () => {
     ]);
     const result = await seedCatalog(db);
     expect(result.deactivated).toBe(1);
-    const stale = await pg.query<{ active: boolean }>(
-      "SELECT active FROM watched_wallets WHERE address = $1",
-      ["So11111111111111111111111111111111111111112"],
-    );
+    const stale = await pg.query<{ active: boolean }>("SELECT active FROM watched_wallets WHERE address = $1", [
+      "So11111111111111111111111111111111111111112",
+    ]);
     expect(stale.rows[0]?.active).toBe(false);
-    expect((await db.select().from(watchedWallets))).toHaveLength(CATALOG.length + 1);
+    expect(await db.select().from(watchedWallets)).toHaveLength(CATALOG.length + 1);
   });
 });

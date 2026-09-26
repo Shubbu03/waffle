@@ -47,6 +47,18 @@ function readyInput(): ScoreInput {
 }
 
 describe("versioned score policy", () => {
+  test("stream health and original transaction time gate alert eligibility independently", () => {
+    for (const context of [
+      { streamStale: true, transactionAtMs: nowMs },
+      { streamStale: false, transactionAtMs: null },
+      { streamStale: false, transactionAtMs: nowMs - 90_001 },
+      { streamStale: false, transactionAtMs: nowMs + 1 },
+    ]) {
+      expect(scoreSignal({ ...readyInput(), ...context })).toMatchObject({ status: "history-only", canAlert: false });
+    }
+    expect(scoreSignal({ ...readyInput(), streamStale: false, transactionAtMs: nowMs - 90_000 }).canAlert).toBe(true);
+  });
+
   test("weights total 100 and critical points can reach 70 without optional feeds", () => {
     const { weights } = scorePolicyV1;
     expect(Object.values(weights).reduce((sum, points) => sum + points, 0)).toBe(100);
