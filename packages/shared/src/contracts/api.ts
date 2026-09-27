@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { paperPositionSchema } from "./position.ts";
+import { paperPositionWithFillSchema } from "./position.ts";
 import { eventCursorSchema, idSchema } from "./primitives.ts";
 import { signalSummarySchema } from "./signal.ts";
 import { tradeAttemptSchema } from "./trade.ts";
@@ -52,7 +52,7 @@ export const signalPageSchema = z.strictObject({
 });
 
 export const paperPositionsResponseSchema = z.strictObject({
-  items: z.array(paperPositionSchema).max(50),
+  items: z.array(paperPositionWithFillSchema).max(50),
   nextCursor: idSchema.nullable(),
 });
 

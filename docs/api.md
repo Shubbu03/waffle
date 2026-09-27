@@ -2,7 +2,7 @@
 
 Issue #5 adds the Bun/Hono API foundation. The public health route is `GET /health`: it returns `{ "status": "ok" }` after a database ping, or a `SERVICE_UNAVAILABLE` error with HTTP 503. Unknown routes and validation failures use the shared `apiErrorSchema` envelope and include `requestId`; the same ID is in the `X-Request-ID` response header. JSON body and query validators are available for later feature routes. Issue #15 adds wallet authentication and session-scoped owner transactions below. Issue #16 adds the wallet catalog and signal read routes below; trading routes remain separate work.
 
-Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). It has no public route until authenticated wallet and trade authorization are available.
+Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). Issue #18 exposes its paper quote path through authenticated paper-position routes; real order/execution routes remain unexposed.
 
 ## Local setup
 
@@ -98,3 +98,25 @@ PGlite serializes database operations; overlapping API requests here are not pro
 4. Use two wallets against private feature routes as they are added; each must see and mutate only its own records. Repeat across reused pooled connections and after failed transactions.
 
 No browser, device wallet flow, or live Neon database was used for the local automated checks.
+
+## Paper positions (#18)
+
+All three routes require a valid bearer session and return `Cache-Control: no-store`:
+
+| Route | Request | Response |
+| --- | --- | --- |
+| `POST /paper-positions/quote` | `{ "signalId": "<uuid>", "sizeLamports": "100000000" }` | Validated `PaperQuote`, including its server-issued `id`. |
+| `POST /paper-positions` | `{ "signalId": "<uuid>", "quoteId": "<quote id>", "sizeLamports": "100000000" }` | `201` simulated position with the entry quote and calculated `fill`. |
+| `GET /paper-positions?limit=50&cursor=<position uuid>` | Optional limit 1–50 and last position ID. | `{ items, nextCursor }`, newest first by creation time and ID. |
+
+Configure `JUPITER_API_KEY` in `apps/api/.env` to obtain quotes. Without it, quoting returns `503 SERVICE_UNAVAILABLE`; authenticated position listing remains available. The server derives the output mint from the committed signal and calls the existing Jupiter `/order` service without a taker. No signing or `/execute` call occurs. Owner IDs, quote bodies, output mints, and fill values are never accepted from clients.
+
+Only eligible signals with a known transaction timestamp, a healthy stream at assessment, transaction/observation ages at most 90 seconds, mint evidence at most 60 seconds, and pool liquidity of at least $25,000 observed within 15 seconds can be used. Future timestamps fail. The existing paper size cap is 0.1 SOL, excluding the separately reported network fees. Stale evidence fails closed; this endpoint does not refresh pool/mint evidence. The owner and signal are rechecked after provider I/O, which runs outside database transactions, and again when filling. Quotes expire after at most 10 seconds or an earlier provider expiry.
+
+Quotes are bound to their authenticated owner and requested signal/size. A quote can create one position; concurrent/repeated successful use is rejected. An insert failure rolls back and permits retry while the quote remains fresh. Unused quotes live in a bounded 256-entry cache in the single API process; restart/eviction requires a new quote. Multiple API instances need shared quote storage before deployment.
+
+The immutable `entryQuote` JSON persists amounts, fees, slippage, minimum output, price impact, provider request ID, and fetch/expiry timestamps. The persisted position creation time is the simulated fill time. `fill.outputAmountRaw` uses Jupiter's quoted output unchanged (route fees are already reflected); `fill.minOutputAmountRaw` preserves the provider's minimum. `fill.totalDebitLamports` adds network fees to input lamports using bigint arithmetic. `fill.quoteAgeMs` is reproduced exactly from the persisted fill and quote timestamps. These are simulations, not execution guarantees or wallet balances. No schema migration is required.
+
+`401 UNAUTHORIZED` rejects missing/expired/revoked sessions; `404 NOT_FOUND` covers missing signals or inaccessible cursors; `409 STALE_SIGNAL`, `LIMIT_EXCEEDED`, `CONFLICT`, or `QUOTE_UNAVAILABLE` explains rejected fills. Provider failures return sanitized `503 QUOTE_UNAVAILABLE`. Listing uses both the session owner filter and existing forced RLS; another user's cursor cannot reveal their positions.
+
+Automated PGlite and injected-provider tests cover exact fill calculations, freshness, owner isolation, quote binding/reuse, validation, pagination, and rollback. For manual acceptance, sign in, request a fresh quote for a newly persisted eligible signal, create a 0.1 SOL paper position before expiry, and list it; repeat with a second account and an expired quote to verify rejection/isolation. Live Jupiter and Neon acceptance remain pending.

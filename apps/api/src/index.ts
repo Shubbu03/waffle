@@ -2,6 +2,7 @@ import { createApiDatabase } from "@waffle/db";
 import { config } from "dotenv";
 import { createApp } from "./app.ts";
 import { parseApiEnv } from "./config.ts";
+import { createJupiterServiceFromEnv } from "./jupiter.ts";
 
 config({ path: new URL("../.env", import.meta.url), quiet: true });
 
@@ -15,7 +16,11 @@ async function main() {
     throw new Error("API database login verification failed");
   }
 
-  const app = createApp(database, { store: database.auth, uri: env.AUTH_URI });
+  const jupiter =
+    process.env.JUPITER_API_KEY?.trim() && process.env.JUPITER_API_KEY !== "replace-me"
+      ? createJupiterServiceFromEnv({ JUPITER_API_KEY: process.env.JUPITER_API_KEY })
+      : undefined;
+  const app = createApp(database, { store: database.auth, uri: env.AUTH_URI }, jupiter ? { jupiter } : undefined);
   let server: ReturnType<typeof Bun.serve>;
   try {
     server = Bun.serve({

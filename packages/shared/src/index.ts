@@ -19,6 +19,7 @@ export {
 } from "./program-ids.ts";
 export type { ScorePolicy } from "./scoring/config.ts";
 export { SPL_TOKEN_PROGRAM_ID, scorePolicyV1, WRAPPED_SOL_MINT } from "./scoring/config.ts";
+export { calculatePaperFill } from "./scoring/paper-fill.ts";
 export type { ScoreInput, ScoreReason, ScoreReasonCode, ScoreResult } from "./scoring/score.ts";
 export { SCORE_REASON_CODES, SCORE_REASON_GROUPS, scoreSignal } from "./scoring/score.ts";
 export type { TradeLimitResult, TradeMode } from "./scoring/trade-limits.ts";
