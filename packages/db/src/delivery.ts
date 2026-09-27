@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { createLiveDispatchStore } from "./live-store.ts";
+import { createPushDeliveryStore } from "./push-delivery-store.ts";
 import * as schema from "./schema/index.ts";
 
 type DeliveryLoginFacts = {
@@ -40,6 +41,7 @@ export function createDeliveryDatabase(databaseUrl: string) {
   const db = drizzle({ client, schema });
   return {
     live: createLiveDispatchStore(db),
+    push: createPushDeliveryStore((run) => db.transaction(run)),
     async assertRestrictedLogin(): Promise<void> {
       const [row] = await db.execute<DeliveryLoginFacts>(sql`
         SELECT r.rolcanlogin AS "canLogin", r.rolsuper AS superuser,

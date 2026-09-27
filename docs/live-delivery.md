@@ -8,7 +8,7 @@ In `apps/api/.env`, configure `DELIVERY_DATABASE_URL` using a separate non-owner
 
 Without the delivery URL, REST still runs and `/live` returns 503. With it configured, the worker scans at startup, then every two seconds with connections or every 30 seconds while idle. A new connection wakes polling. These intervals are demo defaults, not a latency guarantee. The optional private watcher wake-up POST from the architecture plan is not needed for correctness and is not implemented here.
 
-Each scan loads up to 100 pending event IDs and records `live_dispatched_at` after attempting connected-client pages. This flag records a processing attempt, not receipt by every client; events can be marked with no clients connected. Every client independently reads committed history by cursor, regardless of that flag. A crash, missed poll, failed marker update, or API restart therefore cannot remove the recovery source. Push expansion and FCM are separate work (#20).
+Each scan loads up to 100 pending event IDs and records `live_dispatched_at` after attempting connected-client pages. This flag records a processing attempt, not receipt by every client; events can be marked with no clients connected. Every client independently reads committed history by cursor, regardless of that flag. A crash, missed poll, failed marker update, or API restart therefore cannot remove the recovery source. Push expansion and FCM run in a separate [push worker](push-alerts.md) when configured.
 
 `GET /health` includes `live: { connections, degraded, lastPollAt }` when enabled. `lastPollAt` is the last successful scan time in epoch milliseconds, initially null. A failed scan sets degraded and HTTP 503 until a successful scan. No bearer tokens or database errors are returned.
 

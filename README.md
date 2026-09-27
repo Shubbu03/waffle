@@ -65,6 +65,7 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 * [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
 * [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
 * [API runtime](docs/api.md): local environment, restricted database login, and health check.
+* [Push alerts](docs/push-alerts.md): owner-bound device registration, FCM setup, eligibility, retry, and device acceptance.
 * [Live delivery](docs/live-delivery.md): delivery credentials, WebSocket frames, cursor recovery, limits, and verification.
 * [Watcher RPC](docs/watcher-rpc.md): catalog subscriptions, reconnect recovery, rate limits, and health status.
 * [Watcher evidence](docs/watcher-evidence.md): mint and pool validation, quote probes, optional data, and freshness.

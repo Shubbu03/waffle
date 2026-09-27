@@ -6,6 +6,8 @@ Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). I
 
 Issue #19 adds [foreground WebSocket delivery](live-delivery.md) at `GET /live`, with a separate optional `DELIVERY_DATABASE_URL`, bounded history, current Following filters, and cursor recovery. When enabled, `/health` also reports live connection count, degraded status, and last successful poll time.
 
+Issue #20 adds authenticated `POST /push-tokens` and `DELETE /push-tokens/:id`, plus optional FCM dispatch. See [push alerts](push-alerts.md) for credential setup, response shapes, eligibility, and device integration.
+
 ## Local setup
 
 1. Apply the [database migrations](database.md) to a disposable Neon branch. Create a separate login role with only membership in `waffle_api`; it must not own app tables or have superuser, `BYPASSRLS`, or `CREATEROLE` privileges. The API checks this on startup and refuses a privileged credential.

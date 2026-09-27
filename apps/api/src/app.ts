@@ -9,6 +9,8 @@ import type { JupiterService } from "./jupiter.ts";
 import type { LiveDelivery } from "./live-delivery.ts";
 import { mountLiveRoute } from "./live-routes.ts";
 import { createPaperPositionRoutes } from "./paper-position-routes.ts";
+import type { PushDelivery } from "./push-delivery.ts";
+import { createPushTokenRoutes } from "./push-token-routes.ts";
 import { createReadRoutes } from "./read-routes.ts";
 import { createSubscriptionRoutes } from "./subscription-routes.ts";
 import type { AppEnv } from "./types.ts";
@@ -19,6 +21,7 @@ export function createApp(
   auth?: { store: AuthStore; uri: string },
   paper?: { jupiter?: Pick<JupiterService, "getPaperQuote">; now?: () => number },
   live?: LiveDelivery,
+  push?: PushDelivery,
 ) {
   const app = new Hono<AppEnv>();
   mountLiveRoute(app, live);
@@ -33,8 +36,9 @@ export function createApp(
   app.get("/health", validateQuery(z.strictObject({})), async (c) => {
     try {
       await database.ping();
-      if (live?.status.degraded) return c.json({ status: "degraded", live: live.status }, 503);
-      return c.json({ status: "ok", ...(live ? { live: live.status } : {}) });
+      const delivery = { ...(live ? { live: live.status } : {}), ...(push ? { push: push.status } : {}) };
+      if (live?.status.degraded || push?.status.degraded) return c.json({ status: "degraded", ...delivery }, 503);
+      return c.json({ status: "ok", ...delivery });
     } catch {
       return apiError(c, 503, "SERVICE_UNAVAILABLE", "Service unavailable");
     }
@@ -42,6 +46,7 @@ export function createApp(
 
   if (auth) {
     app.route("/auth", createAuthRoutes(auth.store, auth.uri));
+    app.route("/push-tokens", createPushTokenRoutes(auth.store));
     app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
     app.route("/paper-positions", createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now));
   }
