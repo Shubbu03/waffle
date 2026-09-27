@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { type AuthTransaction, createAuthStore } from "./auth-store.ts";
 import * as schema from "./schema/index.ts";
 
 type ApiLoginFacts = {
@@ -36,8 +37,18 @@ export function createApiDatabase(databaseUrl: string) {
   });
   const db = drizzle({ client, schema });
 
+  const transaction: AuthTransaction = async (run) => {
+    const result = await client.begin(async (tx) => ({
+      value: await run(async <T extends Record<string, unknown>>(text: string, parameters: string[] = []) => [
+        ...(await tx.unsafe<T[]>(text, parameters)),
+      ]),
+    }));
+    return result.value;
+  };
+
   return {
     db,
+    auth: createAuthStore(transaction),
     async assertRestrictedLogin(): Promise<void> {
       const [row] = await client<ApiLoginFacts[]>`
         SELECT r.rolcanlogin AS "canLogin",

@@ -15,12 +15,13 @@ async function main() {
     throw new Error("API database login verification failed");
   }
 
+  const app = createApp(database, { store: database.auth, uri: env.AUTH_URI });
   let server: ReturnType<typeof Bun.serve>;
   try {
     server = Bun.serve({
       hostname: env.API_HOST,
       port: env.API_PORT,
-      fetch: createApp(database).fetch,
+      fetch: (request, server) => app.fetch(request, { remoteAddress: server.requestIP(request)?.address }),
     });
   } catch (error) {
     await database.close();

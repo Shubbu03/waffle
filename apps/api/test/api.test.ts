@@ -5,6 +5,7 @@ import { createApp } from "../src/app.ts";
 import { parseApiEnv } from "../src/config.ts";
 import { validateJson } from "../src/validation.ts";
 
+const AUTH_URI = "https://waffle.example";
 const validUrl = "postgresql://waffle_api_login:secret@localhost/waffle?sslmode=require";
 
 function request(path: string, init?: RequestInit) {
@@ -13,7 +14,8 @@ function request(path: string, init?: RequestInit) {
 
 describe("API environment", () => {
   test("accepts an encrypted PostgreSQL URL and defaults", () => {
-    expect(parseApiEnv({ DATABASE_URL: validUrl })).toEqual({
+    expect(parseApiEnv({ AUTH_URI, DATABASE_URL: validUrl })).toEqual({
+      AUTH_URI,
       DATABASE_URL: validUrl,
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
@@ -26,12 +28,12 @@ describe("API environment", () => {
       "postgresql://owner:secret@localhost/waffle",
       "http://owner:secret@localhost/waffle?sslmode=require",
     ]) {
-      expect(() => parseApiEnv({ DATABASE_URL: databaseUrl })).toThrow("DATABASE_URL");
+      expect(() => parseApiEnv({ AUTH_URI, DATABASE_URL: databaseUrl })).toThrow("DATABASE_URL");
     }
-    expect(() => parseApiEnv({ DATABASE_URL: validUrl, API_PORT: "0" })).toThrow("API_PORT");
-    expect(() => parseApiEnv({ DATABASE_URL: validUrl, API_PORT: "65536" })).toThrow("API_PORT");
+    expect(() => parseApiEnv({ AUTH_URI, DATABASE_URL: validUrl, API_PORT: "0" })).toThrow("API_PORT");
+    expect(() => parseApiEnv({ AUTH_URI, DATABASE_URL: validUrl, API_PORT: "65536" })).toThrow("API_PORT");
     try {
-      parseApiEnv({ DATABASE_URL: "postgresql://owner:secret@localhost/waffle" });
+      parseApiEnv({ AUTH_URI, DATABASE_URL: "postgresql://owner:secret@localhost/waffle" });
     } catch (error) {
       expect(String(error)).not.toContain("secret");
     }

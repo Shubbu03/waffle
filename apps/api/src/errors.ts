@@ -5,7 +5,7 @@ import type { AppEnv } from "./types.ts";
 
 export function apiError(
   c: Context<AppEnv>,
-  status: 400 | 404 | 415 | 500 | 503,
+  status: 400 | 401 | 403 | 404 | 413 | 415 | 429 | 500 | 503,
   code: ApiErrorCode,
   message: string,
   fieldErrors?: Record<string, string[]>,
