@@ -2,9 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createSignInMessage } from "@solana/wallet-standard-util";
-import { type AuthTransaction, createAuthStore } from "@waffle/db";
+import { createAuthStore, type DatabaseExecutor, type DatabaseTransaction } from "@waffle/db";
+import { paperPositions, pushTokens, tradeAttempts, userWalletSubscriptions } from "@waffle/db/schema";
 import { authChallengeResponseSchema, authVerifyResponseSchema, type SignInInput } from "@waffle/shared";
 import bs58 from "bs58";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.ts";
@@ -14,13 +16,10 @@ import { parseApiEnv } from "../src/config.ts";
 
 const uri = "https://waffle.example";
 let pg: PGlite;
-const transaction: AuthTransaction = (run) =>
-  pg.transaction(async (tx) => {
-    await tx.exec("SET LOCAL ROLE auth_test_login");
-    return run(
-      async <T extends Record<string, unknown>>(text: string, parameters: string[] = []) =>
-        (await tx.query<T>(text, parameters)).rows,
-    );
+const transaction: DatabaseTransaction = (run) =>
+  drizzle(pg).transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL ROLE auth_test_login`);
+    return run(tx);
   });
 const store = createAuthStore(transaction);
 const service = createAuthService(store, uri);
@@ -297,18 +296,49 @@ describe("HTTP auth boundaries", () => {
   });
 });
 
+test("Drizzle binds SQL-shaped values as data and malformed IDs cannot alter stored rows", async () => {
+  const payload = "'; DROP TABLE public.users; --";
+  const queries: { text: string; parameters: unknown[] }[] = [];
+  const checkedStore = createAuthStore((run) =>
+    drizzle(pg, {
+      logger: { logQuery: (text, parameters) => queries.push({ text, parameters }) },
+    }).transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL ROLE auth_test_login`);
+      return run(tx);
+    }),
+  );
+  const { signInInput } = await service.challenge();
+  const id = await checkedStore.createChallenge(
+    { ...signInInput, statement: payload },
+    hashSecret(crypto.randomUUID()),
+  );
+  expect((await checkedStore.findChallenge(id))?.statement).toBe(payload);
+  await expect(checkedStore.findChallenge(payload)).rejects.toThrow();
+  expect(await checkedStore.withSession(payload, async () => "unexpected access")).toBeNull();
+  expect(await checkedStore.logout(payload)).toBe(false);
+  expect(queries.some((query) => query.parameters.includes(payload))).toBe(true);
+  expect(queries.every((query) => !query.text.includes(payload))).toBe(true);
+  expect((await checkedStore.findChallenge(id))?.statement).toBe(payload);
+  // A real sign-in still creates its user and session after the injection attempts.
+  expect((await login()).session.userId).toBeString();
+});
+
 test("owner operations use authenticated identity, deny anonymous/cross-user access and reset on commit and rollback", async () => {
   const a = await login();
   const b = await login();
   const application = app();
+  const insertToken = (tx: DatabaseExecutor, userId: string) =>
+    tx
+      .insert(pushTokens)
+      .values({
+        userId,
+        tokenHash: hashSecret(crypto.randomUUID()),
+        token: "device",
+        notificationPermission: "granted",
+      })
+      .returning({ userId: pushTokens.userId });
   application.post("/test-private", (c) =>
-    withOwner(c, store, async (query, session) => {
-      const rows = await query<{ userId: string }>(
-        "INSERT INTO push_tokens (user_id, token_hash, token, notification_permission) VALUES ($1, $2, 'device', 'granted') RETURNING user_id AS \"userId\"",
-        [session.userId, hashSecret(crypto.randomUUID())],
-      );
-      return c.json(rows);
-    }),
+    withOwner(c, store, async (tx, session) => c.json(await insertToken(tx, session.userId))),
   );
   expect((await application.request("/test-private", { method: "POST" })).status).toBe(401);
   const own = await application.request("/test-private", {
@@ -316,43 +346,33 @@ test("owner operations use authenticated identity, deny anonymous/cross-user acc
     headers: { authorization: `Bearer ${a.accessToken}` },
   });
   expect(await own.json()).toEqual([{ userId: a.session.userId }]);
-  expect(await store.withSession(hashSecret(b.accessToken), (query) => query("SELECT * FROM push_tokens"))).toEqual([]);
+  expect(await store.withSession(hashSecret(b.accessToken), (tx) => tx.select().from(pushTokens))).toEqual([]);
   expect(
-    await store.withSession(hashSecret(b.accessToken), (query) =>
-      query("UPDATE push_tokens SET active = false WHERE user_id = $1 RETURNING id", [a.session.userId]),
+    await store.withSession(hashSecret(b.accessToken), (tx) =>
+      tx.update(pushTokens).set({ active: false }).where(eq(pushTokens.userId, a.session.userId)).returning(),
     ),
   ).toEqual([]);
   await expect(
-    store.withSession(hashSecret(a.accessToken), (query) =>
-      query(
-        "INSERT INTO push_tokens (user_id, token_hash, token, notification_permission) VALUES ($1, $2, 'device', 'granted')",
-        [b.session.userId, hashSecret(crypto.randomUUID())],
-      ),
-    ),
+    store.withSession(hashSecret(a.accessToken), (tx) => insertToken(tx, b.session.userId)),
   ).rejects.toThrow();
-  expect(await transaction((query) => query("SELECT * FROM push_tokens"))).toEqual([]);
+  expect(await transaction((tx) => tx.select().from(pushTokens))).toEqual([]);
+  await expect(transaction((tx) => insertToken(tx, a.session.userId))).rejects.toThrow();
   await expect(
-    transaction((query) =>
-      query(
-        "INSERT INTO push_tokens (user_id, token_hash, token, notification_permission) VALUES ($1, $2, 'device', 'granted')",
-        [a.session.userId, hashSecret(crypto.randomUUID())],
-      ),
-    ),
-  ).rejects.toThrow();
-  await expect(
-    store.withSession(hashSecret(a.accessToken), async (query) => {
-      await query("UPDATE push_tokens SET active = false");
+    store.withSession(hashSecret(a.accessToken), async (tx) => {
+      await tx.update(pushTokens).set({ active: false });
       throw new Error("Abort owner operation");
     }),
   ).rejects.toThrow("Abort owner operation");
-  expect(await transaction((query) => query("SELECT * FROM push_tokens"))).toEqual([]);
+  expect(await transaction((tx) => tx.select().from(pushTokens))).toEqual([]);
   expect(
-    await store.withSession(hashSecret(a.accessToken), (query) => query("SELECT active FROM push_tokens")),
+    await store.withSession(hashSecret(a.accessToken), (tx) =>
+      tx.select({ active: pushTokens.active }).from(pushTokens),
+    ),
   ).toEqual([{ active: true }]);
-  const facts = await transaction((query) =>
-    query("SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"),
+  const facts = await transaction((tx) =>
+    tx.execute(sql`SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`),
   );
-  expect(facts).toEqual([{ current_user: "auth_test_login", rolsuper: false, rolbypassrls: false }]);
+  expect(facts).toMatchObject({ rows: [{ current_user: "auth_test_login", rolsuper: false, rolbypassrls: false }] });
 });
 
 test("every private table enforces owner read/insert/update/delete through the API role", async () => {
@@ -371,78 +391,114 @@ test("every private table enforces owner read/insert/update/delete through the A
     VALUES ($1, $2, $3, $4, $4, 1, now(), 1, 0, 'suppressed', 'unknown', '[]', '{}')`,
     [signalId, "1".repeat(64), walletId, address],
   );
-  const tables = [
+  const fixtures = [
     {
-      name: "user_wallet_subscriptions",
-      insert: "INSERT INTO user_wallet_subscriptions (user_id, watched_wallet_id) VALUES ($1, $2)",
-      args: () => [walletId],
-      update: "alerts_enabled = false",
+      table: userWalletSubscriptions,
+      insert: (tx: DatabaseExecutor, userId: string) =>
+        tx
+          .insert(userWalletSubscriptions)
+          .values({ userId, watchedWalletId: walletId })
+          .returning({ userId: userWalletSubscriptions.userId }),
+      update: (tx: DatabaseExecutor, userId?: string) =>
+        tx
+          .update(userWalletSubscriptions)
+          .set({ alertsEnabled: false })
+          .where(userId ? eq(userWalletSubscriptions.userId, userId) : undefined)
+          .returning({ userId: userWalletSubscriptions.userId }),
     },
     {
-      name: "push_tokens",
-      insert:
-        "INSERT INTO push_tokens (user_id, token_hash, token, notification_permission) VALUES ($1, $2, 'test', 'granted')",
-      args: () => [hashSecret(crypto.randomUUID())],
-      update: "active = false",
+      table: pushTokens,
+      insert: (tx: DatabaseExecutor, userId: string) =>
+        tx
+          .insert(pushTokens)
+          .values({
+            userId,
+            tokenHash: hashSecret(crypto.randomUUID()),
+            token: "test",
+            notificationPermission: "granted",
+          })
+          .returning({ userId: pushTokens.userId }),
+      update: (tx: DatabaseExecutor, userId?: string) =>
+        tx
+          .update(pushTokens)
+          .set({ active: false })
+          .where(userId ? eq(pushTokens.userId, userId) : undefined)
+          .returning({ userId: pushTokens.userId }),
     },
     {
-      name: "paper_positions",
-      insert:
-        "INSERT INTO paper_positions (user_id, signal_id, size_lamports, entry_quote) VALUES ($1, $2, 1000, '{}')",
-      args: () => [signalId],
-      update: "size_lamports = 2000",
+      table: paperPositions,
+      insert: (tx: DatabaseExecutor, userId: string) =>
+        tx
+          .insert(paperPositions)
+          .values({
+            userId,
+            signalId,
+            sizeLamports: 1000n,
+            entryQuote: sql`'{}'::jsonb`,
+          })
+          .returning({ userId: paperPositions.userId }),
+      update: (tx: DatabaseExecutor, userId?: string) =>
+        tx
+          .update(paperPositions)
+          .set({ sizeLamports: 2000n })
+          .where(userId ? eq(paperPositions.userId, userId) : undefined)
+          .returning({ userId: paperPositions.userId }),
     },
     {
-      name: "trade_attempts",
-      insert:
-        "INSERT INTO trade_attempts (user_id, signal_id, quote_id, request_id, taker, router, input_amount_lamports) VALUES ($1, $2, $3, $4, $5, 'metis', 1000)",
-      args: () => [signalId, crypto.randomUUID(), crypto.randomUUID(), address],
-      update: "input_amount_lamports = 2000",
+      table: tradeAttempts,
+      insert: (tx: DatabaseExecutor, userId: string) =>
+        tx
+          .insert(tradeAttempts)
+          .values({
+            userId,
+            signalId,
+            quoteId: crypto.randomUUID(),
+            requestId: crypto.randomUUID(),
+            taker: address,
+            router: "metis",
+            inputAmountLamports: 1000n,
+          })
+          .returning({ userId: tradeAttempts.userId }),
+      update: (tx: DatabaseExecutor, userId?: string) =>
+        tx
+          .update(tradeAttempts)
+          .set({ inputAmountLamports: 2000n })
+          .where(userId ? eq(tradeAttempts.userId, userId) : undefined)
+          .returning({ userId: tradeAttempts.userId }),
     },
   ];
-  for (const table of tables) {
-    await expect(transaction((query) => query(table.insert, [a.session.userId, ...table.args()]))).rejects.toThrow();
-    await expect(
-      store.withSession(hashSecret(b.accessToken), (query) => query(table.insert, [a.session.userId, ...table.args()])),
-    ).rejects.toThrow();
-    const owned = await store.withSession(hashSecret(a.accessToken), (query) =>
-      query(`${table.insert} RETURNING user_id`, [a.session.userId, ...table.args()]),
-    );
-    expect(owned).toEqual([{ user_id: a.session.userId }]);
-    // Table names and assignment clauses below are static test fixtures, never request input.
-    expect(await transaction((query) => query(`SELECT user_id FROM ${table.name}`))).toEqual([]);
+  for (const fixture of fixtures) {
+    const { table, insert, update } = fixture;
+    await expect(transaction((tx) => insert(tx, a.session.userId))).rejects.toThrow();
+    await expect(store.withSession(hashSecret(b.accessToken), (tx) => insert(tx, a.session.userId))).rejects.toThrow();
+    expect(await store.withSession(hashSecret(a.accessToken), (tx) => insert(tx, a.session.userId))).toEqual([
+      { userId: a.session.userId },
+    ]);
+    expect(await transaction((tx) => tx.select({ userId: table.userId }).from(table))).toEqual([]);
     expect(
-      await store.withSession(hashSecret(b.accessToken), (query) => query(`SELECT user_id FROM ${table.name}`)),
+      await store.withSession(hashSecret(b.accessToken), (tx) => tx.select({ userId: table.userId }).from(table)),
     ).toEqual([]);
+    expect(await store.withSession(hashSecret(b.accessToken), (tx) => update(tx))).toEqual([]);
     expect(
-      await store.withSession(hashSecret(b.accessToken), (query) =>
-        query(`UPDATE ${table.name} SET ${table.update} RETURNING user_id`),
-      ),
-    ).toEqual([]);
-    expect(
-      await store.withSession(hashSecret(b.accessToken), (query) =>
-        query(`DELETE FROM ${table.name} RETURNING user_id`),
-      ),
+      await store.withSession(hashSecret(b.accessToken), (tx) => tx.delete(table).returning({ userId: table.userId })),
     ).toEqual([]);
     await expect(
-      store.withSession(hashSecret(a.accessToken), (query) =>
-        query(`UPDATE ${table.name} SET user_id = $1 WHERE user_id = $2`, [b.session.userId, a.session.userId]),
+      store.withSession(hashSecret(a.accessToken), (tx) =>
+        tx.update(table).set({ userId: b.session.userId }).where(eq(table.userId, a.session.userId)),
       ),
     ).rejects.toThrow();
     expect(
-      await store.withSession(hashSecret(a.accessToken), (query) =>
-        query(`SELECT user_id FROM ${table.name} WHERE user_id = $1`, [a.session.userId]),
+      await store.withSession(hashSecret(a.accessToken), (tx) =>
+        tx.select({ userId: table.userId }).from(table).where(eq(table.userId, a.session.userId)),
       ),
-    ).toEqual([{ user_id: a.session.userId }]);
+    ).toEqual([{ userId: a.session.userId }]);
+    expect(await store.withSession(hashSecret(a.accessToken), (tx) => update(tx, a.session.userId))).toEqual([
+      { userId: a.session.userId },
+    ]);
     expect(
-      await store.withSession(hashSecret(a.accessToken), (query) =>
-        query(`UPDATE ${table.name} SET ${table.update} WHERE user_id = $1 RETURNING user_id`, [a.session.userId]),
+      await store.withSession(hashSecret(a.accessToken), (tx) =>
+        tx.delete(table).where(eq(table.userId, a.session.userId)).returning({ userId: table.userId }),
       ),
-    ).toEqual([{ user_id: a.session.userId }]);
-    expect(
-      await store.withSession(hashSecret(a.accessToken), (query) =>
-        query(`DELETE FROM ${table.name} WHERE user_id = $1 RETURNING user_id`, [a.session.userId]),
-      ),
-    ).toEqual([{ user_id: a.session.userId }]);
+    ).toEqual([{ userId: a.session.userId }]);
   }
 });

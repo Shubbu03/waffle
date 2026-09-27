@@ -4,16 +4,30 @@ import {
   signalPageSchema,
   walletCatalogResponseSchema,
 } from "@waffle/shared";
-import type { AuthQuery } from "./auth-store.ts";
+import { and, asc, desc, eq, exists, gt, lt, sql } from "drizzle-orm";
+import type { DatabaseExecutor } from "./database.ts";
+import { signalEvents, signals, userWalletSubscriptions, watchedWallets } from "./schema/index.ts";
 
-const summaryColumns = `s.id, e.id::text AS "eventId", s.signature,
-  s.wallet_id AS "walletId", w.address AS "walletAddress", s.mint_address AS "mintAddress",
-  s.source_program_id AS "sourceProgramId", s.slot, s.observed_at AS "observedAt",
-  s.published_at AS "publishedAt", s.score_version AS "scoreVersion", s.score,
-  s.status, s.data_status AS "dataStatus"`;
-const signalJoins = `FROM public.signal_events e
-  JOIN public.signals s ON s.id = e.signal_id
-  JOIN public.watched_wallets w ON w.id = s.wallet_id`;
+const summaryColumns = {
+  id: signals.id,
+  eventId: sql<string>`${signalEvents.id}::text`.as("event_id"),
+  signature: signals.signature,
+  walletId: signals.walletId,
+  walletAddress: watchedWallets.address,
+  mintAddress: signals.mintAddress,
+  sourceProgramId: signals.sourceProgramId,
+  slot: signals.slot,
+  observedAt: signals.observedAt,
+  publishedAt: signals.publishedAt,
+  scoreVersion: signals.scoreVersion,
+  score: signals.score,
+  status: signals.status,
+  dataStatus: signals.dataStatus,
+};
+
+function serializeSignal<T extends { observedAt: Date; publishedAt: Date }>(row: T) {
+  return { ...row, observedAt: row.observedAt.toISOString(), publishedAt: row.publishedAt.toISOString() };
+}
 
 export class CursorExpiredError extends Error {
   constructor() {
@@ -22,68 +36,95 @@ export class CursorExpiredError extends Error {
 }
 
 /** Public reads use the API login; Following must receive the authenticated transaction and owner. */
-export function createReadStore(query: AuthQuery) {
+export function createReadStore(db: DatabaseExecutor) {
   return {
     async wallets() {
-      const rows = await query<{ item: unknown }>(
-        `SELECT row_to_json(wallet) AS item FROM (
-          SELECT id, address, label, active, inclusion_reason AS "inclusionReason",
-            recent_supported_activity_at AS "recentSupportedActivityAt"
-          FROM public.watched_wallets ORDER BY label, id LIMIT 101
-        ) wallet`,
-      );
-      return walletCatalogResponseSchema.parse({ items: rows.map((row) => row.item) });
+      const rows = await db
+        .select({
+          id: watchedWallets.id,
+          address: watchedWallets.address,
+          label: watchedWallets.label,
+          active: watchedWallets.active,
+          inclusionReason: watchedWallets.inclusionReason,
+          recentSupportedActivityAt: watchedWallets.recentSupportedActivityAt,
+        })
+        .from(watchedWallets)
+        .orderBy(watchedWallets.label, watchedWallets.id)
+        .limit(101);
+      return walletCatalogResponseSchema.parse({
+        items: rows.map((row) => ({
+          ...row,
+          recentSupportedActivityAt: row.recentSupportedActivityAt?.toISOString() ?? null,
+        })),
+      });
     },
     async signals(input: GetSignalsQuery, ownerId?: string) {
       if (input.view === "following" && !ownerId) throw new Error("Following requires an authenticated owner");
-      const parameters: string[] = [];
-      const bind = (value: string) => {
-        parameters.push(value);
-        return `$${parameters.length}`;
-      };
-      const filters: string[] = [];
-      const order = input.direction === "before" ? "DESC" : "ASC";
-      if (input.cursor) filters.push(`e.id ${input.direction === "before" ? "<" : ">"} ${bind(input.cursor)}::bigint`);
-      if (input.walletId) filters.push(`s.wallet_id = ${bind(input.walletId)}::uuid`);
-      if (input.view === "following" && ownerId) {
-        filters.push(`EXISTS (SELECT 1 FROM public.user_wallet_subscriptions sub
-          WHERE sub.watched_wallet_id = s.wallet_id AND sub.user_id = ${bind(ownerId)}::uuid)`);
-      }
-      // One statement keeps retention bounds and page rows on the same database snapshot.
-      // All interpolated SQL is fixed above; every request value is bound as a parameter.
-      const rows = await query<{ oldestEventId: string | null; item: unknown }>(
-        `WITH bounds AS (SELECT min(id)::text AS oldest FROM public.signal_events)
-         SELECT bounds.oldest AS "oldestEventId", row_to_json(page) AS item
-         FROM bounds LEFT JOIN LATERAL (
-           SELECT ${summaryColumns} ${signalJoins}
-           ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
-           ORDER BY e.id ${order} LIMIT ${bind(String(input.limit + 1))}::int
-         ) page ON true ORDER BY page."eventId"::bigint ${order}`,
-        parameters,
+      const order = input.direction === "before" ? desc : asc;
+      const compare = input.direction === "before" ? lt : gt;
+      const pageRows = db
+        .select(summaryColumns)
+        .from(signalEvents)
+        .innerJoin(signals, eq(signals.id, signalEvents.signalId))
+        .innerJoin(watchedWallets, eq(watchedWallets.id, signals.walletId))
+        .where(
+          and(
+            input.cursor ? compare(signalEvents.id, BigInt(input.cursor)) : undefined,
+            input.walletId ? eq(signals.walletId, input.walletId) : undefined,
+            input.view === "following" && ownerId
+              ? exists(
+                  db
+                    .select({ walletId: userWalletSubscriptions.watchedWalletId })
+                    .from(userWalletSubscriptions)
+                    .where(
+                      and(
+                        eq(userWalletSubscriptions.watchedWalletId, signals.walletId),
+                        eq(userWalletSubscriptions.userId, ownerId),
+                      ),
+                    ),
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(order(signalEvents.id))
+        .limit(input.limit + 1)
+        .as("page");
+      const bounds = db.$with("bounds").as(
+        db
+          .select({
+            oldest: sql<string | null>`min(${signalEvents.id})::text`.as("oldest"),
+          })
+          .from(signalEvents),
       );
-      const oldest = rows[0]?.oldestEventId;
+      // One statement keeps retention bounds and page rows on the same database snapshot.
+      const rows = await db
+        .with(bounds)
+        .select()
+        .from(bounds)
+        .leftJoinLateral(pageRows, sql`true`)
+        .orderBy(order(sql`${pageRows.eventId}::bigint`));
+      const oldest = rows[0]?.bounds.oldest;
       if (input.cursor && (!oldest || BigInt(input.cursor) < BigInt(oldest))) throw new CursorExpiredError();
-      const items = rows.map((row) => row.item).filter((item) => item !== null);
-      const hasMore = items.length > input.limit;
+      const items = rows.flatMap((row) => (row.page ? [serializeSignal(row.page)] : []));
       const page = signalPageSchema.parse({
         view: input.view,
         direction: input.direction,
         items: items.slice(0, input.limit),
         nextCursor: null,
-        hasMore,
+        hasMore: items.length > input.limit,
       });
       // The last applied event also remains useful for reconnect when this page is terminal.
       page.nextCursor = page.items.at(-1)?.eventId ?? null;
       return page;
     },
     async signal(id: string) {
-      const [row] = await query<{ item: unknown }>(
-        `SELECT row_to_json(detail) AS item FROM (
-          SELECT ${summaryColumns}, s.reasons, s.snapshot ${signalJoins} WHERE s.id = $1::uuid
-        ) detail`,
-        [id],
-      );
-      return row ? signalDetailSchema.parse(row.item) : null;
+      const [row] = await db
+        .select({ ...summaryColumns, reasons: signals.reasons, snapshot: signals.snapshot })
+        .from(signalEvents)
+        .innerJoin(signals, eq(signals.id, signalEvents.signalId))
+        .innerJoin(watchedWallets, eq(watchedWallets.id, signals.walletId))
+        .where(eq(signals.id, id));
+      return row ? signalDetailSchema.parse(serializeSignal(row)) : null;
     },
   };
 }

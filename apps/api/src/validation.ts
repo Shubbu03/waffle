@@ -24,3 +24,10 @@ export function validateJson<Schema extends z.ZodType>(schema: Schema) {
     return result.success ? result.data : validationError(c, result.error);
   });
 }
+
+export function validateParams<Schema extends z.ZodType>(schema: Schema) {
+  return validator("param", (value, c) => {
+    const result = schema.safeParse(value);
+    return result.success ? result.data : validationError(c, result.error);
+  });
+}

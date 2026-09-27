@@ -17,6 +17,14 @@ The migration creates three `NOLOGIN NOBYPASSRLS` privilege groups: `waffle_api`
 
 Owner policies use `nullif(current_setting('app.user_id', true), '')::uuid`. The API auth store now sets this value with `set_config('app.user_id', userId, true)` inside **each authenticated transaction** through `database.auth.withSession`, after checking the bearer session; it never uses a session-level setting on a pooled connection. A missing identity sees no owner rows and cannot insert them. API authorization is still required before DB access. The delivery worker has an explicit cross-owner read policy for subscriptions and tokens so it can expand alert jobs. This role must not be used for ordinary API requests.
 
+## Query conventions
+
+Use Drizzle's typed query builder for all application CRUD, joins, filters, pagination, upserts, and transactions. Stores accept the shared `DatabaseExecutor` query-builder surface; authenticated operations receive the same transaction that checked the session and set the RLS identity. Production uses the postgres.js Drizzle adapter and integration tests use the PGlite Drizzle adapter.
+
+Keep parameterized `sql` fragments for PostgreSQL expressions such as database clocks, casts, `CASE`, `GREATEST`, advisory locks, transaction-local `set_config`, and system-catalog role checks. Never interpolate request values into SQL strings or use `sql.raw`/driver `.unsafe` for application queries. Migration DDL and test setup for roles, grants, constraints, and failure triggers can remain SQL.
+
+Serialize Drizzle `Date` results to ISO strings at API boundaries and bigint event IDs to decimal strings without converting them to JavaScript numbers. Keep pagination rows and retention bounds in one statement, and preserve row locks and atomic signal/outbox writes when adding new operations.
+
 ## Apply and verify
 
 1. Create a disposable Neon branch and a migration-owner connection there. Copy `packages/db/.env.example` to `packages/db/.env` and replace the placeholder locally. The package-local Drizzle config loads that file. The migration owner needs table/schema creation and role-management privileges. Use a direct connection string for migration administration.

@@ -16,8 +16,8 @@ export function createReadRoutes(reads: ReadStore, auth?: AuthStore) {
       if (input.view === "all") return c.json(await reads.signals(input));
       c.header("Cache-Control", "no-store");
       if (!auth) return apiError(c, 401, "UNAUTHORIZED", "Valid session required");
-      return await withOwner(c, auth, async (query, session) =>
-        c.json(await createReadStore(query).signals(input, session.userId)),
+      return await withOwner(c, auth, async (tx, session) =>
+        c.json(await createReadStore(tx).signals(input, session.userId)),
       );
     } catch (error) {
       if (error instanceof CursorExpiredError) {

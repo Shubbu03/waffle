@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { apiError } from "./errors.ts";
 import { createReadRoutes } from "./read-routes.ts";
+import { createSubscriptionRoutes } from "./subscription-routes.ts";
 import type { AppEnv } from "./types.ts";
 import { validateQuery } from "./validation.ts";
 
@@ -31,7 +32,10 @@ export function createApp(
     }
   });
 
-  if (auth) app.route("/auth", createAuthRoutes(auth.store, auth.uri));
+  if (auth) {
+    app.route("/auth", createAuthRoutes(auth.store, auth.uri));
+    app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
+  }
 
   if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store));
 
