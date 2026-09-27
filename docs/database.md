@@ -33,3 +33,7 @@ The local automated suite verifies SQL against PGlite. A migration run and role/
 * [Drizzle Kit generate](https://orm.drizzle.team/docs/drizzle-kit-generate) and [migrate](https://orm.drizzle.team/docs/drizzle-kit-migrate)
 * [PostgreSQL row security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) and [roles](https://www.postgresql.org/docs/current/sql-createrole.html)
 * [Neon branching workflow](https://neon.com/docs/get-started-with-neon/workflow-primer)
+
+## Reviewed catalog seed
+
+Run `bun run db:seed` from the root for a credential-free preview of the reviewed catalog. After configuring the migration-owner `DB_URL` in `packages/db/.env`, `bun run db:seed:apply` applies the existing idempotent seed. It preserves catalog IDs and history, updates reviewed metadata, and deactivates removed entries. API startup never seeds: its restricted login can only read the public catalog. Issue #16's endpoint tests apply this seed twice to PGlite and verify the resulting public catalog; a live Neon seed is still an operator step.

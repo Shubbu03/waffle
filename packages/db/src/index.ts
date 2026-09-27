@@ -2,6 +2,8 @@ export type { AuthQuery, AuthStore, AuthTransaction, StoredChallenge } from "./a
 export { createAuthStore } from "./auth-store.ts";
 export type { ApiDatabase } from "./client.ts";
 export { createApiDatabase, isRestrictedApiLogin } from "./client.ts";
+export type { ReadStore } from "./read-store.ts";
+export { CursorExpiredError, createReadStore } from "./read-store.ts";
 export * from "./schema/index.ts";
 export type { SignalWriteResult } from "./signal-store.ts";
 export { createWatcherDatabase, isRestrictedWatcherLogin } from "./watcher.ts";
