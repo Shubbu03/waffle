@@ -121,3 +121,18 @@ describe("API responses", () => {
     expect(JSON.stringify(body)).not.toContain("private internal detail");
   });
 });
+
+test("live delivery configuration validates its separate credential and fails closed when disabled", async () => {
+  expect(parseApiEnv({ AUTH_URI, DATABASE_URL: validUrl, DELIVERY_DATABASE_URL: validUrl }).DELIVERY_DATABASE_URL).toBe(
+    validUrl,
+  );
+  expect(() =>
+    parseApiEnv({
+      AUTH_URI,
+      DATABASE_URL: validUrl,
+      DELIVERY_DATABASE_URL: "postgresql://owner:secret@localhost/waffle",
+    }),
+  ).toThrow("DELIVERY_DATABASE_URL");
+  const app = createApp({ async ping() {} });
+  expect((await app.request("/live")).status).toBe(503);
+});

@@ -13,6 +13,8 @@ Accepted 24 September 2026 for the CLOCK IN MVP. This is the implementation cont
 | Background alerts | Firebase Cloud Messaging from the API process | Wakes Android when the app is not foregrounded. An FCM acceptance response is not proof that a device displayed an alert. |
 | Demo deployment | Watcher and API as two Bun processes on a developer machine during test/demo windows; Neon, Helius, and FCM free plans; temporary HTTPS/WSS Cloudflare Quick Tunnel to the API for a physical device | $0 incremental hosting cost for the short-lived hackathon demo. The tunnel hostname changes on restart and has no uptime guarantee. It is not a production deployment. |
 
+Issue #19 implements the foreground polling/WebSocket path described in [live delivery](live-delivery.md). The optional private wake-up POST and push expansion/FCM remain unimplemented.
+
 No Redis, separate message broker, hosted key service, or database changefeed is required for the MVP. The separate watcher process is justified by its long-lived Solana subscriptions; the API process is justified by client auth and delivery. A 24/7 public service needs a paid or otherwise guaranteed always-on host and a revised database budget.
 
 ## Wallet sign-in and sessions

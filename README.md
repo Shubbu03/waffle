@@ -57,7 +57,7 @@ docs/
   watcher-rpc.md
 ```
 
-Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API provides health, wallet authentication, catalog, follows and alert preferences, and paginated All/Following signal reads; see the [API runtime guide](docs/api.md). Run the catalog watcher with `bun run start:watcher` after configuring `apps/watcher/.env`; see the [watcher RPC guide](docs/watcher-rpc.md). Never put database or provider secrets in the mobile app.
+Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API provides health, wallet authentication, catalog, follows and alert preferences, paginated All/Following signal reads, paper positions, and foreground WebSocket delivery; see the [API runtime guide](docs/api.md). Run the catalog watcher with `bun run start:watcher` after configuring `apps/watcher/.env`; see the [watcher RPC guide](docs/watcher-rpc.md). Never put database or provider secrets in the mobile app.
 
 ## Product decisions and plan
 
@@ -65,6 +65,7 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 * [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
 * [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
 * [API runtime](docs/api.md): local environment, restricted database login, and health check.
+* [Live delivery](docs/live-delivery.md): delivery credentials, WebSocket frames, cursor recovery, limits, and verification.
 * [Watcher RPC](docs/watcher-rpc.md): catalog subscriptions, reconnect recovery, rate limits, and health status.
 * [Watcher evidence](docs/watcher-evidence.md): mint and pool validation, quote probes, optional data, and freshness.
 * [Watcher signals](docs/watcher-signals.md): score assessment, suppression, atomic outbox writes, and deduplication.

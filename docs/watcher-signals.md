@@ -27,7 +27,7 @@ The transaction inserts `signals` with `ON CONFLICT (signature, wallet_id) DO NO
 
 Persistence failures propagate to watcher recovery, which retains undelivered outcomes for retry. Shutdown stops ingestion, cancels RPC work, drains accepted signal processing, then closes the database. The `watcher.signal` log is emitted after the transaction commits and reports `inserted` with IDs, `duplicate`, or `inactive-wallet`.
 
-The outbox includes eligible, suppressed, and historical signals for later feed delivery. API realtime/FCM dispatch remains a separate issue: delivery must recheck age, eligibility, active catalog membership, and user alert settings at dispatch time. An outbox row alone never authorizes an alert or trade.
+The outbox includes eligible, suppressed, and historical signals for later feed delivery. [API foreground delivery](live-delivery.md) now serves these committed rows through bounded cursor pages. FCM remains separate work and must recheck age, eligibility, active catalog membership, and user alert settings at dispatch time. An outbox row alone never authorizes an alert or trade.
 
 ## Verification
 
