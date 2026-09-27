@@ -19,6 +19,14 @@ const databaseUrlSchema = z.url().refine((value) => {
 
 const envSchema = z.strictObject({
   DATABASE_URL: databaseUrlSchema,
+  AUTH_URI: z.url().refine((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && !url.username && !url.password && !url.hash && url.host.length <= 253;
+    } catch {
+      return false;
+    }
+  }, "Expected a public HTTPS sign-in URI without credentials or fragment"),
   API_HOST: z.string().min(1).default("127.0.0.1"),
   API_PORT: portSchema,
 });
@@ -26,6 +34,7 @@ const envSchema = z.strictObject({
 export function parseApiEnv(env: Record<string, string | undefined>) {
   const result = envSchema.safeParse({
     DATABASE_URL: env.DATABASE_URL,
+    AUTH_URI: env.AUTH_URI,
     API_HOST: env.API_HOST,
     API_PORT: env.API_PORT,
   });

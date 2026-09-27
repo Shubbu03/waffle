@@ -18,6 +18,8 @@ bun run test:watcher
 
 Biome checks formatting, imports, and lint rules through `bun run lint`. Run `bun run lint:fix` to apply safe fixes.
 
+`bun install` also runs `prepare` to enable the checked-in `.githooks` for this clone. Both `pre-commit` and `pre-push` run `bun run lint:fix` from the repository root. Lint failures block the operation. If lint fixes tracked files, the hook also stops so you can review and stage the fixes before retrying; it never stages files automatically. Run `bun run prepare` to enable the hooks in an existing checkout or after installing with scripts disabled. Bun must be available in the environment used by Git, including Git GUI clients.
+
 Run one workspace's check:
 
 ```sh
@@ -30,7 +32,7 @@ All apps depend on `@waffle/shared` through `workspace:*`. Shared code must rema
 
 The mobile app starts on Solana mainnet. Copy `apps/mobile/.env.example` to `apps/mobile/.env` and set `EXPO_PUBLIC_WAFFLE_APP_URI` to the public HTTPS URL you control. Configure its Android Digital Asset Links file for the app signing key so wallets can verify the MWA identity. The app shows a sign-in error until this URL is set. `EXPO_PUBLIC_SOLANA_MAINNET_RPC_URL` is optional; without it, the app uses Solana's public mainnet RPC, which is suitable only for light development use. Both variables are bundled into the mobile app, so never put a secret RPC key or server credential in either one.
 
-MWA wallet connection and signing are wired through Wallet UI. API challenge/verification and bearer sessions from the backend architecture decision are not implemented in the mobile app yet; a connected wallet is currently only a local wallet state, not an API-authenticated session. Devnet and testnet remain available in Settings for wallet testing, but the planned API sign-in accepts mainnet only. Test the wallet flow on an Android development build with an MWA-compatible wallet; Expo Go and iOS do not support this MWA flow.
+MWA wallet connection and signing are wired through Wallet UI. The API implements challenge/verification and bearer sessions; mobile integration is not implemented yet; a connected wallet is currently only a local wallet state, not an API-authenticated session. Devnet and testnet remain available in Settings for wallet testing, but the planned API sign-in accepts mainnet only. Test the wallet flow on an Android development build with an MWA-compatible wallet; Expo Go and iOS do not support this MWA flow.
 
 ## Layout
 

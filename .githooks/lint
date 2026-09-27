@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Compare unstaged changes before and after linting without changing the index.
+before=$(git diff --no-ext-diff --binary | git hash-object --stdin)
+bun run lint:fix
+after=$(git diff --no-ext-diff --binary | git hash-object --stdin)
+
+if [ "$before" != "$after" ]; then
+  echo "Lint fixed tracked files. Review and stage the fixes, then retry the commit or push." >&2
+  exit 1
+fi
