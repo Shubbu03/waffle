@@ -6,6 +6,8 @@ import { z } from "zod";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { apiError } from "./errors.ts";
 import type { JupiterService } from "./jupiter.ts";
+import type { LiveDelivery } from "./live-delivery.ts";
+import { mountLiveRoute } from "./live-routes.ts";
 import { createPaperPositionRoutes } from "./paper-position-routes.ts";
 import { createReadRoutes } from "./read-routes.ts";
 import { createSubscriptionRoutes } from "./subscription-routes.ts";
@@ -16,8 +18,10 @@ export function createApp(
   database: { ping(): Promise<void>; reads?: ReadStore },
   auth?: { store: AuthStore; uri: string },
   paper?: { jupiter?: Pick<JupiterService, "getPaperQuote">; now?: () => number },
+  live?: LiveDelivery,
 ) {
   const app = new Hono<AppEnv>();
+  mountLiveRoute(app, live);
   app.use("*", async (c, next) => {
     const requestId = crypto.randomUUID();
     c.set("requestId", requestId);
@@ -29,7 +33,8 @@ export function createApp(
   app.get("/health", validateQuery(z.strictObject({})), async (c) => {
     try {
       await database.ping();
-      return c.json({ status: "ok" });
+      if (live?.status.degraded) return c.json({ status: "degraded", live: live.status }, 503);
+      return c.json({ status: "ok", ...(live ? { live: live.status } : {}) });
     } catch {
       return apiError(c, 503, "SERVICE_UNAVAILABLE", "Service unavailable");
     }

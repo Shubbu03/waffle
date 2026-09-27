@@ -53,3 +53,22 @@ test("watcher login excludes ownership, bypass privileges and other application 
   expect(isRestrictedWatcherLogin({ ...restricted, watcherRoleUsable: false })).toBe(false);
   expect(isRestrictedWatcherLogin({ ...restricted, canLogin: false })).toBe(false);
 });
+
+test("delivery login excludes owner, bypass privileges, and API/watcher membership", async () => {
+  const { isRestrictedDeliveryLogin } = await import("../src/delivery.ts");
+  const restricted = {
+    canLogin: true,
+    superuser: false,
+    bypassRls: false,
+    createRole: false,
+    ownsAppTables: false,
+    deliveryRoleUsable: true,
+    apiMember: false,
+    watcherMember: false,
+  };
+  expect(isRestrictedDeliveryLogin(restricted)).toBe(true);
+  for (const flag of ["superuser", "bypassRls", "createRole", "ownsAppTables", "apiMember", "watcherMember"] as const)
+    expect(isRestrictedDeliveryLogin({ ...restricted, [flag]: true })).toBe(false);
+  expect(isRestrictedDeliveryLogin({ ...restricted, deliveryRoleUsable: false })).toBe(false);
+  expect(isRestrictedDeliveryLogin({ ...restricted, canLogin: false })).toBe(false);
+});

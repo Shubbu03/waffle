@@ -1,4 +1,4 @@
 export type AppEnv = {
-  Bindings: { remoteAddress?: string };
+  Bindings: { remoteAddress?: string; server?: unknown };
   Variables: { requestId: string };
 };

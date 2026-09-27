@@ -4,6 +4,8 @@ Issue #5 adds the Bun/Hono API foundation. The public health route is `GET /heal
 
 Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). Issue #18 exposes its paper quote path through authenticated paper-position routes; real order/execution routes remain unexposed.
 
+Issue #19 adds [foreground WebSocket delivery](live-delivery.md) at `GET /live`, with a separate optional `DELIVERY_DATABASE_URL`, bounded history, current Following filters, and cursor recovery. When enabled, `/health` also reports live connection count, degraded status, and last successful poll time.
+
 ## Local setup
 
 1. Apply the [database migrations](database.md) to a disposable Neon branch. Create a separate login role with only membership in `waffle_api`; it must not own app tables or have superuser, `BYPASSRLS`, or `CREATEROLE` privileges. The API checks this on startup and refuses a privileged credential.
@@ -76,7 +78,7 @@ Manual acceptance with two wallet sessions: follow the same active catalog walle
 
 Challenges contain a random 128-bit alphanumeric nonce and expire after five minutes. Only its SHA-256 hash is stored. Verification uses the [Wallet Standard SIWS verifier](https://github.com/phantom/sign-in-with-solana#sign-in-output-verification), binds the exact signed bytes and account to all persisted challenge fields, and additionally applies strict Ed25519 verification to reject small-order public keys. `AUTH_URI` must still match the persisted URI and domain, so changing the deployment identity invalidates pending challenges. A conditional database update consumes a challenge once; user upsert and session insertion commit in the same transaction. Failed session creation rolls everything back.
 
-Sessions use random 256-bit bearer tokens, store only SHA-256 hashes, and expire after seven days. Return the raw token only at sign-in. The future mobile integration must keep it in OS-backed secure storage, send it only in the authorization header over HTTPS, and clear it on expiry, logout, or wallet changes. Mobile API sign-in and live-socket invalidation remain separate work. Auth responses use `Cache-Control: no-store`; request bodies are capped at 8 KiB.
+Sessions use random 256-bit bearer tokens, store only SHA-256 hashes, and expire after seven days. Return the raw token only at sign-in. The future mobile integration must keep it in OS-backed secure storage, send it only in the authorization header over HTTPS, and clear it on expiry, logout, or wallet changes. Mobile API sign-in remains separate work; the live server rechecks sessions on every page and closes revoked/expired Following sockets. Auth responses use `Cache-Control: no-store`; request bodies are capped at 8 KiB.
 
 The single API process limits all auth requests to 60 per peer IP per minute, challenges to 10 per peer IP, and verification to 10 per account address. Buckets expire, memory is bounded, and a full bucket map rejects new keys. Peer addresses come from `Bun.serve`'s socket metadata; caller-provided forwarding headers are ignored. Behind a tunnel or reverse proxy, clients share that proxy peer's limits. Multiple API instances need a shared limiter; do not expose independent instances expecting these process-local limits to coordinate.
 

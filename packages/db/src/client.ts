@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { createAuthStore } from "./auth-store.ts";
+import { createLiveReadStore } from "./live-store.ts";
 import { createReadStore } from "./read-store.ts";
 import * as schema from "./schema/index.ts";
 
@@ -43,6 +44,7 @@ export function createApiDatabase(databaseUrl: string) {
     db,
     auth: createAuthStore((run) => db.transaction(run)),
     reads: createReadStore(db),
+    live: createLiveReadStore(db),
     async assertRestrictedLogin(): Promise<void> {
       const [row] = await db.execute<ApiLoginFacts>(sql`
         SELECT r.rolcanlogin AS "canLogin",

@@ -19,6 +19,7 @@ const databaseUrlSchema = z.url().refine((value) => {
 
 const envSchema = z.strictObject({
   DATABASE_URL: databaseUrlSchema,
+  DELIVERY_DATABASE_URL: databaseUrlSchema.optional(),
   AUTH_URI: z.url().refine((value) => {
     try {
       const url = new URL(value);
@@ -34,6 +35,7 @@ const envSchema = z.strictObject({
 export function parseApiEnv(env: Record<string, string | undefined>) {
   const result = envSchema.safeParse({
     DATABASE_URL: env.DATABASE_URL,
+    DELIVERY_DATABASE_URL: env.DELIVERY_DATABASE_URL,
     AUTH_URI: env.AUTH_URI,
     API_HOST: env.API_HOST,
     API_PORT: env.API_PORT,
