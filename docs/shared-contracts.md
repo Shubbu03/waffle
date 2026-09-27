@@ -21,9 +21,10 @@ Issue #3 establishes the JSON boundary in [`@waffle/shared`](../packages/shared/
 | `POST /auth/verify` | `authVerifyRequestSchema` → `authVerifyResponseSchema` | API verifies exact signed bytes and consumes the challenge; shape validation alone does not authenticate. |
 | `GET /signals` | `getSignalsQuerySchema` → `signalPageSchema` | Public `all`, authenticated `following`; optional wallet filter; maximum page size 50. |
 | `GET /signals/:id` | `signalDetailSchema` | Summary plus ordered score reasons and evidence snapshot. |
-| `POST /paper-positions` | `createPaperPositionRequestSchema` → `paperPositionSchema` | Owner only; server checks quote ID, current freshness, signal, and size. |
-| `GET /paper-positions` | `paperPositionsResponseSchema` | Owner only. |
-| Jupiter quote and execution service | `jupiterPaperQuoteRequestSchema`, `jupiterRealOrderRequestSchema`, `jupiterExecuteRequestSchema`, `jupiterExecutionResultSchema` | Internal server service; no public trading route yet. |
+| `POST /paper-positions/quote` | `createPaperQuoteRequestSchema` → `paperQuoteSchema` | Owner only; output mint comes from the server signal. |
+| `POST /paper-positions` | `createPaperPositionRequestSchema` → `paperPositionWithFillSchema` | Owner only; server checks quote ID, current freshness, signal, and size. |
+| `GET /paper-positions` | `getPaperPositionsQuerySchema` → `paperPositionsResponseSchema` | Owner only. |
+| Jupiter quote and execution service | `jupiterPaperQuoteRequestSchema`, `jupiterRealOrderRequestSchema`, `jupiterExecuteRequestSchema`, `jupiterExecutionResultSchema` | Paper quotes are exposed through authenticated routes; real execution remains internal. |
 | Real order and attempt flow | `realOrderSchema`, `createTradeAttemptRequestSchema`, `tradeAttemptSchema`, `tradeAttemptsResponseSchema` | Accepted order and attempt contracts; authenticated route and persistence remain separate work. |
 
 `paperQuoteSchema` and `realOrderSchema` are distinguished by `kind`. Paper quotes contain no taker or transaction. Both preserve Jupiter request ID, router, minimum output, signed price impact, and fee breakdown; real orders also preserve fee payers and block height. Accepted real orders require the connected taker to be the signature fee payer, exactly one required signature, an allowed router (`metis`, `dflow`, `okx`), and the real size cap. The [Jupiter service](jupiter.md) decodes the transaction, checks quote freshness at use time, and verifies provider responses and wallet signatures. A schema alone cannot prove a transaction is safe to sign.

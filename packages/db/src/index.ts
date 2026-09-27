@@ -3,6 +3,7 @@ export { createAuthStore } from "./auth-store.ts";
 export type { ApiDatabase } from "./client.ts";
 export { createApiDatabase, isRestrictedApiLogin } from "./client.ts";
 export type { DatabaseExecutor, DatabaseTransaction } from "./database.ts";
+export { createPaperPositionStore } from "./paper-position-store.ts";
 export type { ReadStore } from "./read-store.ts";
 export { CursorExpiredError, createReadStore } from "./read-store.ts";
 export * from "./schema/index.ts";

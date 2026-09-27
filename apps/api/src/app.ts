@@ -5,6 +5,8 @@ import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { apiError } from "./errors.ts";
+import type { JupiterService } from "./jupiter.ts";
+import { createPaperPositionRoutes } from "./paper-position-routes.ts";
 import { createReadRoutes } from "./read-routes.ts";
 import { createSubscriptionRoutes } from "./subscription-routes.ts";
 import type { AppEnv } from "./types.ts";
@@ -13,6 +15,7 @@ import { validateQuery } from "./validation.ts";
 export function createApp(
   database: { ping(): Promise<void>; reads?: ReadStore },
   auth?: { store: AuthStore; uri: string },
+  paper?: { jupiter?: Pick<JupiterService, "getPaperQuote">; now?: () => number },
 ) {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
@@ -35,6 +38,7 @@ export function createApp(
   if (auth) {
     app.route("/auth", createAuthRoutes(auth.store, auth.uri));
     app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
+    app.route("/paper-positions", createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now));
   }
 
   if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store));
