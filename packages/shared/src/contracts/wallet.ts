@@ -36,7 +36,11 @@ export const walletSubscriptionsResponseSchema = z.strictObject({
 });
 
 export const pushTokenRegistrationSchema = z.strictObject({
-  token: z.string().min(1).max(4096),
+  token: z
+    .string()
+    .min(1)
+    .max(4096)
+    .regex(/^[A-Za-z0-9_:.-]+$/),
   platform: z.literal("android"),
   notificationPermission: z.enum(["granted", "denied"]),
 });
@@ -44,3 +48,11 @@ export const pushTokenRegistrationSchema = z.strictObject({
 export type Wallet = z.infer<typeof walletSchema>;
 export type WalletSubscription = z.infer<typeof walletSubscriptionSchema>;
 export type PutWalletSubscriptionRequest = z.infer<typeof putWalletSubscriptionRequestSchema>;
+
+export const pushTokenResponseSchema = z.strictObject({
+  id: idSchema,
+  platform: z.literal("android"),
+  notificationPermission: z.enum(["granted", "denied"]),
+  active: z.boolean(),
+});
+export type PushTokenRegistration = z.infer<typeof pushTokenRegistrationSchema>;
