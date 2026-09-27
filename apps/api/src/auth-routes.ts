@@ -57,7 +57,7 @@ export function createAuthRoutes(store: AuthStore, uri: string) {
     const result = await service.verify(request);
     return result ? c.json(result) : apiError(c, 401, "UNAUTHORIZED", "Invalid or expired sign-in challenge");
   });
-  app.get("/session", (c) => withOwner(c, store, async (_query, session) => c.json({ session })));
+  app.get("/session", (c) => withOwner(c, store, async (_tx, session) => c.json({ session })));
   app.post("/logout", async (c) => {
     const token = bearerToken(c.req.header("authorization"));
     if (!token || !(await store.logout(hashSecret(token)))) {

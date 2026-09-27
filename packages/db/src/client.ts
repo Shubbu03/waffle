@@ -1,6 +1,7 @@
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { type AuthTransaction, createAuthStore } from "./auth-store.ts";
+import { createAuthStore } from "./auth-store.ts";
 import { createReadStore } from "./read-store.ts";
 import * as schema from "./schema/index.ts";
 
@@ -38,23 +39,12 @@ export function createApiDatabase(databaseUrl: string) {
   });
   const db = drizzle({ client, schema });
 
-  const transaction: AuthTransaction = async (run) => {
-    const result = await client.begin(async (tx) => ({
-      value: await run(async <T extends Record<string, unknown>>(text: string, parameters: string[] = []) => [
-        ...(await tx.unsafe<T[]>(text, parameters)),
-      ]),
-    }));
-    return result.value;
-  };
-
   return {
     db,
-    auth: createAuthStore(transaction),
-    reads: createReadStore(async <T extends Record<string, unknown>>(text: string, parameters: string[] = []) => [
-      ...(await client.unsafe<T[]>(text, parameters)),
-    ]),
+    auth: createAuthStore((run) => db.transaction(run)),
+    reads: createReadStore(db),
     async assertRestrictedLogin(): Promise<void> {
-      const [row] = await client<ApiLoginFacts[]>`
+      const [row] = await db.execute<ApiLoginFacts>(sql`
         SELECT r.rolcanlogin AS "canLogin",
           r.rolsuper AS superuser,
           r.rolbypassrls AS "bypassRls",
@@ -69,13 +59,13 @@ export function createApiDatabase(databaseUrl: string) {
           pg_has_role(current_user, 'waffle_watcher', 'member') AS "watcherMember",
           pg_has_role(current_user, 'waffle_delivery', 'member') AS "deliveryMember"
         FROM pg_roles r WHERE r.rolname = current_user
-      `;
+      `);
       if (row === undefined || !isRestrictedApiLogin(row)) {
         throw new Error("API database login must be a non-owner member of waffle_api only");
       }
     },
     async ping(): Promise<void> {
-      await client`SELECT 1`;
+      await db.execute(sql`SELECT 1`);
     },
     async close(): Promise<void> {
       await client.end({ timeout: 5 });

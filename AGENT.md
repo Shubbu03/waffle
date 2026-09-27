@@ -3,6 +3,7 @@
 **Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, reviewed Postgres migrations, API runtime foundation, and watcher RPC scheduler exist; a Neon branch and feature integrations are pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
+**Database queries:** use Drizzle's typed query builder for application reads, inserts, updates, deletes, joins, upserts, and transactions in all future implementations. Use parameterized Drizzle `sql` fragments only for PostgreSQL-specific expressions, locks, session settings, and system-catalog checks. Never interpolate request values into SQL strings or use `sql.raw`/driver `.unsafe` for application queries. Reviewed migration/DDL SQL remains appropriate. See [database conventions](docs/database.md#query-conventions).
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
 
 ## Architecture (WSS, $0, no LLM on hot path)

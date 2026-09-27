@@ -1,6 +1,9 @@
 import type { ScoredSignal } from "@waffle/shared";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { type SignalQuery, type SignalWriteResult, storeSignal } from "./signal-store.ts";
+import * as schema from "./schema/index.ts";
+import { type SignalWriteResult, storeSignal } from "./signal-store.ts";
 
 type WatcherLoginFacts = {
   canLogin: boolean;
@@ -35,31 +38,17 @@ export function createWatcherDatabase(databaseUrl: string) {
     prepare: false,
     connection: { statement_timeout: 5000 },
   });
+  const db = drizzle({ client, schema });
   // Serial short writes keep connection pressure bounded; the transaction lock also covers other processes.
   let writes: Promise<unknown> = Promise.resolve();
   return {
     storeSignal(walletAddress: string, prepare: () => ScoredSignal): Promise<SignalWriteResult> {
-      const write = writes.then(() =>
-        storeSignal(
-          async (run) => {
-            const result = await client.begin(async (transaction) => {
-              const query: SignalQuery = async <T extends Record<string, unknown>>(
-                text: string,
-                parameters: (string | number)[] = [],
-              ) => Array.from(await transaction.unsafe<T[]>(text, parameters));
-              return run(query);
-            });
-            return result;
-          },
-          walletAddress,
-          prepare,
-        ),
-      );
+      const write = writes.then(() => storeSignal((run) => db.transaction(run), walletAddress, prepare));
       writes = write.catch(() => undefined);
       return write;
     },
     async assertRestrictedLogin(): Promise<void> {
-      const [row] = await client<WatcherLoginFacts[]>`
+      const [row] = await db.execute<WatcherLoginFacts>(sql`
         SELECT r.rolcanlogin AS "canLogin", r.rolsuper AS superuser,
           r.rolbypassrls AS "bypassRls", r.rolcreaterole AS "createRole",
           EXISTS (
@@ -71,14 +60,17 @@ export function createWatcherDatabase(databaseUrl: string) {
           pg_has_role(current_user, 'waffle_api', 'member') AS "apiMember",
           pg_has_role(current_user, 'waffle_delivery', 'member') AS "deliveryMember"
         FROM pg_roles r WHERE r.rolname = current_user
-      `;
+      `);
       if (!row || !isRestrictedWatcherLogin(row))
         throw new Error("Watcher database login must be a non-owner member of waffle_watcher only");
     },
     async loadActiveWallets(): Promise<string[]> {
-      const rows = await client<{ address: string }[]>`
-        SELECT address FROM public.watched_wallets WHERE active = true ORDER BY address LIMIT 101
-      `;
+      const rows = await db
+        .select({ address: schema.watchedWallets.address })
+        .from(schema.watchedWallets)
+        .where(eq(schema.watchedWallets.active, true))
+        .orderBy(schema.watchedWallets.address)
+        .limit(101);
       return rows.map((row) => row.address);
     },
     async close(): Promise<void> {

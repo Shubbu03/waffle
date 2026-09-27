@@ -43,7 +43,27 @@ The first command is a credential-free dry run. Apply is an explicit administrat
 
 `bun run test:api` seeds the catalog twice in migrated PGlite and exercises the actual queries under a non-owner role granted `waffle_api`. Tests cover bidirectional pagination, large IDs, gaps, inserts between pages, filters, paused history, full detail snapshots, unknown IDs, validation, expired cursors, and anonymous/expired/revoked/cross-user Following access. Live Neon connectivity and concurrent retention behavior still require manual acceptance.
 
-With the API running, manually request `/wallets`, `/signals?limit=2`, the returned `nextCursor` page, and `/signals/:id`. Verify Following using two signed-in wallets with different stored subscriptions, including a wallet filter outside the current user's follows. Follow mutation endpoints remain separate work.
+With the API running, manually request `/wallets`, `/signals?limit=2`, the returned `nextCursor` page, and `/signals/:id`. Verify Following using two signed-in wallets with different stored subscriptions, including a wallet filter outside the current user's follows. Follow mutation endpoints are described below.
+
+## Follows and alert preferences
+
+Issue #17 adds these owner-only routes. Each requires `Authorization: Bearer <accessToken>` and uses the session's user ID inside the existing owner transaction and forced RLS policies. All responses use `Cache-Control: no-store`.
+
+| Route | Request | Result |
+| --- | --- | --- |
+| `GET /wallet-subscriptions` | No query parameters | `{ items }` with only the current user's follows, ordered by creation time and wallet ID. Includes paused wallets. |
+| `PUT /wallet-subscriptions/:walletId` | JSON `{}` or `{ "alertsEnabled": true/false }` | 200 with the resulting subscription; creates a follow or updates its alert preference. |
+| `DELETE /wallet-subscriptions/:walletId` | No body or query parameters required | 204 whether the current user's follow existed or was already absent. |
+
+`walletId` is a catalog UUID. A PUT for a nonexistent wallet returns 404. New follows default to alerts off; setting `alertsEnabled: true` explicitly opts in. Omitting the field on an existing follow preserves its preference. Repeated requests preserve `createdAt` and an unchanged `alertsEnabledAt`. The database sets the opt-in timestamp only when alerts change from off to on, clears it on mute, and assigns a new timestamp on re-enable. Clients cannot provide either timestamps or owner IDs. Invalid/extra fields and query parameters return 400; PUT requires `application/json`, with a 4 KiB body limit.
+
+Paused wallets reject new follows and off-to-on alert changes with 409 `CONFLICT`. Existing follows remain readable and removable. An omitted preference or repeated existing preference is idempotent; muting an existing paused follow is allowed. Existing enabled preferences remain stored, but future push delivery must still require an active wallet. Paused updates never use an insert path. Active follow creation rechecks catalog activity in its insert statement, and the unique user/wallet key resolves overlapping retries without duplicate subscriptions.
+
+Unfollowing deletes only the session owner's subscription. It does not delete catalog wallets, shared signals, outbox events, or another user's follow, and it does not stop catalog monitoring. The Following feed immediately reflects the current subscription set. Refollowing starts with alerts off unless explicitly enabled again. A preference is not proof of notification permission or push delivery; device registration and delivery remain separate work.
+
+`bun run test:api` verifies these routes using the actual SQL under a restricted `waffle_api` member role in migrated PGlite. Coverage includes default/explicit opt-in, timestamp transitions and retries, overlapping follows, paused and unknown wallets, anonymous/expired/revoked sessions, owner injection, RLS isolation, rollback, and preservation of shared history and other users' subscriptions. PGlite serializes transactions; live multi-connection PostgreSQL concurrency remains a manual check.
+
+Manual acceptance with two wallet sessions: follow the same active catalog wallet, enable and mute alerts for one user, repeat the PUTs and compare timestamps, then unfollow twice. Confirm the other user's follow and public signal detail remain unchanged. Pause the catalog wallet using the administrative workflow and confirm that new follows/opt-ins fail while an existing follow can still be muted or removed.
 
 ## Wallet authentication
 

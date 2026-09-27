@@ -7,7 +7,8 @@
  *
  * Volume bands: low (<=40 recent txs) · mid (<=90) · high (>90, capped 100-tx window).
  */
-import { sql } from "drizzle-orm";
+import { notInArray } from "drizzle-orm";
+import type { DatabaseExecutor } from "../database.ts";
 import { watchedWallets } from "../schema/catalog.ts";
 
 export type CatalogEntry = {
@@ -68,8 +69,7 @@ export const BANNED_REASON_WORDS = [
  * present rows, deactivate (never delete) rows absent from the catalog.
  * Accepts any drizzle pg database (PGlite in tests, postgres-js against Neon here).
  */
-// biome-ignore lint/suspicious/noExplicitAny: PGlite + postgres-js drizzle both satisfy this at runtime.
-export async function seedCatalog(db: any): Promise<{ upserted: number; deactivated: number }> {
+export async function seedCatalog(db: DatabaseExecutor): Promise<{ upserted: number; deactivated: number }> {
   console.log(`[seed] seedCatalog: ${CATALOG.length} entries`);
   let upserted = 0;
   for (const entry of CATALOG) {
@@ -84,16 +84,11 @@ export async function seedCatalog(db: any): Promise<{ upserted: number; deactiva
     upserted += 1;
   }
   const addresses = CATALOG.map((e) => e.address);
-  const deactivated = (await db
+  const deactivated = await db
     .update(watchedWallets)
     .set({ active: false })
-    .where(
-      sql`${watchedWallets.address} NOT IN (${sql.join(
-        addresses.map((a) => sql`${a}`),
-        sql`, `,
-      )})`,
-    )
-    .returning({ id: watchedWallets.id })) as Array<{ id: string }>;
+    .where(notInArray(watchedWallets.address, addresses))
+    .returning({ id: watchedWallets.id });
   for (const row of deactivated) console.log(`[seed] deactivate: ${row.id} (removed from catalog, history preserved)`);
   console.log(
     `[seed] seedCatalog: upserted=${upserted} deactivated=${deactivated.length} (re-run must change nothing)`,

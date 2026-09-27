@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
-import { type AuthTransaction, createAuthStore, createReadStore } from "@waffle/db";
+import { createAuthStore, createReadStore, type DatabaseTransaction } from "@waffle/db";
+import { userWalletSubscriptions } from "@waffle/db/schema";
 import {
   type ApiErrorCode,
   apiErrorSchema,
@@ -16,6 +17,7 @@ import {
   walletCatalogResponseSchema,
 } from "@waffle/shared";
 import bs58 from "bs58";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { CATALOG, seedCatalog } from "../../../packages/db/src/seeds/catalog.ts";
@@ -33,16 +35,17 @@ const firstEvent = 9007199254740993n;
 const mint = "8Vte25yt28L8BfLXm8DrzjSYEyaKX8yry6hRKRmX7FGd";
 const now = 1_800_000_000_000;
 const iso = new Date(now).toISOString();
-const transaction: AuthTransaction = (run) =>
-  pg.transaction(async (tx) => {
-    await tx.exec("SET LOCAL ROLE read_test_login");
-    return run(
-      async <T extends Record<string, unknown>>(text: string, parameters: string[] = []) =>
-        (await tx.query<T>(text, parameters)).rows,
-    );
+const transaction: DatabaseTransaction = (run) =>
+  drizzle(pg).transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL ROLE read_test_login`);
+    return run(tx);
   });
 const auth = createAuthStore(transaction);
-const reads = createReadStore((text, parameters) => transaction((query) => query(text, parameters)));
+const reads: ReturnType<typeof createReadStore> = {
+  wallets: () => transaction((tx) => createReadStore(tx).wallets()),
+  signals: (input, ownerId) => transaction((tx) => createReadStore(tx).signals(input, ownerId)),
+  signal: (id) => transaction((tx) => createReadStore(tx).signal(id)),
+};
 const app = createApp({ reads, async ping() {} }, { store: auth, uri: "https://waffle.example" });
 
 beforeAll(async () => {
@@ -370,7 +373,7 @@ describe("Following access", () => {
     await error(`/signals?view=following&userId=${ownerB}`, 400, "VALIDATION_ERROR", tokenA);
     const response = await app.request("/signals?view=following", { headers: { authorization: `Bearer ${tokenA}` } });
     expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(await transaction((query) => query("SELECT * FROM user_wallet_subscriptions"))).toEqual([]);
+    expect(await transaction((tx) => tx.select().from(userWalletSubscriptions))).toEqual([]);
     expect((await page()).items).toHaveLength(4);
   });
 

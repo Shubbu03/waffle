@@ -7,9 +7,11 @@ import {
   scoreSignal,
   WRAPPED_SOL_MINT,
 } from "@waffle/shared";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { type SignalQuery, type SignalTransaction, storeSignal } from "../src/signal-store.ts";
+import type { DatabaseTransaction } from "../src/database.ts";
+import { storeSignal } from "../src/signal-store.ts";
 
 const wallet = WRAPPED_SOL_MINT;
 const secondWallet = SPL_TOKEN_PROGRAM_ID;
@@ -18,14 +20,10 @@ const signature = "4CXDvKkXcbuKJnW3awqVjuxKWj467mg9rgjc74kdWRFAn2NmqbegZdvsQbpEz
 const now = 1_800_000_000_000;
 const iso = new Date(now).toISOString();
 let pg: PGlite;
-const transaction: SignalTransaction = (run) =>
-  pg.transaction(async (tx) => {
-    await tx.exec("SET LOCAL ROLE waffle_watcher");
-    const query: SignalQuery = async <T extends Record<string, unknown>>(
-      sql: string,
-      parameters: (string | number)[] = [],
-    ) => (await tx.query<T>(sql, parameters)).rows;
-    return run(query);
+const transaction: DatabaseTransaction = (run) =>
+  drizzle(pg).transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL ROLE waffle_watcher`);
+    return run(tx);
   });
 function signal(address = wallet): ScoredSignal {
   const result = scoreSignal({
@@ -164,7 +162,9 @@ describe("restricted watcher signal persistence", () => {
     await pg.exec(`CREATE FUNCTION fail_signal_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced outbox failure'; END $$;
       CREATE TRIGGER fail_signal_event BEFORE INSERT ON signal_events FOR EACH ROW EXECUTE FUNCTION fail_signal_event()`);
     try {
-      await expect(storeSignal(transaction, wallet, () => signal())).rejects.toThrow("forced outbox failure");
+      await expect(storeSignal(transaction, wallet, () => signal())).rejects.toMatchObject({
+        cause: expect.objectContaining({ message: "forced outbox failure" }),
+      });
       expect(await counts()).toEqual({ signals: 0, events: 0 });
       expect(
         (await pg.query("SELECT recent_supported_activity_at FROM watched_wallets WHERE address = $1", [wallet]))
@@ -193,17 +193,26 @@ describe("restricted watcher signal persistence", () => {
 
   test("assessment occurs after both locks and older backfills never lower catalog activity", async () => {
     let prepared = false;
-    const ordered: SignalTransaction = (run) =>
-      transaction((query) =>
-        run(async (sql, params) => {
-          if (sql.includes("pg_advisory_xact_lock") || sql.includes("FOR SHARE")) expect(prepared).toBe(false);
-          return query(sql, params);
-        }),
-      );
+    const locks: string[] = [];
+    const ordered: DatabaseTransaction = (run) =>
+      drizzle(pg, {
+        logger: {
+          logQuery(query) {
+            if (query.includes("pg_advisory_xact_lock") || query.includes("for share")) {
+              expect(prepared).toBe(false);
+              locks.push(query);
+            }
+          },
+        },
+      }).transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL ROLE waffle_watcher`);
+        return run(tx);
+      });
     await storeSignal(ordered, wallet, () => {
       prepared = true;
       return signal();
     });
+    expect(locks).toHaveLength(2);
     const old = signal();
     old.signature = "5nMyRvg6LmK7hJ8zetUYYMEK6WcCPpLPg8U1HdmafxuTaKWy48ggE1zZ3AZ7tUMQaRmPhXjZLRfYwUsGDUaLtzoE";
     if (!old.snapshot.assessment) throw new Error("Expected assessment");

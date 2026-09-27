@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519";
 import { parseSignInMessage, verifySignIn } from "@solana/wallet-standard-util";
-import type { AuthQuery, AuthStore } from "@waffle/db";
+import type { AuthStore, DatabaseExecutor } from "@waffle/db";
 import { type AuthVerifyRequest, type Session, signInInputSchema } from "@waffle/shared";
 import bs58 from "bs58";
 import type { Context } from "hono";
@@ -93,7 +93,7 @@ export function createAuthService(store: AuthStore, authUri: string) {
 export async function withOwner(
   c: Context<AppEnv>,
   store: AuthStore,
-  run: (query: AuthQuery, session: Session) => Promise<Response>,
+  run: (tx: DatabaseExecutor, session: Session) => Promise<Response>,
 ): Promise<Response> {
   const token = bearerToken(c.req.header("authorization"));
   const result = token ? await store.withSession(hashSecret(token), run) : null;

@@ -1,6 +1,6 @@
 # Wallet selection
 
-Accepted 24 September 2026. Issue #7 supplies the reviewed catalog; #16 implements public catalog/signal reads and authenticated Following queries. Follow mutations, mobile screens, and alert delivery remain separate work.
+Accepted 24 September 2026. Issue #7 supplies the reviewed catalog; #16 implements public catalog/signal reads and authenticated Following queries. Issue #17 implements follow mutations and alert preferences. Mobile screens and alert delivery remain separate work.
 
 ## Catalog and follows
 
@@ -27,11 +27,11 @@ Select wallets with recent buys on the supported swap family (initially PumpSwap
 
 `user_wallet_subscriptions` stores user_id, watched_wallet_id, alerts_enabled (default false), `alerts_enabled_at` (set when alerts change from off to on), and created_at. The user/wallet pair must be unique and reference existing records. Users can read or mutate only their own subscriptions. The backend determines user identity from the authenticated session, never a client-supplied owner ID. The alert timestamp prevents a newly enabled preference from triggering a delayed alert for an earlier signal.
 
-Proposed endpoint contract:
+Implemented endpoint contract:
 
 * `GET /wallets`: public catalog.
 * `GET /wallet-subscriptions`: authenticated user's follows and alert preferences.
-* `PUT /wallet-subscriptions/:walletId`: idempotent follow or alert-preference update for an active catalog wallet.
+* `PUT /wallet-subscriptions/:walletId`: idempotent follow or alert-preference update for an active catalog wallet. Paused wallets reject new follows and new alert opt-ins, but existing follows may retain their preference or turn alerts off.
 * `DELETE /wallet-subscriptions/:walletId`: idempotent unfollow.
 
 Database credentials remain server-side. Apply ownership checks through the API and native Postgres RLS. The SIWS session and live transport decisions are in [backend-architecture.md](backend-architecture.md).
