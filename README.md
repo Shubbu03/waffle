@@ -57,7 +57,7 @@ docs/
   watcher-rpc.md
 ```
 
-Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API now has an app-local environment example and a database-backed health route; see the [API runtime guide](docs/api.md). Run the catalog watcher with `bun run start:watcher` after configuring `apps/watcher/.env`; see the [watcher RPC guide](docs/watcher-rpc.md). Never put database or provider secrets in the mobile app.
+Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API provides health, wallet authentication, catalog, and paginated All/Following signal reads; see the [API runtime guide](docs/api.md). Run the catalog watcher with `bun run start:watcher` after configuring `apps/watcher/.env`; see the [watcher RPC guide](docs/watcher-rpc.md). Never put database or provider secrets in the mobile app.
 
 ## Product decisions and plan
 

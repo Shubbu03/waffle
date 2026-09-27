@@ -1,14 +1,18 @@
-import type { AuthStore } from "@waffle/db";
+import type { AuthStore, ReadStore } from "@waffle/db";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { apiError } from "./errors.ts";
+import { createReadRoutes } from "./read-routes.ts";
 import type { AppEnv } from "./types.ts";
 import { validateQuery } from "./validation.ts";
 
-export function createApp(database: { ping(): Promise<void> }, auth?: { store: AuthStore; uri: string }) {
+export function createApp(
+  database: { ping(): Promise<void>; reads?: ReadStore },
+  auth?: { store: AuthStore; uri: string },
+) {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
     const requestId = crypto.randomUUID();
@@ -28,6 +32,8 @@ export function createApp(database: { ping(): Promise<void> }, auth?: { store: A
   });
 
   if (auth) app.route("/auth", createAuthRoutes(auth.store, auth.uri));
+
+  if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store));
 
   app.notFound((c) => apiError(c, 404, "NOT_FOUND", "Route not found"));
   app.onError((error, c) => {

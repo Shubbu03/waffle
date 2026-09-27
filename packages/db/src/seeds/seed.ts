@@ -13,18 +13,17 @@ import { CATALOG, seedCatalog } from "./catalog.ts";
 async function main(): Promise<void> {
   const apply = Bun.argv.includes("--apply");
   console.log(`[seed] main: mode=${apply ? "APPLY" : "dry-run"} (pass --apply to write)`);
-  loadDotenv({ path: new URL("../../.env", import.meta.url).pathname });
-  const url = process.env.DB_URL;
-  if (typeof url !== "string" || url.includes("replace-me")) {
-    throw new Error("DB_URL missing — copy packages/db/.env.example to packages/db/.env first");
-  }
-  console.log("[seed] main: DB_URL present (value hidden), connecting as migration owner");
   if (!apply) {
     for (const entry of CATALOG) {
       console.log(`[seed] dry-run: ${entry.address} | ${entry.label} | active=true`);
     }
     console.log(`[seed] main: dry-run done — ${CATALOG.length} rows would be upserted, 0 written`);
     return;
+  }
+  loadDotenv({ path: new URL("../../.env", import.meta.url).pathname });
+  const url = process.env.DB_URL;
+  if (typeof url !== "string" || url.includes("replace-me")) {
+    throw new Error("DB_URL missing — copy packages/db/.env.example to packages/db/.env first");
   }
   const client = postgres(url, { max: 2, connect_timeout: 10, idle_timeout: 10, prepare: false });
   try {

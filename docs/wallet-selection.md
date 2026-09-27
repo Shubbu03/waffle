@@ -1,6 +1,6 @@
 # Wallet selection
 
-Accepted 24 September 2026. This describes intended MVP behavior; it is not implemented yet.
+Accepted 24 September 2026. Issue #7 supplies the reviewed catalog; #16 implements public catalog/signal reads and authenticated Following queries. Follow mutations, mobile screens, and alert delivery remain separate work.
 
 ## Catalog and follows
 
@@ -8,7 +8,7 @@ waffle maintains a curated catalog of 5-10 manually reviewed wallets. Each user 
 
 The watcher monitors every active catalog wallet once, regardless of follower count. Signals are shared records. Following changes a user's feed and delivery preferences; it does not create another blockchain subscription. Unfollowing never deletes shared signals or stops catalog monitoring.
 
-Select wallets with recent buys on the supported swap family (initially PumpSwap), manageable transaction volume, and a documented inclusion reason. No specific addresses have been selected yet. Monitor actual RPC usage and credits before expanding the catalog; 5-10 is a starting scope, not a guarantee that the free tier can handle any activity level.
+Select wallets with recent buys on the supported swap family (initially PumpSwap), manageable transaction volume, and a documented inclusion reason. The five reviewed addresses and their dated inclusion reasons are in `packages/db/src/seeds/catalog.ts`. Monitor actual RPC usage and credits before expanding the catalog; 5-10 is a starting scope, not a guarantee that the free tier can handle any activity level.
 
 ## User experience
 

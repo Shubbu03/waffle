@@ -18,6 +18,8 @@
     "test:watcher": "bun run --filter '@waffle/watcher' test",
     "dev:api": "bun run --filter '@waffle/api' dev",
     "start:api": "bun run --filter '@waffle/api' start",
+    "db:seed": "bun run --filter '@waffle/db' db:seed",
+    "db:seed:apply": "bun run --filter '@waffle/db' db:seed:apply",
     "db:check": "bun run --filter '@waffle/db' db:check",
     "db:generate": "bun run --filter '@waffle/db' db:generate",
     "db:migrate": "bun run --filter '@waffle/db' db:migrate",

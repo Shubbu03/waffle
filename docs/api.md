@@ -1,6 +1,6 @@
 # API runtime
 
-Issue #5 adds the Bun/Hono API foundation. The public health route is `GET /health`: it returns `{ "status": "ok" }` after a database ping, or a `SERVICE_UNAVAILABLE` error with HTTP 503. Unknown routes and validation failures use the shared `apiErrorSchema` envelope and include `requestId`; the same ID is in the `X-Request-ID` response header. JSON body and query validators are available for later feature routes. Issue #15 adds wallet authentication and session-scoped owner transactions below. Signals and trading routes remain separate work.
+Issue #5 adds the Bun/Hono API foundation. The public health route is `GET /health`: it returns `{ "status": "ok" }` after a database ping, or a `SERVICE_UNAVAILABLE` error with HTTP 503. Unknown routes and validation failures use the shared `apiErrorSchema` envelope and include `requestId`; the same ID is in the `X-Request-ID` response header. JSON body and query validators are available for later feature routes. Issue #15 adds wallet authentication and session-scoped owner transactions below. Issue #16 adds the wallet catalog and signal read routes below; trading routes remain separate work.
 
 Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). It has no public route until authenticated wallet and trade authorization are available.
 
@@ -12,6 +12,38 @@ Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). I
 4. Request `GET http://127.0.0.1:3000/health` to confirm that the API can query Neon. `bun run test:api` runs the local API tests without credentials.
 
 The environment file is ignored by Git. Keep the connection URL on the server; never copy it into `apps/mobile`. Live Neon connectivity and login privileges still need checking with a configured Neon branch.
+
+## Wallet and signal reads
+
+| Route | Access | Result |
+| --- | --- | --- |
+| `GET /wallets` | Public | `{ items }` with catalog ID, address, label, inclusion reason, tracking status, and recent supported activity. Paused wallets remain visible. |
+| `GET /signals` | Public for `view=all` (default); bearer session for `view=following` | `{ view, direction, items, nextCursor, hasMore }` with signal summaries. |
+| `GET /signals/:id` | Public | Signal summary plus all persisted score reasons and the complete evidence snapshot. Invalid UUIDs return 400; unavailable signals return 404. |
+
+List queries accept only `view=all|following`, `direction=before|after`, `cursor`, `limit=1..50` (default 50), and `walletId` (catalog UUID). Duplicate or unknown parameters, including supplied owner IDs, return 400. Following derives ownership from the bearer session and queries subscriptions inside its transaction with RLS. Wallet filtering narrows that set; it cannot include another user's follows. Following works independently of alerts, and its responses use `Cache-Control: no-store`.
+
+Pages use committed outbox event IDs, represented as exact decimal strings even above JavaScript's safe integer range. `before` selects IDs strictly below the cursor in descending order; without a cursor it returns the newest page. `after` selects IDs strictly above the cursor in ascending order; without a cursor it starts at the oldest retained event. Follow and wallet filters apply before the page limit. The API reads one extra matching row to determine `hasMore`. `nextCursor` is the last returned event ID, including on a terminal nonempty page; empty pages return `null`. Continue paging only while `hasMore` is true. For reconnect after loading descending history, retain the highest applied event ID separately from the older-history pagination cursor.
+
+A supplied cursor below the oldest globally retained event returns HTTP 409 with `CURSOR_EXPIRED`. A supplied cursor with an empty outbox also returns that error because its history cannot be recovered. The retention bound is global, so an empty filtered result does not itself expire a valid cursor. Gaps within retained IDs are allowed. Retention bounds and page rows are read in one database statement. Clients should reload a recent page and show a history gap after `CURSOR_EXPIRED`.
+
+All persisted statuses remain visible: eligible, history-only, and suppressed. Pausing or unfollowing a wallet does not delete public history. Reads neither rescore old evidence nor claim it is still fresh; details preserve the original timestamps, reasons, amounts, optional unknowns, and assessment. Only signals with retained outbox events are exposed by these routes. Responses are checked against the shared schemas; invalid stored data produces a safe internal error.
+
+### Catalog setup and verification
+
+The reviewed five-wallet seed from #7 is reused without changing its addresses or review claims. From the repository root:
+
+```sh
+bun run db:seed
+# After configuring packages/db/.env with the migration-owner DB_URL:
+bun run db:seed:apply
+```
+
+The first command is a credential-free dry run. Apply is an explicit administrative operation, never API startup work: the API role has no catalog write grant. Reapplying preserves catalog IDs, refreshes reviewed metadata, and marks removed entries inactive. No live database was seeded during this implementation.
+
+`bun run test:api` seeds the catalog twice in migrated PGlite and exercises the actual queries under a non-owner role granted `waffle_api`. Tests cover bidirectional pagination, large IDs, gaps, inserts between pages, filters, paused history, full detail snapshots, unknown IDs, validation, expired cursors, and anonymous/expired/revoked/cross-user Following access. Live Neon connectivity and concurrent retention behavior still require manual acceptance.
+
+With the API running, manually request `/wallets`, `/signals?limit=2`, the returned `nextCursor` page, and `/signals/:id`. Verify Following using two signed-in wallets with different stored subscriptions, including a wallet filter outside the current user's follows. Follow mutation endpoints remain separate work.
 
 ## Wallet authentication
 
