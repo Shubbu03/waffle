@@ -20,4 +20,5 @@ export { CursorExpiredError, createReadStore } from "./read-store.ts";
 export * from "./schema/index.ts";
 export type { SignalWriteResult } from "./signal-store.ts";
 export { createSubscriptionStore } from "./subscription-store.ts";
+export { createTradeAttemptStore } from "./trade-attempt-store.ts";
 export { createWatcherDatabase, isRestrictedWatcherLogin } from "./watcher.ts";

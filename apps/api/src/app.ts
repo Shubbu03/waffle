@@ -13,6 +13,7 @@ import type { PushDelivery } from "./push-delivery.ts";
 import { createPushTokenRoutes } from "./push-token-routes.ts";
 import { createReadRoutes } from "./read-routes.ts";
 import { createSubscriptionRoutes } from "./subscription-routes.ts";
+import { createTradeAttemptRoutes } from "./trade-attempt-routes.ts";
 import type { AppEnv } from "./types.ts";
 import { validateQuery } from "./validation.ts";
 
@@ -22,6 +23,7 @@ export function createApp(
   paper?: { jupiter?: Pick<JupiterService, "getPaperQuote">; now?: () => number },
   live?: LiveDelivery,
   push?: PushDelivery,
+  trade?: { jupiter?: Pick<JupiterService, "getRealOrder" | "execute">; now?: () => number },
 ) {
   const app = new Hono<AppEnv>();
   mountLiveRoute(app, live);
@@ -49,6 +51,7 @@ export function createApp(
     app.route("/push-tokens", createPushTokenRoutes(auth.store));
     app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
     app.route("/paper-positions", createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now));
+    app.route("/trade-attempts", createTradeAttemptRoutes(auth.store, trade?.jupiter, trade?.now));
   }
 
   if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store));
