@@ -39,6 +39,7 @@ async function main() {
     jupiter ? { jupiter } : undefined,
     live,
     push,
+    jupiter ? { jupiter } : undefined,
   );
   let server: ReturnType<typeof Bun.serve>;
   try {

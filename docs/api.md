@@ -2,7 +2,7 @@
 
 Issue #5 adds the Bun/Hono API foundation. The public health route is `GET /health`: it returns `{ "status": "ok" }` after a database ping, or a `SERVICE_UNAVAILABLE` error with HTTP 503. Unknown routes and validation failures use the shared `apiErrorSchema` envelope and include `requestId`; the same ID is in the `X-Request-ID` response header. JSON body and query validators are available for later feature routes. Issue #15 adds wallet authentication and session-scoped owner transactions below. Issue #16 adds the wallet catalog and signal read routes below; trading routes remain separate work.
 
-Issue #12 adds the internal [Jupiter quote and execution service](jupiter.md). Issue #18 exposes its paper quote path through authenticated paper-position routes; real order/execution routes remain unexposed.
+Issue #12 adds the [Jupiter quote and execution service](jupiter.md). Issue #18 exposes its paper quote path; issue #26 exposes owner-checked real order and attempt routes.
 
 Issue #19 adds [foreground WebSocket delivery](live-delivery.md) at `GET /live`, with a separate optional `DELIVERY_DATABASE_URL`, bounded history, current Following filters, and cursor recovery. When enabled, `/health` also reports live connection count, degraded status, and last successful poll time.
 
@@ -124,3 +124,23 @@ The immutable `entryQuote` JSON persists amounts, fees, slippage, minimum output
 `401 UNAUTHORIZED` rejects missing/expired/revoked sessions; `404 NOT_FOUND` covers missing signals or inaccessible cursors; `409 STALE_SIGNAL`, `LIMIT_EXCEEDED`, `CONFLICT`, or `QUOTE_UNAVAILABLE` explains rejected fills. Provider failures return sanitized `503 QUOTE_UNAVAILABLE`. Listing uses both the session owner filter and existing forced RLS; another user's cursor cannot reveal their positions.
 
 Automated PGlite and injected-provider tests cover exact fill calculations, freshness, owner isolation, quote binding/reuse, validation, pagination, and rollback. For manual acceptance, sign in, request a fresh quote for a newly persisted eligible signal, create a 0.1 SOL paper position before expiry, and list it; repeat with a second account and an expired quote to verify rejection/isolation. Live Jupiter and Neon acceptance remain pending.
+
+## Real trade attempts (#26)
+
+These routes require a bearer session and return `Cache-Control: no-store`. The server derives the owner, taker wallet, and output mint from the session and persisted signal; clients cannot supply them.
+
+| Route | Request | Response |
+| --- | --- | --- |
+| `POST /trade-attempts` | `{ "signalId": "<uuid>", "inputAmountLamports": "50000000" }` | `201` with `{ order, attempt }`. Sign only `order.transactionBase64` with the authenticated wallet. |
+| `POST /trade-attempts/:id/execute` | `{ "quoteId": "<order.id>", "requestId": "<order.requestId>", "signedTransactionBase64": "..." }` | Updated attempt (`confirmed` or `failed`); uncertain execution returns 503 and leaves a readable `submitted` attempt. |
+| `POST /trade-attempts/:id/wallet-rejection` | `{ "quoteId": "<order.id>", "requestId": "<order.requestId>", "reason": "WALLET_REJECTED" }` or `USER_CANCELLED` | Updated `wallet_rejected` attempt. Repeating the same reason is idempotent. |
+| `GET /trade-attempts/:id` | No query parameters | Owner's attempt. |
+| `GET /trade-attempts?limit=50&cursor=<attempt uuid>` | Optional limit 1–50 and last attempt ID | `{ items, nextCursor }`, newest first by creation time and ID. |
+
+Preparation requires a still-eligible signal, fresh transaction/mint/pool evidence, at least $75,000 in fresh pool liquidity, and at most 0.05 SOL input. The server rechecks the session and signal after Jupiter responds, validates the returned order against the wallet, mint, size, router, fee payer, and expiry, then inserts a `prepared` row. A duplicate provider `requestId` for that owner fails with 409. Orders expire within 10 seconds, and their transaction bytes remain in a bounded process-local cache; a restart or eviction requires a new order. The `trade_attempts` table already exists, so this issue needs no migration.
+
+Execution verifies the wallet's Ed25519 signature over the unchanged order message. It atomically moves the matching owner row from `prepared` to `submitted` and stores that signature **before** calling Jupiter `/execute`. A failed database update prevents broadcast; repeated or concurrent submissions cannot broadcast the same attempt again. Jupiter success confirms the attempt only when its signature matches the signed transaction. An explicit Jupiter failure records its code and reason. A timeout, malformed response, or signature mismatch leaves `submitted` with `EXECUTION_UNKNOWN` or `SIGNATURE_MISMATCH`; the client must reconcile the stored signature against the chain before offering another trade. `submitted` is not proof of landing, and this API does not perform chain reconciliation. Wallet rejection is accepted only while `prepared` and cannot overwrite a submitted outcome.
+
+`401 UNAUTHORIZED` covers missing, expired, or revoked sessions; `404 NOT_FOUND` covers missing signals, inaccessible attempts, and foreign cursors; `409` covers stale evidence, limits, expired or mismatched orders, duplicate requests, and state conflicts. Provider unavailability or uncertain execution returns a sanitized 503. Owner predicates and forced database RLS both guard reads and mutations. Without `JUPITER_API_KEY`, order and execute requests return 503 while attempt reads still work.
+
+Automated PGlite tests use a restricted API role, a fake provider, and locally signed transaction fixtures. They cover duplicate requests, order mismatches, stale evidence, owner isolation, wallet rejection, signature verification, explicit failures, unknown outcomes, and pre-broadcast persistence rollback. They do not send a live trade. Manual acceptance on a disposable Neon branch and a wallet-controlled test amount is still needed, including provider response behavior and signature reconciliation. The mobile sign/submit flow belongs to #27. Multiple API instances require shared validated-order state before deployment; the current Jupiter cache is process-local.

@@ -224,7 +224,11 @@ export class JupiterService {
     return structuredClone(order.data);
   }
 
-  async execute(input: unknown, connectedWallet: string): Promise<JupiterExecutionResult> {
+  async execute(
+    input: unknown,
+    connectedWallet: string,
+    onValidated?: (signature: Uint8Array) => Promise<void>,
+  ): Promise<JupiterExecutionResult> {
     const parsed = jupiterExecuteRequestSchema.safeParse(input);
     if (!parsed.success) throw new JupiterServiceError("INVALID_REQUEST");
     const request = parsed.data;
@@ -247,6 +251,8 @@ export class JupiterService {
       throw new JupiterServiceError("INVALID_ORDER");
     }
 
+    // Persist a validated, owner-bound submission before any network broadcast.
+    await onValidated?.(signature);
     // Consume before broadcast. A timeout cannot establish whether Jupiter landed a trade.
     this.pendingOrders.delete(request.orderId);
     let payload: unknown;
