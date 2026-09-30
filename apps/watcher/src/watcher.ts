@@ -1,3 +1,4 @@
+import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
 import { solanaAddressSchema } from "@waffle/shared";
 import { type SocketFactory, WatcherConnection } from "./connection.ts";
 import type { TransactionOutcome, WatcherRpc } from "./rpc.ts";
@@ -10,6 +11,7 @@ export type WatcherEvent = {
   observedAtMs: number;
 };
 type Wallet = {
+  failures: ReturnType<typeof createFailureReporter>;
   address: string;
   connection: WatcherConnection;
   checkpoint: string | undefined;
@@ -24,6 +26,7 @@ type Wallet = {
   undelivered: Map<string, WatcherEvent>;
 };
 export type WalletWatcherOptions = {
+  logger?: Logger;
   url: string;
   connectionCount?: 2 | 3;
   staleSlots?: number;
@@ -45,8 +48,14 @@ export class WalletWatcher {
   private catalogLoading = false;
   private catalogHealthy = false;
   private nextCatalogAt = 0;
+  private readonly logger: Logger;
+  private readonly catalogFailures: ReturnType<typeof createFailureReporter>;
+  private readonly rpcFailures: ReturnType<typeof createFailureReporter>;
 
   constructor(private readonly options: WalletWatcherOptions) {
+    this.logger = options.logger ?? createLogger({ service: "watcher" });
+    this.catalogFailures = createFailureReporter(this.logger, "watcher.catalog");
+    this.rpcFailures = createFailureReporter(this.logger, "watcher.rpc");
     let url: URL;
     try {
       url = new URL(options.url);
@@ -67,6 +76,7 @@ export class WalletWatcher {
           now: this.now,
           random: options.random ?? Math.random,
           socketFactory: options.socketFactory ?? ((url) => new WebSocket(url)),
+          logger: this.logger,
           onDisconnect: () => {
             for (const wallet of this.wallets.values()) if (wallet.connection.id === id) this.invalidate(wallet);
           },
@@ -124,6 +134,8 @@ export class WalletWatcher {
   /** Public maintenance step also permits deterministic clock-driven failure tests. */
   tick(): void {
     if (this.stopped) return;
+    if (this.options.rpc.status.degraded) this.rpcFailures.fail({ reason: "rpc-overload-or-upstream-failure" });
+    else this.rpcFailures.recover();
     for (const connection of this.connections) connection.tick();
     if (this.now() >= this.nextCatalogAt) void this.refreshCatalog();
     for (const wallet of this.wallets.values()) {
@@ -150,6 +162,7 @@ export class WalletWatcher {
         if (this.wallets.has(address)) continue;
         const connection = this.connections.reduce((a, b) => (a.wallets.size <= b.wallets.size ? a : b));
         const wallet: Wallet = {
+          failures: createFailureReporter(this.logger, "watcher.wallet"),
           address,
           connection,
           checkpoint: undefined,
@@ -167,8 +180,10 @@ export class WalletWatcher {
         connection.add(address);
       }
       this.catalogHealthy = true;
-    } catch {
+      this.catalogFailures.recover();
+    } catch (error) {
       this.catalogHealthy = false;
+      this.catalogFailures.fail({ error });
     } finally {
       this.catalogLoading = false;
       this.nextCatalogAt = this.now() + 15_000;
@@ -236,9 +251,10 @@ export class WalletWatcher {
         }
         return true;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         this.invalidate(wallet);
         wallet.error = "recovery-failed";
+        wallet.failures.fail({ error, wallet: wallet.address, signature, reason: "processing" });
         return false;
       })
       .finally(() => wallet.pending.delete(signature));
@@ -276,6 +292,7 @@ export class WalletWatcher {
       if (!found) {
         this.invalidate(wallet);
         wallet.error = "history-gap";
+        wallet.failures.fail({ wallet: wallet.address, reason: "history-gap" });
         return;
       }
       const newest = entries[0]?.signature;
@@ -289,9 +306,11 @@ export class WalletWatcher {
       wallet.initialized = true;
       wallet.error = null;
       wallet.caughtUp = wallet.revision === revision && wallet.connection.generation === generation;
-    } catch {
+      if (wallet.caughtUp) wallet.failures.recover({ wallet: wallet.address });
+    } catch (error) {
       this.invalidate(wallet);
       wallet.error = "recovery-failed";
+      wallet.failures.fail({ error, wallet: wallet.address, reason: "backfill" });
     } finally {
       wallet.recovering = false;
       wallet.nextRecoveryAt = this.now() + 30_000;

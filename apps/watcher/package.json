@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@waffle/shared": "workspace:*",
+    "@waffle/observability": "workspace:*",
     "zod": "4.6.5",
     "@waffle/db": "workspace:*",
     "dotenv": "17.4.2",

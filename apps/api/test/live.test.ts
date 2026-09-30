@@ -8,6 +8,7 @@ import {
   type DatabaseTransaction,
 } from "@waffle/db";
 import { sessions, signalEvents, signals, users, userWalletSubscriptions, watchedWallets } from "@waffle/db/schema";
+import { createLogger } from "@waffle/observability";
 import {
   type LiveServerEvent,
   liveServerEventSchema,
@@ -297,9 +298,11 @@ test("bounds connections and frames, times out authentication, and closes slow c
 });
 
 test("a failed dispatch mark is retried without duplicate frames; health exposes failure", async () => {
+  const logs: Record<string, unknown>[] = [];
   let fail = true;
   await live.stop();
   live = new LiveDelivery({
+    logger: createLogger({ service: "api", write: (line) => logs.push(JSON.parse(line)) }),
     auth,
     reads,
     dispatch: {
@@ -316,11 +319,18 @@ test("a failed dispatch mark is retried without duplicate frames; health exposes
   await live.tick();
   expect(live.status.degraded).toBe(true);
   expect(await dispatch.pending()).toHaveLength(1);
+  await live.tick();
+  expect(logs).toHaveLength(1);
   fail = false;
   await live.tick();
   expect(live.status.degraded).toBe(false);
   expect(events(client)).toHaveLength(1);
   expect(await dispatch.pending()).toEqual([]);
+  expect(logs.map((log) => [log.event, log.component])).toEqual([
+    ["dependency.failed", "api.live"],
+    ["dependency.recovered", "api.live"],
+  ]);
+  expect(JSON.stringify(logs)).not.toContain("private database connection details");
 });
 
 test("delivery grants can mark only delivery columns; API cannot mark outbox or inspect other follows", async () => {

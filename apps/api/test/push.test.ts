@@ -17,6 +17,7 @@ import {
   userWalletSubscriptions,
   watchedWallets,
 } from "@waffle/db/schema";
+import { createLogger } from "@waffle/observability";
 import {
   PUMP_SWAP_PROGRAM_ID,
   pushTokenResponseSchema,
@@ -396,21 +397,33 @@ test("a crash after provider acceptance leaves a retryable job with the same ded
 });
 
 test("worker health reports authorization failures and recovers without losing pending jobs", async () => {
+  const logs: Record<string, unknown>[] = [];
   await register();
   let available = false;
-  const worker = new PushDelivery(store, {
-    async prepare() {
-      if (!available) throw new Error("private-key");
-      return send;
+  const worker = new PushDelivery(
+    store,
+    {
+      async prepare() {
+        if (!available) throw new Error("private-key");
+        return send;
+      },
     },
-  });
+    createLogger({ service: "api", write: (line) => logs.push(JSON.parse(line)) }),
+  );
   app = createApp({ async ping() {} }, undefined, undefined, undefined, worker);
   await worker.tick();
   expect((await app.request("/health")).status).toBe(503);
   expect(await drizzle(pg).select().from(pushDeliveries)).toHaveLength(1);
+  await worker.tick();
+  expect(logs).toHaveLength(1);
   available = true;
   await worker.tick();
   expect((await app.request("/health")).status).toBe(200);
   expect(worker.status.accepted).toBe(1);
+  expect(logs.map((log) => [log.event, log.component])).toEqual([
+    ["dependency.failed", "api.push"],
+    ["dependency.recovered", "api.push"],
+  ]);
+  expect(JSON.stringify(logs)).not.toContain("private-key");
   await worker.stop();
 });

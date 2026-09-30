@@ -5,6 +5,7 @@ import {
   type LivePage,
   type LiveReadStore,
 } from "@waffle/db";
+import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
 import { type ApiErrorCode, type LiveServerEvent, liveClientMessageSchema } from "@waffle/shared";
 import { hashSecret } from "./auth.ts";
 
@@ -28,14 +29,18 @@ export class LiveDelivery {
   private stopped = false;
   private failed = false;
   private lastPollAt: number | null = null;
+  private readonly failures: ReturnType<typeof createFailureReporter>;
   constructor(
     private readonly dependencies: {
       auth: AuthStore;
       reads: LiveReadStore;
       dispatch: LiveDispatchStore;
       now?: () => number;
+      logger?: Logger;
     },
-  ) {}
+  ) {
+    this.failures = createFailureReporter(dependencies.logger ?? createLogger({ service: "api" }), "api.live");
+  }
   private now() {
     return (this.dependencies.now ?? Date.now)();
   }
@@ -162,8 +167,9 @@ export class LiveDelivery {
           });
           if (!valid) this.fail(client, "UNAUTHORIZED", "Session expired or revoked");
         } else this.apply(client, await this.dependencies.reads.page(sub.cursor));
-      } catch {
+      } catch (error) {
         this.failed = true;
+        this.failures.fail({ error, reason: "read" });
         this.send(client, {
           v: 1,
           type: "error",
@@ -194,9 +200,11 @@ export class LiveDelivery {
         }
         await this.dependencies.dispatch.markDispatched(pending.map((event) => event.id));
         this.failed = false;
+        this.failures.recover();
         this.lastPollAt = this.now();
-      } catch {
+      } catch (error) {
         this.failed = true;
+        this.failures.fail({ error, reason: "poll" });
       }
     };
     this.polling = poll().finally(() => {

@@ -1,4 +1,5 @@
 import { createApiDatabase, createDeliveryDatabase } from "@waffle/db";
+import { createLogger } from "@waffle/observability";
 import { config } from "dotenv";
 import { websocket } from "hono/bun";
 import { createApp } from "./app.ts";
@@ -9,6 +10,7 @@ import { LiveDelivery } from "./live-delivery.ts";
 import { PushDelivery } from "./push-delivery.ts";
 
 config({ path: new URL("../.env", import.meta.url), quiet: true });
+const logger = createLogger({ service: "api", level: process.env.LOG_LEVEL });
 
 async function main() {
   const env = parseApiEnv(process.env);
@@ -19,10 +21,10 @@ async function main() {
   try {
     await database.assertRestrictedLogin();
     await delivery?.assertRestrictedLogin();
-  } catch {
+  } catch (error) {
     await delivery?.close();
     await database.close();
-    throw new Error("API database login verification failed");
+    throw new Error("API database login verification failed", { cause: error });
   }
 
   const jupiter =
@@ -30,9 +32,9 @@ async function main() {
       ? createJupiterServiceFromEnv({ JUPITER_API_KEY: process.env.JUPITER_API_KEY })
       : undefined;
   const live = delivery
-    ? new LiveDelivery({ auth: database.auth, reads: database.live, dispatch: delivery.live })
+    ? new LiveDelivery({ auth: database.auth, reads: database.live, dispatch: delivery.live, logger })
     : undefined;
-  const push = delivery && fcm ? new PushDelivery(delivery.push, fcm) : undefined;
+  const push = delivery && fcm ? new PushDelivery(delivery.push, fcm, logger) : undefined;
   const app = createApp(
     database,
     { store: database.auth, uri: env.AUTH_URI },
@@ -40,6 +42,7 @@ async function main() {
     live,
     push,
     jupiter ? { jupiter } : undefined,
+    logger,
   );
   let server: ReturnType<typeof Bun.serve>;
   try {
@@ -63,21 +66,31 @@ async function main() {
   }
   live?.start();
   push?.start();
-  if (!push) console.info("Push delivery disabled: configure FCM_SERVICE_ACCOUNT_JSON and DELIVERY_DATABASE_URL");
-  if (!live) console.info("Live delivery disabled: configure DELIVERY_DATABASE_URL");
-  console.info(`API listening on ${server.url.origin}`);
+  if (!push) logger.info("api.push.disabled", { reason: "missing-fcm-or-delivery-configuration" });
+  if (!live) logger.info("api.live.disabled", { reason: "missing-delivery-configuration" });
+  logger.info("api.started", { port: env.API_PORT });
 
+  let closing = false;
   async function shutdown() {
-    await Promise.all([live?.stop(), push?.stop()]);
-    server.stop(true);
-    await delivery?.close();
-    await database.close();
+    if (closing) return;
+    closing = true;
+    logger.info("api.stopping");
+    try {
+      await Promise.all([live?.stop(), push?.stop()]);
+      server.stop(true);
+      await delivery?.close();
+      await database.close();
+      logger.info("api.stopped");
+    } catch (error) {
+      logger.error("api.shutdown.failed", { error });
+      process.exitCode = 1;
+    }
   }
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "API startup failed");
+  logger.error("api.startup.failed", { error });
   process.exitCode = 1;
 });

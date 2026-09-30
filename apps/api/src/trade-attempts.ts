@@ -22,8 +22,9 @@ export class TradeAttemptError extends Error {
     readonly code: ApiErrorCode,
     readonly status: 401 | 404 | 409 | 503,
     message: string,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, { cause });
   }
 }
 
@@ -86,7 +87,7 @@ function mapJupiter(error: JupiterServiceError): TradeAttemptError {
     return new TradeAttemptError("QUOTE_UNAVAILABLE", 409, "Request a fresh real order");
   if (error.code === "INVALID_ORDER" || error.code === "INVALID_REQUEST")
     return new TradeAttemptError("CONFLICT", 409, "Order or signed transaction does not match");
-  return new TradeAttemptError("SERVICE_UNAVAILABLE", 503, "Order or execution service unavailable");
+  return new TradeAttemptError("SERVICE_UNAVAILABLE", 503, "Order or execution service unavailable", error);
 }
 
 /** Authenticated wallet is the only source of owner/taker; provider I/O stays outside DB transactions. */

@@ -1,3 +1,4 @@
+import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
 import { transactionSignatureSchema } from "@waffle/shared";
 import { z } from "zod";
 
@@ -48,6 +49,7 @@ export class WatcherConnection {
   private attempt = 0;
   private retryAt = 0;
   private stopped = false;
+  private readonly failures: ReturnType<typeof createFailureReporter>;
   state: "connecting" | "open" | "backoff" | "stopped" = "backoff";
   latestSlot = 0;
   generation = 0;
@@ -62,8 +64,11 @@ export class WatcherConnection {
       onDisconnect: () => void;
       onSubscribed: (wallet: string) => void;
       onLog: (wallet: string, signature: string, slot: number) => void;
+      logger?: Logger;
     },
-  ) {}
+  ) {
+    this.failures = createFailureReporter(options.logger ?? createLogger({ service: "watcher" }), "watcher.connection");
+  }
 
   get status() {
     return {
@@ -101,10 +106,10 @@ export class WatcherConnection {
     if (this.stopped) return;
     const now = this.options.now();
     if (this.state === "backoff" && now >= this.retryAt) this.connect();
-    if (this.state === "connecting" && now >= this.deadline) this.disconnect();
+    if (this.state === "connecting" && now >= this.deadline) this.disconnect("connect-timeout");
     if (this.state !== "open") return;
     if (now - this.lastSlotAt >= 30_000 || [...this.pending.values()].some((request) => now - request.at >= 15_000)) {
-      this.disconnect();
+      this.disconnect("heartbeat-or-subscription-timeout");
       return;
     }
     if (now - this.openedAt >= 60_000) this.attempt = 0;
@@ -112,8 +117,8 @@ export class WatcherConnection {
       this.lastPingAt = now;
       try {
         this.socket?.ping();
-      } catch {
-        this.disconnect();
+      } catch (error) {
+        this.disconnect("ping", error);
       }
     }
   }
@@ -139,17 +144,17 @@ export class WatcherConnection {
           this.send("logsSubscribe", [{ mentions: [wallet] }, { commitment: "processed" }], wallet);
       };
       socket.onclose = socket.onerror = () => {
-        if (this.socket === socket) this.disconnect();
+        if (this.socket === socket) this.disconnect("socket-closed");
       };
       socket.onmessage = (event) => {
         if (this.socket === socket) this.receive(event.data);
       };
-    } catch {
-      this.disconnect();
+    } catch (error) {
+      this.disconnect("connect", error);
     }
   }
 
-  private disconnect(): void {
+  private disconnect(reason = "shutdown", error?: unknown): void {
     const socket = this.socket;
     this.socket = undefined;
     if (socket) {
@@ -166,6 +171,14 @@ export class WatcherConnection {
       this.options.now() +
       Math.min(30_000, 1000 * 2 ** Math.min(this.attempt++, 5)) +
       Math.floor(this.options.random() * 1000);
+    if (!this.stopped)
+      this.failures.fail({
+        connectionId: this.id,
+        reason,
+        attempt: this.attempt,
+        retryInMs: this.retryAt - this.options.now(),
+        error,
+      });
     this.options.onDisconnect();
   }
 
@@ -175,21 +188,30 @@ export class WatcherConnection {
     this.pending.set(id, { method, at: this.options.now(), ...(wallet ? { wallet } : {}) });
     try {
       this.socket?.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
-    } catch {
-      this.disconnect();
+    } catch (error) {
+      this.disconnect("send", error);
     }
+  }
+
+  private reportRecovery(): void {
+    if (
+      this.latestSlot > 0 &&
+      this.pending.size === 0 &&
+      [...this.wallets].every((wallet) => this.hasSubscription(wallet))
+    )
+      this.failures.recover({ connectionId: this.id });
   }
 
   private receive(data: unknown): void {
     if (typeof data !== "string" || data.length > 1_048_576) {
-      this.disconnect();
+      this.disconnect("invalid-frame");
       return;
     }
     let value: unknown;
     try {
       value = JSON.parse(data);
     } catch {
-      this.disconnect();
+      this.disconnect("invalid-frame");
       return;
     }
     const reply = response.safeParse(value);
@@ -202,7 +224,7 @@ export class WatcherConnection {
         reply.data.error !== undefined ||
         (request.method === "logsUnsubscribe" ? result !== true : typeof result !== "number")
       ) {
-        this.disconnect();
+        this.disconnect("subscription-rejected");
         return;
       }
       if (typeof result !== "number") return;
@@ -215,11 +237,12 @@ export class WatcherConnection {
         this.subscriptions.set(result, request.wallet);
         this.options.onSubscribed(request.wallet);
       }
+      this.reportRecovery();
       return;
     }
     const parsed = notification.safeParse(value);
     if (!parsed.success) {
-      this.disconnect();
+      this.disconnect("invalid-frame");
       return;
     }
     const message = parsed.data;
@@ -228,6 +251,7 @@ export class WatcherConnection {
       if (message.params.result.slot > this.latestSlot) {
         this.latestSlot = message.params.result.slot;
         this.lastSlotAt = this.options.now();
+        this.reportRecovery();
       }
       return;
     }

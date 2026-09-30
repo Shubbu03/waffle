@@ -48,6 +48,7 @@ export function createPaperPositionRoutes(
   );
   app.onError((error, c) => {
     if (!(error instanceof PaperPositionError)) throw error;
+    if (error.status >= 500) c.set("failure", error);
     if (error.status === 401) c.header("WWW-Authenticate", "Bearer");
     return apiError(c, error.status, error.code, error.message);
   });

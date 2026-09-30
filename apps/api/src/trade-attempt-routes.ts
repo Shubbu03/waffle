@@ -1,4 +1,5 @@
 import type { AuthStore } from "@waffle/db";
+import { createLogger, type Logger } from "@waffle/observability";
 import {
   createTradeAttemptRequestSchema,
   executeTradeAttemptRequestSchema,
@@ -20,6 +21,7 @@ export function createTradeAttemptRoutes(
   auth: AuthStore,
   jupiter?: Pick<JupiterService, "getRealOrder" | "execute">,
   now?: () => number,
+  logger: Logger = createLogger({ service: "api" }),
 ) {
   const app = new Hono<AppEnv>();
   const service = createTradeAttemptService(auth, jupiter, now);
@@ -51,10 +53,22 @@ export function createTradeAttemptRoutes(
     validateQuery(z.strictObject({})),
     validateParams(z.strictObject({ id: idSchema })),
     validateJson(executeTradeAttemptRequestSchema),
-    async (c) =>
-      c.json(
-        await service.execute(tokenHash(c.req.header("Authorization")), c.req.valid("param").id, c.req.valid("json")),
-      ),
+    async (c) => {
+      c.set("attemptId", c.req.valid("param").id);
+      const attempt = await service.execute(
+        tokenHash(c.req.header("Authorization")),
+        c.req.valid("param").id,
+        c.req.valid("json"),
+      );
+      if (attempt.status === "failed")
+        logger.warn("api.trade.failed", {
+          requestId: c.get("requestId"),
+          attemptId: attempt.id,
+          ...(attempt.executeCode === null ? {} : { code: String(attempt.executeCode) }),
+          ...(attempt.signature ? { signature: attempt.signature } : {}),
+        });
+      return c.json(attempt);
+    },
   );
   app.post(
     "/:id/wallet-rejection",
@@ -68,6 +82,7 @@ export function createTradeAttemptRoutes(
   );
   app.onError((error, c) => {
     if (!(error instanceof TradeAttemptError)) throw error;
+    if (error.status >= 500) c.set("failure", error);
     if (error.status === 401) c.header("WWW-Authenticate", "Bearer");
     return apiError(c, error.status, error.code, error.message);
   });

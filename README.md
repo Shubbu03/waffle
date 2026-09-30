@@ -14,6 +14,7 @@ bun run test:shared
 bun run test:db
 bun run test:api
 bun run test:watcher
+bun run test:observability
 ```
 
 Biome checks formatting, imports, and lint rules through `bun run lint`. Run `bun run lint:fix` to apply safe fixes.
@@ -45,6 +46,7 @@ packages/
   shared/           Validated API/live schemas, score policy, program IDs
   db/               Typed Postgres schema, migrations, tests
   jupiter/          Server-only quote, price, and execution service
+  observability/    Shared structured logging and dependency failure reporting
 tests/
   fixtures/         Redacted transaction fixtures (pending)
 docs/
@@ -65,6 +67,7 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 * [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
 * [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
 * [API runtime](docs/api.md): local environment, restricted database login, and health check.
+* [Backend logging](docs/observability.md): important failures, request correlation, secret omission, and log levels.
 * [Push alerts](docs/push-alerts.md): owner-bound device registration, FCM setup, eligibility, retry, and device acceptance.
 * [Live delivery](docs/live-delivery.md): delivery credentials, WebSocket frames, cursor recovery, limits, and verification.
 * [Watcher RPC](docs/watcher-rpc.md): catalog subscriptions, reconnect recovery, rate limits, and health status.
