@@ -7,6 +7,8 @@ export const FontFamily = {
   sans: 'sans-serif',
   sansMedium: 'sans-serif-medium',
   serif: 'serif',
+  /** Handwritten wordmark (Playwrite ZA Regular) — waffle logo text only. */
+  wordmark: 'PlaywriteZA',
 } as const
 
 export type FontFamilyName = keyof typeof FontFamily

@@ -1,6 +1,6 @@
 import { StyleSheet, Text, type TextProps } from 'react-native'
-import { useThemeColor } from '@/hooks/use-theme-color'
 import { FontFamily, type FontFamilyName } from '@/constants/fonts'
+import { useThemeColor } from '@/hooks/use-theme-color'
 
 export type AppTextProps = TextProps & {
   lightColor?: string
@@ -11,8 +11,7 @@ export type AppTextProps = TextProps & {
 
 export function AppText({ style, lightColor, darkColor, type = 'default', family, ...rest }: AppTextProps) {
   const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text')
-  const resolvedFamily =
-    family ?? (type === 'title' || type === 'subtitle' ? FontFamily.serif : FontFamily.sans)
+  const resolvedFamily = family ?? (type === 'title' || type === 'subtitle' ? FontFamily.serif : FontFamily.sans)
 
   return (
     <Text
