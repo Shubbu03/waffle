@@ -3,6 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { createAuthStore, type DatabaseTransaction } from "@waffle/db";
 import { sessions, signalEvents, signals, tradeAttempts, users, watchedWallets } from "@waffle/db/schema";
+import { createLogger } from "@waffle/observability";
 import {
   PUMP_SWAP_PROGRAM_ID,
   SPL_TOKEN_PROGRAM_ID,
@@ -24,6 +25,7 @@ import { JupiterService } from "../src/jupiter.ts";
 let pg: PGlite;
 let clock: number;
 let app: ReturnType<typeof createApp>;
+let logs: Record<string, unknown>[];
 let requests: Array<{ url: URL; init: RequestInit }>;
 let orderReply: () => unknown;
 let executionReply: () => unknown;
@@ -121,6 +123,7 @@ afterAll(async () => {
   await pg.close();
 });
 beforeEach(async () => {
+  logs = [];
   clock = Date.now();
   requests = [];
   orderCalls = 0;
@@ -236,6 +239,7 @@ beforeEach(async () => {
     undefined,
     undefined,
     { jupiter, now: () => clock },
+    createLogger({ service: "api", write: (line) => logs.push(JSON.parse(line)) }),
   );
 });
 
@@ -388,12 +392,22 @@ test("wallet rejection records an explicit owner-only result and is idempotent",
 test("Jupiter explicit failure stores code and the wallet's signed signature", async () => {
   executionReply = () => ({ status: "Failed", code: -1000, signature: null });
   const { attempt } = await prepared();
-  expect((await execution(attempt)).status).toBe(200);
+  const response = await execution(attempt);
+  expect(response.status).toBe(200);
   expect((await drizzle(pg).select().from(tradeAttempts))[0]).toMatchObject({
     status: "failed",
     signature: signedSignature,
     executeCode: -1000,
     failureReason: "JUPITER_EXECUTION_FAILED",
+  });
+  expect(logs).toHaveLength(1);
+  expect(logs[0]).toMatchObject({
+    event: "api.trade.failed",
+    level: "warn",
+    attemptId: attempt.id,
+    code: "-1000",
+    signature: signedSignature,
+    requestId: response.headers.get("x-request-id"),
   });
 });
 
@@ -404,6 +418,14 @@ test("execution timeout remains submitted and cannot rebroadcast; a mismatched s
   };
   const first = await execution(attempt);
   expect(first.status).toBe(503);
+  expect(logs).toHaveLength(1);
+  expect(logs[0]).toMatchObject({
+    event: "api.request.failed",
+    attemptId: attempt.id,
+    requestId: first.headers.get("x-request-id"),
+    error: { type: "TradeAttemptError", cause: { type: "JupiterServiceError", code: "EXECUTION_UNKNOWN" } },
+  });
+  expect(JSON.stringify(logs)).not.toContain("simulated network timeout");
   expect((await drizzle(pg).select().from(tradeAttempts))[0]).toMatchObject({
     status: "submitted",
     signature: signedSignature,

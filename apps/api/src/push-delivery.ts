@@ -1,4 +1,5 @@
 import type { PushDeliveryStore, PushSender } from "@waffle/db";
+import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
 
 /** One bounded worker per API process; Postgres locks coordinate any overlapping processes. */
 export class PushDelivery {
@@ -9,10 +10,14 @@ export class PushDelivery {
   private degraded = false;
   private lastPollAt: number | null = null;
   private accepted = 0;
+  private readonly failures: ReturnType<typeof createFailureReporter>;
   constructor(
     private readonly store: PushDeliveryStore,
     private readonly provider: { prepare(): Promise<PushSender> },
-  ) {}
+    logger: Logger = createLogger({ service: "api" }),
+  ) {
+    this.failures = createFailureReporter(logger, "api.push");
+  }
   get status() {
     return { degraded: this.degraded, lastPollAt: this.lastPollAt, accepted: this.accepted };
   }
@@ -33,9 +38,12 @@ export class PushDelivery {
           if (result === "retry") break;
         }
         this.degraded = failures;
+        if (failures) this.failures.fail({ reason: "delivery-retry-or-failure" });
+        else this.failures.recover();
         this.lastPollAt = Date.now();
-      } catch {
+      } catch (error) {
         this.degraded = true;
+        this.failures.fail({ error, reason: "poll" });
       }
     })().finally(() => {
       this.polling = undefined;

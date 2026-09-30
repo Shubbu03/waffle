@@ -10,6 +10,7 @@ export function apiError(
   message: string,
   fieldErrors?: Record<string, string[]>,
 ) {
+  c.set("errorCode", code);
   return c.json(
     {
       error: { code, message, ...(fieldErrors ? { fieldErrors } : {}) },

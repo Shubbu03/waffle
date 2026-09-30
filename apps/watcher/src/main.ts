@@ -1,5 +1,6 @@
 import { createWatcherDatabase } from "@waffle/db";
 import { JupiterService } from "@waffle/jupiter";
+import { createLogger } from "@waffle/observability";
 import { config } from "dotenv";
 import { parseWatcherEnv } from "./config.ts";
 import { TokenEvidenceCollector } from "./evidence.ts";
@@ -9,6 +10,7 @@ import { SignalPipeline } from "./signals.ts";
 import { WalletWatcher } from "./watcher.ts";
 
 config({ path: new URL("../.env", import.meta.url), quiet: true });
+const logger = createLogger({ service: "watcher", level: process.env.LOG_LEVEL });
 
 async function main(): Promise<void> {
   const env = parseWatcherEnv(process.env);
@@ -26,17 +28,9 @@ async function main(): Promise<void> {
     staleSlots: env.WATCHER_STALE_SLOTS,
     rpc,
     loadActiveWallets: database.loadActiveWallets,
+    logger,
     onEvent: async (event) => {
-      const result = await signals.handle(event);
-      if (result)
-        console.info(
-          JSON.stringify({
-            event: "watcher.signal",
-            wallet: event.outcome.wallet,
-            signature: event.outcome.signature,
-            ...result,
-          }),
-        );
+      await signals.handle(event);
     },
   });
   const signals = new SignalPipeline({
@@ -49,17 +43,17 @@ async function main(): Promise<void> {
     },
   });
   let server: ReturnType<typeof Bun.serve> | undefined;
-  let reporting: ReturnType<typeof setInterval> | undefined;
   let closing = false;
   async function shutdown(): Promise<void> {
     if (closing) return;
     closing = true;
-    clearInterval(reporting);
+    logger.info("watcher.stopping");
     server?.stop(true);
     watcher.stop();
     rpc.close();
     await signals.close();
     await database.close();
+    logger.info("watcher.stopped");
   }
   try {
     await database.assertRestrictedLogin();
@@ -74,21 +68,26 @@ async function main(): Promise<void> {
         return Response.json(status, { status: status.degraded ? 503 : 200, headers: { "cache-control": "no-store" } });
       },
     });
-    reporting = setInterval(() => console.info(JSON.stringify({ event: "watcher.status", ...watcher.status })), 30_000);
-    console.info(`Watcher started; health at http://127.0.0.1:${env.WATCHER_STATUS_PORT}/health`);
+    logger.info("watcher.started", { port: env.WATCHER_STATUS_PORT });
     process.once("SIGINT", () => {
-      void shutdown();
+      void shutdown().catch((error: unknown) => {
+        logger.error("watcher.shutdown.failed", { error });
+        process.exitCode = 1;
+      });
     });
     process.once("SIGTERM", () => {
-      void shutdown();
+      void shutdown().catch((error: unknown) => {
+        logger.error("watcher.shutdown.failed", { error });
+        process.exitCode = 1;
+      });
     });
-  } catch {
+  } catch (error) {
     await shutdown();
-    throw new Error("Watcher startup failed; check app-local configuration and the restricted database login");
+    throw error;
   }
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "Watcher startup failed");
+  logger.error("watcher.startup.failed", { error });
   process.exitCode = 1;
 });

@@ -1,6 +1,8 @@
 import type { AuthStore, ReadStore } from "@waffle/db";
+import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { routePath } from "hono/route";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { createAuthRoutes } from "./auth-routes.ts";
@@ -24,24 +26,43 @@ export function createApp(
   live?: LiveDelivery,
   push?: PushDelivery,
   trade?: { jupiter?: Pick<JupiterService, "getRealOrder" | "execute">; now?: () => number },
+  logger: Logger = createLogger({ service: "api" }),
 ) {
   const app = new Hono<AppEnv>();
+  const health = createFailureReporter(logger, "api.database");
   mountLiveRoute(app, live);
   app.use("*", async (c, next) => {
     const requestId = crypto.randomUUID();
     c.set("requestId", requestId);
     c.header("X-Request-ID", requestId);
+    const started = performance.now();
     await next();
+    if (c.res.status >= 500 && c.req.path !== "/health") {
+      const code = c.get("errorCode");
+      const attemptId = c.get("attemptId");
+      logger.error("api.request.failed", {
+        requestId,
+        method: c.req.method,
+        route: routePath(c, -1),
+        status: c.res.status,
+        durationMs: Math.round(performance.now() - started),
+        ...(code ? { code } : {}),
+        ...(attemptId ? { attemptId } : {}),
+        error: c.get("failure"),
+      });
+    }
   });
   app.use("*", secureHeaders());
 
   app.get("/health", validateQuery(z.strictObject({})), async (c) => {
     try {
       await database.ping();
+      health.recover();
       const delivery = { ...(live ? { live: live.status } : {}), ...(push ? { push: push.status } : {}) };
       if (live?.status.degraded || push?.status.degraded) return c.json({ status: "degraded", ...delivery }, 503);
       return c.json({ status: "ok", ...delivery });
-    } catch {
+    } catch (error) {
+      health.fail({ error, requestId: c.get("requestId") });
       return apiError(c, 503, "SERVICE_UNAVAILABLE", "Service unavailable");
     }
   });
@@ -51,7 +72,7 @@ export function createApp(
     app.route("/push-tokens", createPushTokenRoutes(auth.store));
     app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
     app.route("/paper-positions", createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now));
-    app.route("/trade-attempts", createTradeAttemptRoutes(auth.store, trade?.jupiter, trade?.now));
+    app.route("/trade-attempts", createTradeAttemptRoutes(auth.store, trade?.jupiter, trade?.now, logger));
   }
 
   if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store));
@@ -61,6 +82,7 @@ export function createApp(
     if (error instanceof HTTPException && error.status === 400) {
       return apiError(c, 400, "VALIDATION_ERROR", "Malformed request body");
     }
+    c.set("failure", error);
     return apiError(c, 500, "INTERNAL_ERROR", "Internal server error");
   });
   return app;

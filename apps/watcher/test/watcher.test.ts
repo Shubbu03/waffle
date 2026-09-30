@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createLogger } from "@waffle/observability";
 import { PUMP_SWAP_PROGRAM_ID } from "@waffle/shared";
 import { parseWatcherEnv } from "../src/config.ts";
 import type { SocketFactory, WatcherSocket } from "../src/connection.ts";
@@ -95,6 +96,8 @@ function setup(count: 2 | 3 = 2) {
   let active = wallets.slice(0, 2);
   let catalogFails = false;
   const sockets: FakeSocket[] = [];
+  const logs: Record<string, unknown>[] = [];
+  const rpcStatus = { degraded: false, queued: 0, provisionalQueued: 0, inFlight: 0, droppedProvisional: 0 };
   const events: WatcherEvent[] = [];
   let sinkFails = false;
   const calls: { wallet: string; signature: string; source: string }[] = [];
@@ -107,6 +110,7 @@ function setup(count: 2 | 3 = 2) {
     reason: "invalid-transaction",
   });
   const watcher = new WalletWatcher({
+    logger: createLogger({ service: "watcher", write: (line) => logs.push(JSON.parse(line)) }),
     url: "wss://example.test/?api-key=private",
     connectionCount: count,
     staleSlots: 10,
@@ -126,7 +130,7 @@ function setup(count: 2 | 3 = 2) {
       events.push(event);
     },
     rpc: {
-      status: { degraded: false, queued: 0, provisionalQueued: 0, inFlight: 0, droppedProvisional: 0 },
+      status: rpcStatus,
       async getSignaturesForAddress(wallet, options = {}) {
         pages.push({ wallet, ...(options.before ? { before: options.before } : {}) });
         const all = history.get(wallet) ?? [];
@@ -142,6 +146,10 @@ function setup(count: 2 | 3 = 2) {
   running.push(watcher);
   return {
     watcher,
+    logs,
+    degradeRpc(value: boolean) {
+      rpcStatus.degraded = value;
+    },
     sockets,
     events,
     calls,
@@ -184,6 +192,21 @@ function setup(count: 2 | 3 = 2) {
 }
 
 describe("catalog watcher", () => {
+  test("RPC overload logs once and reports recovery without logging routine ticks", async () => {
+    const h = setup();
+    await h.start();
+    h.degradeRpc(true);
+    h.watcher.tick();
+    h.watcher.tick();
+    expect(h.logs).toHaveLength(1);
+    h.degradeRpc(false);
+    h.watcher.tick();
+    h.watcher.tick();
+    expect(h.logs.map((log) => [log.event, log.component])).toEqual([
+      ["dependency.failed", "watcher.rpc"],
+      ["dependency.recovered", "watcher.rpc"],
+    ]);
+  });
   test("balances two or three connections and dedupes live overlap with confirmed recovery", async () => {
     const h = setup(3);
     h.setActive(wallets);
@@ -339,9 +362,42 @@ describe("catalog watcher", () => {
     await h.watcher.refreshCatalog();
     expect(h.watcher.status).toMatchObject({ catalogHealthy: false, degraded: true });
     expect(JSON.stringify(h.watcher.status)).not.toContain("private-db-url");
+    await h.watcher.refreshCatalog();
+    expect(h.logs).toHaveLength(1);
     h.failCatalog(false);
     await h.watcher.refreshCatalog();
     expect(h.watcher.status.degraded).toBe(false);
+    expect(h.logs.map((log) => [log.event, log.component])).toEqual([
+      ["dependency.failed", "watcher.catalog"],
+      ["dependency.recovered", "watcher.catalog"],
+    ]);
+    expect(JSON.stringify(h.logs)).not.toContain("private-db-url");
+  });
+
+  test("connection retries stay quiet until a valid slot proves recovery; shutdown is not an outage", async () => {
+    const h = setup();
+    await h.start();
+    expect(h.logs).toEqual([]);
+    h.sockets[0]?.drop();
+    h.advance(1000, true);
+    h.sockets[2]?.open();
+    h.sockets[2]?.ackAll();
+    // Opening alone does not prove that subscriptions and the stream work.
+    h.sockets[2]?.raw("provider-secret-invalid-json");
+    expect(h.logs).toHaveLength(1);
+    h.advance(2000, true);
+    h.sockets[3]?.open();
+    h.sockets[3]?.ackAll();
+    h.sockets[3]?.slot(103);
+    await settle();
+    h.watcher.stop();
+    expect(h.logs.map((log) => [log.event, log.component, log.connectionId])).toEqual([
+      ["dependency.failed", "watcher.connection", 0],
+      ["dependency.recovered", "watcher.connection", 0],
+    ]);
+    expect(h.logs[0]).toMatchObject({ reason: "socket-closed", attempt: 1, retryInMs: 1000 });
+    expect(JSON.stringify(h.logs)).not.toContain("private");
+    expect(JSON.stringify(h.logs)).not.toContain("provider-secret");
   });
 
   test("ignores failed transactions and rejects malformed frames on only their connection", async () => {
@@ -405,10 +461,20 @@ describe("catalog watcher", () => {
     h.advance(30_000, true);
     await settle();
     expect(h.watcher.status.wallets[0]).toMatchObject({ stale: true, checkpoint: signature(1) });
+    expect(h.logs).toHaveLength(1);
+    expect(h.logs[0]).toMatchObject({
+      event: "dependency.failed",
+      component: "watcher.wallet",
+      reason: "processing",
+      wallet: firstWallet,
+      signature: signature(2),
+    });
     h.failSink(false);
     h.advance(30_000, true);
     await settle();
     expect(h.watcher.status.wallets[0]).toMatchObject({ stale: false, checkpoint: signature(2) });
+    expect(h.logs.map((log) => log.event)).toEqual(["dependency.failed", "dependency.recovered"]);
+    expect(JSON.stringify(h.logs)).not.toContain("Sink unavailable");
     expect(h.calls.filter((call) => call.wallet === firstWallet && call.signature === signature(2))).toHaveLength(1);
     expect(
       h.events.filter((event) => event.outcome.wallet === firstWallet && event.outcome.signature === signature(2)),

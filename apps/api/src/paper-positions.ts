@@ -18,8 +18,9 @@ export class PaperPositionError extends Error {
     readonly code: ApiErrorCode,
     readonly status: 401 | 404 | 409 | 503,
     message: string,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, { cause });
   }
 }
 
@@ -96,7 +97,7 @@ export function createPaperPositionService(
         );
       } catch (error) {
         if (error instanceof JupiterServiceError)
-          throw new PaperPositionError("QUOTE_UNAVAILABLE", 503, "Unable to obtain a fresh paper quote");
+          throw new PaperPositionError("QUOTE_UNAVAILABLE", 503, "Unable to obtain a fresh paper quote", error);
         throw error;
       }
       if (

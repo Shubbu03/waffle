@@ -16,6 +16,7 @@
     "test:db": "bun run --filter '@waffle/db' test",
     "test:api": "bun run --filter '@waffle/api' test",
     "test:watcher": "bun run --filter '@waffle/watcher' test",
+    "test:observability": "bun run --filter '@waffle/observability' test",
     "dev:api": "bun run --filter '@waffle/api' dev",
     "start:api": "bun run --filter '@waffle/api' start",
     "db:seed": "bun run --filter '@waffle/db' db:seed",
