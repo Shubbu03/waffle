@@ -4,8 +4,9 @@
  */
 
 export const FontFamily = {
-  sans: 'sans-serif',
-  sansMedium: 'sans-serif-medium',
+  sans: 'Poppins',
+  sansMedium: 'Poppins-Medium',
+  sansLight: 'Poppins-Light',
   serif: 'serif',
   /** Handwritten wordmark (Playwrite ZA Regular) — waffle logo text only. */
   wordmark: 'PlaywriteZA',

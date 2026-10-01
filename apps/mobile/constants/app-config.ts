@@ -2,9 +2,10 @@ import { clusterApiUrl } from '@solana/web3.js'
 import type { Cluster } from '@/components/cluster/cluster'
 import { ClusterNetwork } from '@/components/cluster/cluster-network'
 
-export const AppConfig: { name: string; uri: string; clusters: Cluster[] } = {
+export const AppConfig: { name: string; uri: string; apiUrl: string; clusters: Cluster[] } = {
   name: 'waffle',
   uri: process.env.EXPO_PUBLIC_WAFFLE_APP_URI?.trim() ?? '',
+  apiUrl: process.env.EXPO_PUBLIC_WAFFLE_API_URL?.trim().replace(/\/+$/, '') ?? '',
   clusters: [
     {
       id: 'solana:mainnet',
