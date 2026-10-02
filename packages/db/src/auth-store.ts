@@ -1,68 +1,12 @@
-import type { Session, SignInInput } from "@waffle/shared";
-import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import type { Session } from "@waffle/shared";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type { DatabaseExecutor, DatabaseTransaction } from "./database.ts";
-import { authChallenges, sessions, users } from "./schema/index.ts";
-
-export type StoredChallenge = Omit<typeof authChallenges.$inferSelect, "consumedAt">;
+import { sessions, users } from "./schema/index.ts";
 
 export function createAuthStore(transaction: DatabaseTransaction) {
   return {
-    async createChallenge(input: SignInInput, nonceHash: string): Promise<string> {
+    async completeSignIn(walletAddress: string, tokenHash: string): Promise<Session | null> {
       return transaction(async (tx) => {
-        const [row] = await tx
-          .insert(authChallenges)
-          .values({
-            nonceHash,
-            domain: input.domain,
-            uri: input.uri,
-            version: input.version,
-            chainId: input.chainId,
-            statement: input.statement,
-            issuedAt: new Date(input.issuedAt),
-            expiresAt: new Date(input.expirationTime),
-          })
-          .returning({ id: authChallenges.id });
-        if (!row) throw new Error("Challenge insert failed");
-        return row.id;
-      });
-    },
-    async findChallenge(id: string): Promise<StoredChallenge | null> {
-      return transaction(async (tx) => {
-        const [row] = await tx
-          .select()
-          .from(authChallenges)
-          .where(
-            and(
-              eq(authChallenges.id, id),
-              isNull(authChallenges.consumedAt),
-              lte(authChallenges.issuedAt, sql`clock_timestamp()`),
-              gt(authChallenges.expiresAt, sql`clock_timestamp()`),
-            ),
-          );
-        return row ?? null;
-      });
-    },
-    async completeSignIn(
-      challenge: StoredChallenge,
-      walletAddress: string,
-      tokenHash: string,
-    ): Promise<Session | null> {
-      return transaction(async (tx) => {
-        // The conditional UPDATE serializes contenders; only one may mint a session.
-        const [consumed] = await tx
-          .update(authChallenges)
-          .set({ consumedAt: sql`clock_timestamp()` })
-          .where(
-            and(
-              eq(authChallenges.id, challenge.id),
-              eq(authChallenges.nonceHash, challenge.nonceHash),
-              isNull(authChallenges.consumedAt),
-              lte(authChallenges.issuedAt, sql`clock_timestamp()`),
-              gt(authChallenges.expiresAt, sql`clock_timestamp()`),
-            ),
-          )
-          .returning({ id: authChallenges.id });
-        if (!consumed) return null;
         const [user] = await tx
           .insert(users)
           .values({ walletAddress })

@@ -17,8 +17,7 @@ Issue #3 establishes the JSON boundary in [`@waffle/shared`](../packages/shared/
 | `GET /wallet-subscriptions` | `walletSubscriptionsResponseSchema` | Session owner only. |
 | `PUT /wallet-subscriptions/:walletId` | `putWalletSubscriptionRequestSchema` → `walletSubscriptionSchema` | Empty body follows with alerts off; `alertsEnabled` can update the preference. URL wallet ID uses `idSchema`. |
 | `POST /push-tokens` | `pushTokenRegistrationSchema` | Session owner only; Android permission state travels with the registration. |
-| `POST /auth/challenge` | `authChallengeResponseSchema` | Server generates the SIWS input and stores the challenge. |
-| `POST /auth/verify` | `authVerifyRequestSchema` → `authVerifyResponseSchema` | API verifies exact signed bytes and consumes the challenge; shape validation alone does not authenticate. |
+| `POST /auth/verify` | `authVerifyRequestSchema` → `authVerifyResponseSchema` | App builds the SIWS input locally; API checks domain/URI/freshness/signature. No challenge round-trip. |
 | `GET /signals` | `getSignalsQuerySchema` → `signalPageSchema` | Public `all`, authenticated `following`; optional wallet filter; maximum page size 50. |
 | `GET /signals/:id` | `signalDetailSchema` | Summary plus ordered score reasons and evidence snapshot. |
 | `POST /paper-positions/quote` | `createPaperQuoteRequestSchema` → `paperQuoteSchema` | Owner only; output mint comes from the server signal. |

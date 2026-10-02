@@ -2,9 +2,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { fromUint8Array } from 'js-base64'
 import { createContext, type PropsWithChildren, use, useEffect, useMemo, useState } from 'react'
-import { ApiError, getSession, postChallenge, postLogout, postVerify } from '@/lib/api-client'
+import { AppConfig } from '@/constants/app-config'
+import { ApiError, getSession, postLogout, postVerify } from '@/lib/api-client'
 import { isSessionExpired } from '@/lib/session'
 import { clearSession, loadSession, type StoredSession, saveSession } from '@/lib/session-store'
+import { buildSignInInput } from '@/lib/sign-in-input'
 
 export interface AuthState {
   isAuthenticated: boolean
@@ -124,26 +126,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         console.log('[auth] signIn: existing wallet session, disconnecting for a clean transact')
         await disconnect()
       }
-      // Server challenge carries the nonce. Unreachable server => wallet-only mode.
-      console.log('[auth] signIn: requesting challenge')
-      let challenge: { challengeId: string; signInInput: Record<string, unknown> } | null = null
-      try {
-        challenge = (await postChallenge()) as { challengeId: string; signInInput: Record<string, unknown> }
-      } catch (error) {
-        console.log(
-          `[auth] signIn: no challenge (${error instanceof Error ? error.message : 'network'}) — wallet-only mode`,
-        )
+      // Stateless SIWS: input built locally, server checks freshness (no challenge round-trip).
+      console.log('[auth] signIn: building local SIWS input')
+      if (!AppConfig.uri) {
+        throw new Error('Set EXPO_PUBLIC_WAFFLE_APP_URI to your public HTTPS app URL before signing in.')
       }
-      const payload = (challenge?.signInInput ?? {}) as {
-        domain?: string
-        statement?: string
-        uri?: string
-        version?: string
-        chainId?: string
-        nonce?: string
-        issuedAt?: string
-        expirationTime?: string
-      }
+      const payload = buildSignInInput(AppConfig.uri)
       console.log(
         `[auth] signIn: wallet payload domain=${payload.domain} uri=${payload.uri} chain=${payload.chainId} nonce=${payload.nonce ? 'present' : 'MISSING'} expiry=${payload.expirationTime ?? 'MISSING'}`,
       )
@@ -164,25 +152,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
         `[auth] signIn: wallet answered in ${Date.now() - walletStart}ms as ${accountAddress.slice(0, 8)}... ` +
           `msgBytes=${output.signedMessage?.length ?? -1} sigBytes=${output.signature?.length ?? -1}`,
       )
-      if (challenge) {
-        try {
-          const verified = await postVerify({
-            challengeId: challenge.challengeId,
-            accountAddress,
-            signedMessageBase64: fromUint8Array(output.signedMessage),
-            signatureBase64: fromUint8Array(output.signature),
-          })
-          console.log('[auth] signIn: server verified, persisting session')
-          const stored: StoredSession = { ...verified.session, accessToken: verified.accessToken }
-          await saveSession(stored)
-          setSession(stored)
-          setStatus('signed-in')
-          return
-        } catch (error) {
-          console.log(
-            `[auth] signIn: server verify failed (${error instanceof Error ? error.message : 'network'}) — continuing wallet-only`,
-          )
-        }
+      try {
+        const verified = await postVerify({
+          accountAddress,
+          signedMessageBase64: fromUint8Array(output.signedMessage),
+          signatureBase64: fromUint8Array(output.signature),
+        })
+        console.log('[auth] signIn: server verified, persisting session')
+        const stored: StoredSession = { ...verified.session, accessToken: verified.accessToken }
+        await saveSession(stored)
+        setSession(stored)
+        setStatus('signed-in')
+        return
+      } catch (error) {
+        console.log(
+          `[auth] signIn: server verify failed (${error instanceof Error ? error.message : 'network'}) — continuing wallet-only`,
+        )
       }
       // Degraded path: wallet proved ownership, server did not countersign.
       // Demo flows work; authed API calls wait for a linked session.

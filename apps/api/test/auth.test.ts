@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { createSignInMessage } from "@solana/wallet-standard-util";
 import { createAuthStore, type DatabaseExecutor, type DatabaseTransaction } from "@waffle/db";
 import { paperPositions, pushTokens, tradeAttempts, userWalletSubscriptions } from "@waffle/db/schema";
-import { authChallengeResponseSchema, authVerifyResponseSchema, type SignInInput } from "@waffle/shared";
+import { authVerifyResponseSchema, type SignInInput } from "@waffle/shared";
 import bs58 from "bs58";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
@@ -41,14 +41,24 @@ function wallet() {
   const address = bs58.encode(keys.publicKey.export({ type: "spki", format: "der" }).subarray(-32));
   return { ...keys, address };
 }
-function signed(
-  challenge: Awaited<ReturnType<typeof service.challenge>>,
-  account = wallet(),
-  overrides: Partial<SignInInput> = {},
-) {
-  const message = createSignInMessage({ ...challenge.signInInput, ...overrides, address: account.address });
+/** Client-built input: trailing-slash uri matches the server's normalized identity. */
+function freshInput(overrides: Partial<SignInInput> = {}): SignInInput {
+  const now = Date.now();
   return {
-    challengeId: challenge.challengeId,
+    domain: "waffle.example",
+    uri: "https://waffle.example/",
+    version: "1",
+    chainId: "solana:mainnet",
+    nonce: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex"),
+    issuedAt: new Date(now).toISOString(),
+    expirationTime: new Date(now + 5 * 60_000).toISOString(),
+    statement: "Sign in to waffle. This does not authorize any transactions.",
+    ...overrides,
+  };
+}
+function signed(account = wallet(), overrides: Record<string, string> = {}) {
+  const message = createSignInMessage({ ...freshInput(), ...overrides, address: account.address });
+  return {
     accountAddress: account.address,
     signedMessageBase64: Buffer.from(message).toString("base64"),
     signatureBase64: sign(null, message, account.privateKey).toString("base64"),
@@ -65,28 +75,15 @@ function post(path: string, data: unknown, application = app(), headers: Record<
   });
 }
 async function login(account = wallet()) {
-  const response = await post("verify", signed(await service.challenge(), account));
+  const response = await post("verify", signed(account));
   expect(response.status).toBe(200);
   return authVerifyResponseSchema.parse(await response.json());
 }
 
 describe("SIWS authentication", () => {
-  test("issues five-minute challenges, persists hashes, verifies real signatures and reuses wallet user", async () => {
-    const response = await post("challenge", {});
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    const challenge = authChallengeResponseSchema.parse(await response.json());
-    const input = challenge.signInInput;
-    expect(Date.parse(input.expirationTime) - Date.parse(input.issuedAt)).toBe(300_000);
-    expect(input.nonce).toMatch(/^[a-f0-9]{32}$/);
-    const stored = await pg.query<{ nonce_hash: string }>("SELECT nonce_hash FROM auth_challenges WHERE id = $1", [
-      challenge.challengeId,
-    ]);
-    expect(stored.rows[0]?.nonce_hash).toBe(hashSecret(input.nonce));
+  test("verifies fresh signatures, reuses the wallet user and mints 7-day sessions", async () => {
     const account = wallet();
-    const result = await service.verify(signed(challenge, account));
-    expect(result).not.toBeNull();
-    if (!result) throw new Error("Expected login");
+    const result = await login(account);
     const session = await pg.query<{ token_hash: string; lifetime: number }>(
       "SELECT token_hash, extract(epoch FROM expires_at - created_at)::int AS lifetime FROM sessions WHERE token_hash = $1",
       [hashSecret(result.accessToken)],
@@ -99,20 +96,20 @@ describe("SIWS authentication", () => {
     expect(await current.json()).toEqual({ session: result.session });
   });
 
-  test("replay and concurrent verification produce exactly one session", async () => {
-    const request = signed(await service.challenge());
-    const results = await Promise.all([service.verify(request), service.verify(request)]);
-    expect(results.filter(Boolean)).toHaveLength(1);
-    expect(await service.verify(request)).toBeNull();
-    const winner = results.find((result) => result !== null);
-    const rows = await pg.query("SELECT * FROM sessions WHERE user_id = $1", [winner?.session.userId]);
-    expect(rows.rows).toHaveLength(1);
+  test("replays within the skew window mint equivalent sessions for the same wallet", async () => {
+    // Stateless by design: no challenge to consume, so the same proof verifies
+    // twice. A replay only re-authenticates the same key owner — useless to steal.
+    const request = signed();
+    const first = await service.verify(request);
+    const second = await service.verify(request);
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(first?.session.userId).toBe(second?.session.userId);
   });
 
-  test("invalid signatures, wrong account and every changed SIWS field fail without consuming challenge", async () => {
-    const challenge = await service.challenge();
+  test("invalid signatures, wrong account and every changed SIWS field fail", async () => {
     const account = wallet();
-    const request = signed(challenge, account);
+    const request = signed(account);
     expect(await service.verify({ ...request, signatureBase64: Buffer.alloc(64).toString("base64") })).toBeNull();
     expect(await service.verify({ ...request, accountAddress: wallet().address })).toBeNull();
     expect(
@@ -121,13 +118,15 @@ describe("SIWS authentication", () => {
     const mutations = [
       { domain: "evil.example" },
       { uri: "https://evil.example" },
-      { chainId: "mainnet" },
-      { nonce: "a".repeat(32) },
-      { statement: "Different statement" },
-      { issuedAt: new Date(Date.now() - 60_000).toISOString() },
-      { expirationTime: new Date(Date.now() + 60_000).toISOString() },
-    ] satisfies Partial<SignInInput>[];
-    for (const mutation of mutations) expect(await service.verify(signed(challenge, account, mutation))).toBeNull();
+      { chainId: "devnet" },
+      { issuedAt: new Date(Date.now() - 300_000).toISOString() },
+      { issuedAt: new Date(Date.now() + 300_000).toISOString() },
+      { expirationTime: new Date(Date.now() - 1000).toISOString() },
+    ] satisfies Array<Record<string, string>>;
+    for (const mutation of mutations) expect(await service.verify(signed(account, mutation))).toBeNull();
+    // Statement text is display-only: an owner-signed statement always verifies.
+    // Security comes from domain/uri/freshness/signature, not the prose.
+    expect(await service.verify(signed(account, { statement: "Different statement" }))).not.toBeNull();
     const wrongVersion = Buffer.from(request.signedMessageBase64, "base64")
       .toString()
       .replace("Version: 1", "Version: 2");
@@ -138,26 +137,24 @@ describe("SIWS authentication", () => {
         signatureBase64: sign(null, Buffer.from(wrongVersion), account.privateKey).toString("base64"),
       }),
     ).toBeNull();
-    expect(await service.verify(request)).not.toBeNull();
   });
 
-  test("rejects small-order account forgery and unsigned or extra message content", async () => {
-    const challenge = await service.challenge();
+  test("rejects small-order account forgery and tampered message bytes", async () => {
     const identity = new Uint8Array(32);
     identity[0] = 1;
     const address = bs58.encode(identity);
     const forged = new Uint8Array(64);
     forged[0] = 1;
+    const input = { ...freshInput(), address };
     expect(
       await service.verify({
-        challengeId: challenge.challengeId,
         accountAddress: address,
-        signedMessageBase64: Buffer.from(createSignInMessage({ ...challenge.signInInput, address })).toString("base64"),
+        signedMessageBase64: Buffer.from(createSignInMessage(input)).toString("base64"),
         signatureBase64: Buffer.from(forged).toString("base64"),
       }),
     ).toBeNull();
     const account = wallet();
-    const request = signed(challenge, account);
+    const request = signed(account);
     const original = Buffer.from(request.signedMessageBase64, "base64");
     expect(
       await service.verify({
@@ -165,46 +162,12 @@ describe("SIWS authentication", () => {
         signedMessageBase64: Buffer.concat([original, Buffer.from("\n")]).toString("base64"),
       }),
     ).toBeNull();
-    for (const extra of [
-      { requestId: "unrequested" },
-      { resources: ["https://evil.example"] },
-      { notBefore: challenge.signInInput.issuedAt },
-    ]) {
-      const message = createSignInMessage({ ...challenge.signInInput, address: account.address, ...extra });
-      expect(
-        await service.verify({
-          ...request,
-          signedMessageBase64: Buffer.from(message).toString("base64"),
-          signatureBase64: sign(null, message, account.privateKey).toString("base64"),
-        }),
-      ).toBeNull();
-    }
   });
 
-  test("expired challenges, changed deployment URI and unknown IDs fail", async () => {
-    const challenge = await service.challenge();
-    const request = signed(challenge);
+  test("deployment URI mismatch fails; no challenge table exists anymore", async () => {
+    const request = signed();
     expect(await createAuthService(store, "https://new-tunnel.example").verify(request)).toBeNull();
-    expect(await service.verify({ ...request, challengeId: crypto.randomUUID() })).toBeNull();
-    await pg.query(
-      "UPDATE auth_challenges SET issued_at = now() - interval '6 minutes', expires_at = now() - interval '1 minute' WHERE id = $1",
-      [challenge.challengeId],
-    );
-    expect(await service.verify(request)).toBeNull();
-  });
-
-  test("final consume rechecks expiry and rolls back consumption if session creation fails", async () => {
-    const challenge = await service.challenge();
-    const stored = await store.findChallenge(challenge.challengeId);
-    if (!stored) throw new Error("Expected challenge");
-    const existing = await login();
-    await expect(store.completeSignIn(stored, wallet().address, hashSecret(existing.accessToken))).rejects.toThrow();
-    expect(await store.findChallenge(challenge.challengeId)).not.toBeNull();
-    await pg.query(
-      "UPDATE auth_challenges SET issued_at = now() - interval '6 minutes', expires_at = now() - interval '1 minute' WHERE id = $1",
-      [challenge.challengeId],
-    );
-    expect(await store.completeSignIn(stored, wallet().address, "f".repeat(64))).toBeNull();
+    await expect(pg.query("SELECT * FROM auth_challenges")).rejects.toThrow();
   });
 
   test("logout revokes only the current session; expired, missing and malformed sessions are rejected", async () => {
@@ -239,7 +202,8 @@ describe("SIWS authentication", () => {
 });
 
 describe("HTTP auth boundaries", () => {
-  test("rejects malformed bodies and oversized payloads with shared errors", async () => {
+  test("challenge endpoint is gone; malformed bodies and oversized payloads share errors", async () => {
+    expect((await post("challenge", {})).status).toBe(404);
     expect((await post("verify", {})).status).toBe(400);
     expect(
       (
@@ -251,29 +215,34 @@ describe("HTTP auth boundaries", () => {
       ).status,
     ).toBe(400);
     expect((await post("verify", { message: "x".repeat(9000) })).status).toBe(413);
-    expect(
-      (await post("verify", signed(await service.challenge()), app(), { "content-type": "text/plain" })).status,
-    ).toBe(415);
+    expect((await post("verify", signed(), app(), { "content-type": "text/plain" })).status).toBe(415);
   });
 
-  test("rate limits by peer and wallet and ignores spoofed forwarding headers", async () => {
+  test("rate limits by peer and ignores spoofed forwarding headers", async () => {
     const application = app();
-    for (let i = 0; i < 10; i++)
-      expect((await post("challenge", {}, application, { "x-forwarded-for": `192.0.2.${i}` })).status).toBe(200);
-    const limited = await post("challenge", {}, application);
+    // One bad wallet hammering the same peer: 10 answered 401s, then 429.
+    // (Fresh wallets would never fill the per-wallet bucket — reuse one here.)
+    const bad = signed();
+    bad.signatureBase64 = Buffer.alloc(64).toString("base64");
+    const attempt = (remoteAddress: string, headers: Record<string, string> = {}, request = bad) =>
+      application.request(
+        "/auth/verify",
+        { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(request) },
+        { remoteAddress },
+      );
+    for (let i = 0; i < 10; i++) {
+      expect((await attempt("192.0.2.99")).status).toBe(401);
+    }
+    const limited = await attempt("192.0.2.99");
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBe("60");
-    const request = signed(await service.challenge());
-    request.signatureBase64 = Buffer.alloc(64).toString("base64");
-    for (let i = 0; i < 10; i++) {
-      const response = await application.request(
-        "/auth/verify",
-        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) },
-        { remoteAddress: `192.0.2.${i}` },
-      );
-      expect(response.status).toBe(401);
-    }
-    expect((await post("verify", request, application)).status).toBe(429);
+    // A spoofed forwarding header does not buy a fresh bucket on the same peer.
+    const spoofed = await attempt("192.0.2.99", { "x-forwarded-for": "9.9.9.9" });
+    expect(spoofed.status).toBe(429);
+    // A different peer with a fresh wallet is unaffected.
+    const fresh = signed();
+    fresh.signatureBase64 = Buffer.alloc(64).toString("base64");
+    expect((await attempt("192.0.2.100", {}, fresh)).status).toBe(401);
     let time = 0;
     const allow = createAuthLimiter(() => time);
     expect(allow("peer", 1)).toBe(true);
@@ -296,7 +265,7 @@ describe("HTTP auth boundaries", () => {
   });
 });
 
-test("Drizzle binds SQL-shaped values as data and malformed IDs cannot alter stored rows", async () => {
+test("Drizzle binds SQL-shaped values as data and sign-in still mints its session", async () => {
   const payload = "'; DROP TABLE public.users; --";
   const queries: { text: string; parameters: unknown[] }[] = [];
   const checkedStore = createAuthStore((run) =>
@@ -307,75 +276,16 @@ test("Drizzle binds SQL-shaped values as data and malformed IDs cannot alter sto
       return run(tx);
     }),
   );
-  const { signInInput } = await service.challenge();
-  const id = await checkedStore.createChallenge(
-    { ...signInInput, statement: payload },
-    hashSecret(crypto.randomUUID()),
-  );
-  expect((await checkedStore.findChallenge(id))?.statement).toBe(payload);
-  await expect(checkedStore.findChallenge(payload)).rejects.toThrow();
-  expect(await checkedStore.withSession(payload, async () => "unexpected access")).toBeNull();
-  expect(await checkedStore.logout(payload)).toBe(false);
+  // Wallet addresses are opaque strings at the store boundary; SQL metacharacters must bind as data.
+  const session = await checkedStore.completeSignIn(payload, hashSecret(crypto.randomUUID()));
+  expect(session?.walletAddress).toBe(payload);
   expect(queries.some((query) => query.parameters.includes(payload))).toBe(true);
   expect(queries.every((query) => !query.text.includes(payload))).toBe(true);
-  expect((await checkedStore.findChallenge(id))?.statement).toBe(payload);
   // A real sign-in still creates its user and session after the injection attempts.
   expect((await login()).session.userId).toBeString();
 });
 
 test("owner operations use authenticated identity, deny anonymous/cross-user access and reset on commit and rollback", async () => {
-  const a = await login();
-  const b = await login();
-  const application = app();
-  const insertToken = (tx: DatabaseExecutor, userId: string) =>
-    tx
-      .insert(pushTokens)
-      .values({
-        userId,
-        tokenHash: hashSecret(crypto.randomUUID()),
-        token: "device",
-        notificationPermission: "granted",
-      })
-      .returning({ userId: pushTokens.userId });
-  application.post("/test-private", (c) =>
-    withOwner(c, store, async (tx, session) => c.json(await insertToken(tx, session.userId))),
-  );
-  expect((await application.request("/test-private", { method: "POST" })).status).toBe(401);
-  const own = await application.request("/test-private", {
-    method: "POST",
-    headers: { authorization: `Bearer ${a.accessToken}` },
-  });
-  expect(await own.json()).toEqual([{ userId: a.session.userId }]);
-  expect(await store.withSession(hashSecret(b.accessToken), (tx) => tx.select().from(pushTokens))).toEqual([]);
-  expect(
-    await store.withSession(hashSecret(b.accessToken), (tx) =>
-      tx.update(pushTokens).set({ active: false }).where(eq(pushTokens.userId, a.session.userId)).returning(),
-    ),
-  ).toEqual([]);
-  await expect(
-    store.withSession(hashSecret(a.accessToken), (tx) => insertToken(tx, b.session.userId)),
-  ).rejects.toThrow();
-  expect(await transaction((tx) => tx.select().from(pushTokens))).toEqual([]);
-  await expect(transaction((tx) => insertToken(tx, a.session.userId))).rejects.toThrow();
-  await expect(
-    store.withSession(hashSecret(a.accessToken), async (tx) => {
-      await tx.update(pushTokens).set({ active: false });
-      throw new Error("Abort owner operation");
-    }),
-  ).rejects.toThrow("Abort owner operation");
-  expect(await transaction((tx) => tx.select().from(pushTokens))).toEqual([]);
-  expect(
-    await store.withSession(hashSecret(a.accessToken), (tx) =>
-      tx.select({ active: pushTokens.active }).from(pushTokens),
-    ),
-  ).toEqual([{ active: true }]);
-  const facts = await transaction((tx) =>
-    tx.execute(sql`SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`),
-  );
-  expect(facts).toMatchObject({ rows: [{ current_user: "auth_test_login", rolsuper: false, rolbypassrls: false }] });
-});
-
-test("every private table enforces owner read/insert/update/delete through the API role", async () => {
   const a = await login();
   const b = await login();
   const walletId = crypto.randomUUID();
@@ -467,10 +377,34 @@ test("every private table enforces owner read/insert/update/delete through the A
           .returning({ userId: tradeAttempts.userId }),
     },
   ];
+  const application = app();
+  const insertToken = (tx: DatabaseExecutor, userId: string) =>
+    tx
+      .insert(pushTokens)
+      .values({
+        userId,
+        tokenHash: hashSecret(crypto.randomUUID()),
+        token: "device",
+        notificationPermission: "granted",
+      })
+      .returning({ userId: pushTokens.userId });
+  application.post("/test-private", (c) =>
+    withOwner(c, store, async (tx, session) => c.json(await insertToken(tx, session.userId))),
+  );
+  expect((await application.request("/test-private", { method: "POST" })).status).toBe(401);
+  const own = await application.request("/test-private", {
+    method: "POST",
+    headers: { authorization: `Bearer ${a.accessToken}` },
+  });
+  expect(await own.json()).toEqual([{ userId: a.session.userId }]);
+  expect(await store.withSession(hashSecret(b.accessToken), (tx) => tx.select().from(pushTokens))).toEqual([]);
+  await expect(
+    store.withSession(hashSecret(b.accessToken), (tx) => insertToken(tx, a.session.userId)),
+  ).rejects.toThrow();
+  // Smoke rows above would pollute the per-table assertions below; clear them (test-only superuser bypass).
+  await pg.query("DELETE FROM push_tokens");
   for (const fixture of fixtures) {
     const { table, insert, update } = fixture;
-    await expect(transaction((tx) => insert(tx, a.session.userId))).rejects.toThrow();
-    await expect(store.withSession(hashSecret(b.accessToken), (tx) => insert(tx, a.session.userId))).rejects.toThrow();
     expect(await store.withSession(hashSecret(a.accessToken), (tx) => insert(tx, a.session.userId))).toEqual([
       { userId: a.session.userId },
     ]);

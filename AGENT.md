@@ -42,7 +42,7 @@ Manual: `bun install && bun run typecheck` passes.
 Commit: `feat(m0): repo skeleton + shared schemas`
 
 ### C0.2 DB + config
-Work: Neon project, Drizzle migrations for watched_wallets, signals(sig,wallet,mint,slot,observed_at,score_v, reasons, snapshot, status, unique(sig,wallet)), users/push_tokens, paper_positions, trade_attempts. Add user_wallet_subscriptions(user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at), UNIQUE(user_id, watched_wallet_id), with owner-only access. Add auth_challenges, sessions, signal_events, and push_deliveries from the [backend decision](docs/backend-architecture.md). One checked-in config.ts for thresholds.
+Work: Neon project, Drizzle migrations for watched_wallets, signals(sig,wallet,mint,slot,observed_at,score_v, reasons, snapshot, status, unique(sig,wallet)), users/push_tokens, paper_positions, trade_attempts. Add user_wallet_subscriptions(user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at), UNIQUE(user_id, watched_wallet_id), with owner-only access. Add sessions, signal_events, and push_deliveries from the [backend decision](docs/backend-architecture.md). (The `auth_challenges` table was removed when sign-in went stateless; see migration 0002.) One checked-in config.ts for thresholds.
 Unit tests: fresh migration and unique constraint violation test.
 Manual: insert + dupe rejected in Neon dashboard.
 Commit: `feat(m0): neon schema + versioned config`
@@ -75,7 +75,7 @@ Commit: `feat(watcher): versioned score + suppression rules + oracle-none bucket
 ## MODULE M2 — API + Live
 
 ### C2.1 Endpoints
-Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions, GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Implement SIWS challenge/verify/logout and opaque sessions per [backend decision](docs/backend-architecture.md). API authorization and native Postgres RLS enforce ownership; set user identity transaction-locally using a non-owner runtime role. Database credentials stay server-side.
+Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions, GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Implement SIWS verify/logout (stateless: app-built input, server freshness check) and opaque sessions per [backend decision](docs/backend-architecture.md). API authorization and native Postgres RLS enforce ownership; set user identity transaction-locally using a non-owner runtime role. Database credentials stay server-side.
 Unit tests: RLS denies anon write and cross-user subscription access, allows owner read; following is idempotent, unfollowing preserves shared signals; paper insert validates size.
 Manual: curl list + detail, push-token register works.
 Commit: `feat(api): signals + paper + push-token endpoints`

@@ -22,14 +22,11 @@ export const signInInputSchema = z
     { message: "SIWS domain and challenge lifetime are invalid" },
   );
 
-export const authChallengeResponseSchema = z.strictObject({
-  challengeId: idSchema,
-  signInInput: signInInputSchema,
-});
+/** Max clock disagreement (seconds) the server tolerates on signed SIWS timestamps. */
+export const SIWS_MAX_SKEW_SEC = 120;
 
 /** Signed bytes are base64 on the JSON wire; the API verifies the exact decoded bytes. */
 export const authVerifyRequestSchema = z.strictObject({
-  challengeId: idSchema,
   accountAddress: solanaAddressSchema,
   signedMessageBase64: z.base64().min(1).max(4096),
   signatureBase64: z.base64().length(88).endsWith("=="),

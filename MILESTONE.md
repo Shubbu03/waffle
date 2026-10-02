@@ -11,7 +11,7 @@ Deliverables:
 * waffle/ scaffold: apps/mobile, apps/api, apps/watcher, packages/shared, packages/db/migrations, tests/fixtures, docs/, app-local .env.example files when integrations are configured (key names only), README skeleton.
 * shared: Signal, ScoreReason, ConfigLimits, ApiSchemas + program IDs (Pump.fun, PumpSwap, Raydium AMM/CPMM/CLMM IDs as constants, no hardcode in watcher).
 * Neon: watched_wallets (address, label, active), signals (signature, wallet, mint, slot, observed_at, score_v, reasons JSONB, snapshot JSONB, status, UNIQUE(signature,wallet)), users/push_tokens (user_id, token, platform), paper_positions (id, signal_id, size, quote, fees, ts, simulated=true), trade_attempts (id, signal_id, quote_id, requestId, signature, code, status).
-* user_wallet_subscriptions: user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at, UNIQUE(user_id, watched_wallet_id); owner-only access. Auth challenges, sessions, signal outbox, and push jobs follow [docs/backend-architecture.md](docs/backend-architecture.md). See docs/wallet-selection.md.
+* user_wallet_subscriptions: user_id, watched_wallet_id, alerts_enabled, alerts_enabled_at, created_at, UNIQUE(user_id, watched_wallet_id); owner-only access. Sessions, signal outbox, and push jobs follow [docs/backend-architecture.md](docs/backend-architecture.md) (stateless SIWS, no challenge table). See docs/wallet-selection.md.
 * Versioned score v1 config and trade caps from [docs/scoring-policy.md](docs/scoring-policy.md): threshold 70, 150-slot/90-second freshness, $25,000 signal/paper and $75,000 real liquidity floors, 0.1 SOL paper and 0.05 SOL real cap.
 Auto tests:
 * `typecheck` passes on all workspaces.
@@ -54,7 +54,7 @@ Exit gate MS1: `bun run test:watcher` green + 10-min run yields >=3 real buys pe
 Objective: API serves cards, live socket + push both work, age/slot visible.
 
 ### 29 Sep — C2.1 endpoints + auth
-Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions (size, signal_id, quote ref), GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Implement SIWS challenge/verify and sessions per [backend decision](docs/backend-architecture.md). API allows public signal reads; authenticated owner-only access to paper positions/tokens, backed by Postgres RLS with transaction-scoped user identity and a non-owner runtime role.
+Work: GET /signals (cursor, wallet filter), GET /signals/:id (snapshot+reasons+status), POST /paper-positions (size, signal_id, quote ref), GET /paper-positions, POST /push-tokens. Add public GET /wallets and authenticated GET /wallet-subscriptions, PUT /wallet-subscriptions/:walletId (follow or update alerts_enabled), DELETE /wallet-subscriptions/:walletId (unfollow); only active catalog wallets can be followed. Implement SIWS verify and sessions per [backend decision](docs/backend-architecture.md). API allows public signal reads; authenticated owner-only access to paper positions/tokens, backed by Postgres RLS with transaction-scoped user identity and a non-owner runtime role.
 Auto: RLS tests (anon writes and cross-user subscription access denied, owner allowed), idempotent follows and unfollow preservation, paper validation (size<=cap, signal must exist + fresh).
 Manual: curl list/detail as anon, register push token as authed user.
 Commit: `feat(api): signals + paper + push-token endpoints`
@@ -127,7 +127,7 @@ Issue #13: confirmed PumpSwap buys now collect cached exact-mint state, verified
 
 Issue #14: versioned score assessment and signal/outbox persistence are wired into the watcher. Stale transaction/stream/critical evidence blocks alert eligibility; missing optional data earns zero. Local tests cover suppression, write-time expiry, retry timestamps, shutdown draining, restricted-role SQL, duplicate persistence, outbox rollback, and paused wallets. Live provider/Neon acceptance and API realtime/push delivery remain pending.
 
-Issue #15: API SIWS challenge/verify/session/logout routes, hashed single-use challenges and opaque sessions, and session-validated owner transactions are implemented. Automated signature, replay, expiry, logout, rollback, and private-table RLS tests run against migrated PGlite with a restricted role. Live Neon concurrency/pool behavior and Android wallet acceptance remain pending.
+Issue #15: API SIWS verify/session/logout routes and opaque sessions, and session-validated owner transactions are implemented. Automated signature, replay, expiry, logout, rollback, and private-table RLS tests run against migrated PGlite with a restricted role. Live Neon concurrency/pool behavior and Android wallet acceptance remain pending.
 
 Issue #16: public wallet catalog, cursor-paginated All signals, full signal details, and authenticated Following reads are implemented with session-derived ownership and RLS. The reviewed #7 seed is reused in restricted-role PGlite endpoint tests and exposed through root seed commands. Pagination/access tests pass locally; live Neon seeding and acceptance remain pending.
 

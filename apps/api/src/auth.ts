@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519";
 import { parseSignInMessage, verifySignIn } from "@solana/wallet-standard-util";
 import type { AuthStore, DatabaseExecutor } from "@waffle/db";
-import { type AuthVerifyRequest, type Session, signInInputSchema } from "@waffle/shared";
+import { type AuthVerifyRequest, type Session, SIWS_MAX_SKEW_SEC } from "@waffle/shared";
 import bs58 from "bs58";
 import type { Context } from "hono";
 import { apiError } from "./errors.ts";
@@ -20,46 +20,37 @@ export function createAuthService(store: AuthStore, authUri: string) {
   const uri = new URL(authUri).href;
   const domain = new URL(uri).host;
   return {
-    async challenge() {
-      const now = Date.now();
-      const signInInput = signInInputSchema.parse({
-        domain,
-        uri,
-        version: "1",
-        chainId: "solana:mainnet",
-        nonce: randomBytes(16).toString("hex"),
-        issuedAt: new Date(now).toISOString(),
-        expirationTime: new Date(now + 5 * 60_000).toISOString(),
-        statement: "Sign in to waffle. This does not authorize any transactions.",
-      });
-      const challengeId = await store.createChallenge(signInInput, hashSecret(signInInput.nonce));
-      return { challengeId, signInInput };
-    },
     async verify(request: AuthVerifyRequest) {
-      const challenge = await store.findChallenge(request.challengeId);
-      if (!challenge || challenge.domain !== domain || challenge.uri !== uri) return null;
-      // Reconstruct the expected input from storage. The wire message supplies only the hashed nonce.
+      // Stateless SIWS: trust flows from the signature + freshness, not a stored
+      // challenge. Replays within the skew window only re-mint an equivalent
+      // session for the same wallet — useless without the private key.
       try {
         const signedMessage = Buffer.from(request.signedMessageBase64, "base64");
         const signature = Buffer.from(request.signatureBase64, "base64");
         const publicKey = bs58.decode(request.accountAddress);
         const parsed = parseSignInMessage(signedMessage);
-        if (
-          !parsed?.nonce ||
-          hashSecret(parsed.nonce) !== challenge.nonceHash ||
-          publicKey.length !== 32 ||
-          signature.length !== 64
-        )
+        if (!parsed?.nonce || publicKey.length !== 32 || signature.length !== 64) return null;
+        if (parsed.domain !== domain || parsed.uri !== uri) return null;
+        if (parsed.version !== "1" || (parsed.chainId !== "mainnet" && parsed.chainId !== "solana:mainnet")) {
           return null;
+        }
+        if (!parsed.statement) return null;
+        const now = Date.now();
+        const { issuedAt, expirationTime } = parsed;
+        if (typeof issuedAt !== "string" || typeof expirationTime !== "string") return null;
+        const issued = Date.parse(issuedAt);
+        const expires = Date.parse(expirationTime);
+        if (!Number.isFinite(issued) || Math.abs(now - issued) > SIWS_MAX_SKEW_SEC * 1000) return null;
+        if (!Number.isFinite(expires) || expires <= now) return null;
         const valid = verifySignIn(
           {
-            domain: challenge.domain,
-            uri: challenge.uri,
-            version: challenge.version,
-            chainId: challenge.chainId,
-            statement: challenge.statement,
-            issuedAt: challenge.issuedAt.toISOString(),
-            expirationTime: challenge.expiresAt.toISOString(),
+            domain: parsed.domain,
+            uri: parsed.uri,
+            version: parsed.version,
+            chainId: parsed.chainId,
+            statement: parsed.statement,
+            issuedAt,
+            expirationTime,
             nonce: parsed.nonce,
             address: request.accountAddress,
           },
@@ -83,7 +74,7 @@ export function createAuthService(store: AuthStore, authUri: string) {
         return null;
       }
       const accessToken = randomBytes(32).toString("base64url");
-      const session = await store.completeSignIn(challenge, request.accountAddress, hashSecret(accessToken));
+      const session = await store.completeSignIn(request.accountAddress, hashSecret(accessToken));
       return session ? { session, accessToken } : null;
     },
   };

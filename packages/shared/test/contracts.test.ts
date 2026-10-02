@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  authChallengeResponseSchema,
   authVerifyRequestSchema,
   createPaperPositionRequestSchema,
   createTradeAttemptRequestSchema,
@@ -19,6 +18,7 @@ import {
   scoreReasonSchema,
   signalDetailSchema,
   signalPageSchema,
+  signInInputSchema,
   solanaAddressSchema,
   tradeAttemptSchema,
   WRAPPED_SOL_MINT,
@@ -112,42 +112,25 @@ describe("on-chain primitives and catalog", () => {
 });
 
 describe("auth and JSON-safe cursors", () => {
-  test("SIWS challenge has a bounded lifetime and mainnet domain", () => {
-    const challenge = {
-      challengeId: id,
-      signInInput: {
-        domain: "waffle.example",
-        uri: "https://waffle.example",
-        version: "1",
-        chainId: "mainnet",
-        nonce: "AbCdEf0123456789012345",
-        issuedAt: timestamp,
-        expirationTime: later,
-        statement: "Sign in to waffle",
-      },
+  test("SIWS input has a bounded lifetime and mainnet domain", () => {
+    const signInInput = {
+      domain: "waffle.example",
+      uri: "https://waffle.example",
+      version: "1",
+      chainId: "mainnet",
+      nonce: "AbCdEf0123456789012345",
+      issuedAt: timestamp,
+      expirationTime: later,
+      statement: "Sign in to waffle",
     };
-    expect(authChallengeResponseSchema.safeParse(challenge).success).toBe(true);
-    expect(
-      authChallengeResponseSchema.safeParse({
-        ...challenge,
-        signInInput: { ...challenge.signInInput, chainId: "devnet" },
-      }).success,
-    ).toBe(false);
-    expect(
-      authChallengeResponseSchema.safeParse({
-        ...challenge,
-        signInInput: { ...challenge.signInInput, domain: "other.example" },
-      }).success,
-    ).toBe(false);
-    expect(
-      authChallengeResponseSchema.safeParse({
-        ...challenge,
-        signInInput: { ...challenge.signInInput, expirationTime: "2026-09-24T08:06:00.000Z" },
-      }).success,
-    ).toBe(false);
+    expect(signInInputSchema.safeParse(signInInput).success).toBe(true);
+    expect(signInInputSchema.safeParse({ ...signInInput, chainId: "devnet" }).success).toBe(false);
+    expect(signInInputSchema.safeParse({ ...signInInput, domain: "other.example" }).success).toBe(false);
+    expect(signInInputSchema.safeParse({ ...signInInput, expirationTime: "2026-09-24T08:06:00.000Z" }).success).toBe(
+      false,
+    );
     expect(
       authVerifyRequestSchema.safeParse({
-        challengeId: id,
         accountAddress: address,
         signedMessageBase64: "c2lnbmVk",
         signatureBase64: "c2lnbmF0dXJl",

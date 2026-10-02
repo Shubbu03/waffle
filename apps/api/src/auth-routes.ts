@@ -2,11 +2,10 @@ import type { AuthStore } from "@waffle/db";
 import { authVerifyRequestSchema } from "@waffle/shared";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { z } from "zod";
 import { bearerToken, createAuthService, hashSecret, withOwner } from "./auth.ts";
 import { apiError } from "./errors.ts";
 import type { AppEnv } from "./types.ts";
-import { validateJson, validateQuery } from "./validation.ts";
+import { validateJson } from "./validation.ts";
 
 /** Bounded process-local limits for the single-process demo deployment. */
 export function createAuthLimiter(now: () => number = Date.now) {
@@ -36,7 +35,7 @@ export function createAuthRoutes(store: AuthStore, uri: string) {
     c.header("Cache-Control", "no-store");
     // Never trust caller-controlled Forwarded/X-Forwarded-For headers.
     const ip = c.env?.remoteAddress ?? "unknown";
-    const allowed = allow(`ip:${ip}`, 60) && (!c.req.path.endsWith("/challenge") || allow(`challenge:${ip}`, 10));
+    const allowed = allow(`ip:${ip}`, 60);
     if (!allowed) {
       c.header("Retry-After", "60");
       return apiError(c, 429, "RATE_LIMITED", "Too many authentication requests");
@@ -47,7 +46,6 @@ export function createAuthRoutes(store: AuthStore, uri: string) {
     "*",
     bodyLimit({ maxSize: 8192, onError: (c) => apiError(c, 413, "VALIDATION_ERROR", "Request body too large") }),
   );
-  app.post("/challenge", validateQuery(z.strictObject({})), async (c) => c.json(await service.challenge()));
   app.post("/verify", validateJson(authVerifyRequestSchema), async (c) => {
     const request = c.req.valid("json");
     if (!allow(`wallet:${request.accountAddress}`, 10)) {
