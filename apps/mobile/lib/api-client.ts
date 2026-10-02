@@ -22,6 +22,21 @@ function baseUrl(): string {
   return AppConfig.apiUrl
 }
 
+/** Shared by feature clients for authed GET/PUT/DELETE. Logs path+status, never tokens. */
+export async function apiFetch(path: string, init: RequestInit, token?: string): Promise<Response> {
+  const url = `${baseUrl()}${path}`
+  console.log(`[api] apiFetch: ${init.method ?? 'GET'} ${path}`)
+  const started = Date.now()
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...((init.headers as Record<string, string> | undefined) ?? {}),
+  }
+  if (token) headers.authorization = `Bearer ${token}`
+  const response = await fetch(url, { ...init, headers })
+  console.log(`[api] apiFetch: ${path} -> ${response.status} in ${Date.now() - started}ms`)
+  return response
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const url = `${baseUrl()}${path}`
   console.log(`[api] postJson: POST ${path}`)
@@ -36,7 +51,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await readJson(response, path)) as T
 }
 
-async function readJson(response: Response, path: string): Promise<unknown> {
+export async function readJson(response: Response, path: string): Promise<unknown> {
   let payload: unknown = null
   try {
     payload = await response.json()

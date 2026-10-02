@@ -82,3 +82,29 @@
 2. Manual checklist from AGENT.md gate ticked.
 3. Commit pushed with chapter prefix.
 4. One-line log in MILESTONE.md: `MSX Cx.y done | blocked: <reason> | next: <chapter>`.
+
+## UI roadmap (agreed 30 Sep — supersedes day-plan for 1-8 Oct)
+
+Backend complete through #52. Remaining work in phases; total ~8-9 days against ~8 left, zero slack.
+Cut order if anything slips: #27 → paper-only (allowed), #24 → foreground-live only.
+
+### Phase 0 — Land #21 (0.5d)
+Merge PR #53. #21 tail (401 root cause, public-browsing guards, recorded device pass) tracked separately.
+
+### Phase 1 — #22 Wallet catalog (1-1.5d)
+Wallets tab: seeded wallets (label, address, status, activity), follow/unfollow + separate alert toggle (alerts default off), sign-in gating, empty/loading/error/paused states. APIs: GET /wallets, GET/PUT/DELETE /wallet-subscriptions. Tests: toggle logic, idempotent follow, paused-disabled. Device: follow 2, kill/reopen persist, signed-out change routes to sign-in.
+
+### Phase 2 — #23 Feed + detail (2d, core)
+All/Following feeds, cursor pagination, live WS prepend, rows (whale/token/score/age/slot), detail (reasons, explorer link, status banner, stale CTA disabled), offline cache + airplane-mode stale flag. Tests: pagination merge, stale suppression. Device: airplane check, push-tap reloads quote.
+
+### Phase 3 — #25 Paper trading (1.5d)
+Fresh quote, size input (0.1 SOL cap), fees/slippage/min-out, expiry countdown, simulated positions list + refresh, simulated badge. Tests: expiry blocked, math, no-quote-no-paper. Device: two 0.1 SOL papers.
+
+### Phase 4 — #24 Notifications (1.5d)
+Firebase project (user clicks), google-services.json (gitignored), token register/refresh, POST_NOTIFICATIONS permission + denial path, tap deep-link + reload. Device: foreground/background/killed-app all three.
+
+### Phase 5 — #27 Real trades (1-2d, spike-gated)
+Only if spike passes: taker=connected, excludeRouters=jupiterz, metis/dflow/okx only, fee-payer==taker, 1 signer, ≤0.05 SOL, MWA sign → /execute, trade-attempt record. Else honest paper-only. Tests: all guards. Device: small SOL-USDC traced attempt.
+
+### Phase 6 — Ship #28-#32 (~2d + buffer)
+Deploy → measured two-device QA + latencies → docs/demo.md → release APK → video + deck + portal before 8 Oct 14:00 UTC.

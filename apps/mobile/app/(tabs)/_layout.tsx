@@ -14,6 +14,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="wallets"
+        options={{
+          title: 'Wallets',
+          tabBarIcon: ({ color }) => <UiIconSymbol size={28} name="person.2.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
