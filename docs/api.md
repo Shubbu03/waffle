@@ -73,16 +73,15 @@ Manual acceptance with two wallet sessions: follow the same active catalog walle
 
 | Route | Request | Result |
 | --- | --- | --- |
-| `POST /auth/challenge` | No parameters required | `{ challengeId, signInInput }` for wallet MWA `signIn`. |
-| `POST /auth/verify` | JSON matching `authVerifyRequestSchema`: `challengeId`, `accountAddress`, `signedMessageBase64`, `signatureBase64` | `{ session, accessToken }`; invalid, expired, or consumed challenge returns 401. |
+| `POST /auth/verify` | JSON matching `authVerifyRequestSchema`: `accountAddress`, `signedMessageBase64`, `signatureBase64` | `{ session, accessToken }`; stale, forged, or mismatched messages return 401. |
 | `GET /auth/session` | `Authorization: Bearer <accessToken>` | `{ session }` with user ID, wallet address, and expiry; invalid sessions return 401. |
 | `POST /auth/logout` | Same authorization header | 204 after revoking that session; missing, expired, or already revoked sessions return 401. |
 
-Challenges contain a random 128-bit alphanumeric nonce and expire after five minutes. Only its SHA-256 hash is stored. Verification uses the [Wallet Standard SIWS verifier](https://github.com/phantom/sign-in-with-solana#sign-in-output-verification), binds the exact signed bytes and account to all persisted challenge fields, and additionally applies strict Ed25519 verification to reject small-order public keys. `AUTH_URI` must still match the persisted URI and domain, so changing the deployment identity invalidates pending challenges. A conditional database update consumes a challenge once; user upsert and session insertion commit in the same transaction. Failed session creation rolls everything back.
+The app builds the SIWS input locally (configured domain/URI, mainnet chain, fresh nonce, issued-at, five-minute expiry) and the wallet signs it. Verification uses the [Wallet Standard SIWS verifier](https://github.com/phantom/sign-in-with-solana#sign-in-output-verification), binds the exact signed bytes and account to the configured domain/URI, requires timestamps within `SIWS_MAX_SKEW_SEC` (120s), and additionally applies strict Ed25519 verification to reject small-order public keys. `AUTH_URI` must match the app's SIWS URI exactly. User upsert and session insertion commit in the same transaction. Failed session creation rolls everything back. Replays within the skew window only re-authenticate the same key owner.
 
 Sessions use random 256-bit bearer tokens, store only SHA-256 hashes, and expire after seven days. Return the raw token only at sign-in. The future mobile integration must keep it in OS-backed secure storage, send it only in the authorization header over HTTPS, and clear it on expiry, logout, or wallet changes. Mobile API sign-in remains separate work; the live server rechecks sessions on every page and closes revoked/expired Following sockets. Auth responses use `Cache-Control: no-store`; request bodies are capped at 8 KiB.
 
-The single API process limits all auth requests to 60 per peer IP per minute, challenges to 10 per peer IP, and verification to 10 per account address. Buckets expire, memory is bounded, and a full bucket map rejects new keys. Peer addresses come from `Bun.serve`'s socket metadata; caller-provided forwarding headers are ignored. Behind a tunnel or reverse proxy, clients share that proxy peer's limits. Multiple API instances need a shared limiter; do not expose independent instances expecting these process-local limits to coordinate.
+The single API process limits all auth requests to 60 per peer IP per minute and verification to 10 per account address. Buckets expire, memory is bounded, and a full bucket map rejects new keys. Peer addresses come from `Bun.serve`'s socket metadata; caller-provided forwarding headers are ignored. Behind a tunnel or reverse proxy, clients share that proxy peer's limits. Multiple API instances need a shared limiter; do not expose independent instances expecting these process-local limits to coordinate.
 
 ## Owner-scoped operations
 
@@ -92,12 +91,12 @@ Throw on a failed mutation to roll back; do not catch a failed operation and ret
 
 ## Verification
 
-`bun run test:api` exercises real Ed25519 signatures and the production auth store against migrated PGlite, using a non-owner login role granted only `waffle_api`. It covers tampered inputs, small-order keys, replay, overlapping verification requests, challenge/session expiry, logout, failed-session rollback, anonymous writes, cross-user read/insert/update/delete, and identity reset on reused connections after commit/rollback. The existing database suite separately checks grants and forced RLS.
+`bun run test:api` exercises real Ed25519 signatures and the production auth store against migrated PGlite, using a non-owner login role granted only `waffle_api`. It covers tampered inputs, small-order keys, skew-window replay semantics, stale/future timestamps, logout, anonymous writes, cross-user read/insert/update/delete, and identity reset on reused connections after commit/rollback. The existing database suite separately checks grants and forced RLS.
 
 PGlite serializes database operations; overlapping API requests here are not proof of PostgreSQL lock contention or production pool behavior. Before deployment, run the API with its dedicated login on a disposable Neon branch and manually verify:
 
-1. Obtain a challenge and sign its input with an MWA-compatible wallet; verify the returned bytes/signature to obtain a session.
-2. Submit the same signed challenge simultaneously twice; exactly one request should succeed. Confirm one session was created.
+1. Build a fresh SIWS input (domain, URI, nonce, issued-at) and sign it with an MWA-compatible wallet; verify the returned bytes/signature to obtain a session.
+2. Submit the same signed message twice; both succeed for the same wallet (stateless design documents this). Confirm one user owns both sessions.
 3. Read `/auth/session`, log out, and confirm the same token now gets 401. Also check an expired session.
 4. Use two wallets against private feature routes as they are added; each must see and mutate only its own records. Repeat across reused pooled connections and after failed transactions.
 

@@ -4,9 +4,10 @@ import { ApiError } from './api-error'
 
 export { ApiError } from './api-error'
 
-export type ChallengeResponse = {
-  challengeId: string
-  signInInput: Record<string, unknown>
+export type VerifyRequest = {
+  accountAddress: string
+  signedMessageBase64: string
+  signatureBase64: string
 }
 
 export type VerifyResponse = {
@@ -69,32 +70,10 @@ export async function readJson(response: Response, path: string): Promise<unknow
   return payload
 }
 
-/** Step 1 of sign-in: fetch a server challenge (nonce included). */
-export async function postChallenge(): Promise<ChallengeResponse> {
-  console.log('[api] postChallenge: requesting challenge')
-  const payload = (await postJson<ChallengeResponse>('/auth/challenge', {})) as ChallengeResponse
-  if (
-    typeof payload?.challengeId !== 'string' ||
-    typeof payload?.signInInput !== 'object' ||
-    payload.signInInput === null
-  ) {
-    throw new ApiError(0, 'BAD_RESPONSE', 'Malformed challenge response')
-  }
-  console.log('[api] postChallenge: challenge received')
-  return payload
-}
-
-export type VerifyRequest = {
-  challengeId: string
-  accountAddress: string
-  signedMessageBase64: string
-  signatureBase64: string
-}
-
-/** Step 3 of sign-in: trade the wallet signature for a session. 401 = bad/expired challenge. */
+/** Trade the wallet signature for a session. 401 = stale/forged message. */
 export async function postVerify(request: VerifyRequest): Promise<VerifyResponse> {
   console.log(
-    `[api] postVerify: challenge=${request.challengeId.slice(0, 8)}... account=${request.accountAddress.slice(0, 8)}... ` +
+    `[api] postVerify: account=${request.accountAddress.slice(0, 8)}... ` +
       `msgB64=${request.signedMessageBase64.length}B sigB64=${request.signatureBase64.length}B`,
   )
   console.log('[api] postVerify: submitting signature')

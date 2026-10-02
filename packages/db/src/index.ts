@@ -1,4 +1,4 @@
-export type { AuthStore, StoredChallenge } from "./auth-store.ts";
+export type { AuthStore } from "./auth-store.ts";
 export { createAuthStore } from "./auth-store.ts";
 export type { ApiDatabase } from "./client.ts";
 export { createApiDatabase, isRestrictedApiLogin } from "./client.ts";
