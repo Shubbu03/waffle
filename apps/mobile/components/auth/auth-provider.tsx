@@ -4,6 +4,7 @@ import { fromUint8Array } from 'js-base64'
 import { createContext, type PropsWithChildren, use, useEffect, useMemo, useState } from 'react'
 import { AppConfig } from '@/constants/app-config'
 import { ApiError, getSession, postLogout, postVerify } from '@/lib/api-client'
+import { toWireBase64 } from '@/lib/b64'
 import { WALLET_SIGN_TIMEOUT_MS, withTransactTimeout } from '@/lib/mwa-transact'
 import { isSessionExpired } from '@/lib/session'
 import { clearSession, loadSession, type StoredSession, saveSession } from '@/lib/session-store'
@@ -154,24 +155,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       const accountAddress = output.account.address.toString()
       console.log(`[auth] signIn: wallet answered as ${accountAddress.slice(0, 8)}...`)
-      // MWA runtime shapes vary by wallet/version despite Uint8Array typings:
-      // base64 string (use as-is) | Uint8Array | number[] (encode). Log the shape.
-      const sigValue = output.signature as unknown
-      const msgValue = output.signedMessage as unknown
-      const shapeOf = (v: unknown): string =>
-        `${typeof v} ${(v as { constructor?: { name?: string } })?.constructor?.name ?? '?'} len=${(v as { length?: unknown })?.length ?? '?'}`
-      console.log(`[auth] signIn: sigShape=${shapeOf(sigValue)} msgShape=${shapeOf(msgValue)}`)
-      const toB64 = (value: unknown): string => {
-        if (typeof value === 'string') {
-          if (value.length === 88) return value // already base64
-          return fromUint8Array(new TextEncoder().encode(value))
-        }
-        if (value instanceof Uint8Array) return fromUint8Array(value)
-        if (Array.isArray(value)) return fromUint8Array(Uint8Array.from(value as number[]))
-        throw new Error(`Unsupported signature bytes shape: ${shapeOf(value)}`)
-      }
-      const msgB64 = toB64(msgValue)
-      const sigB64 = toB64(sigValue)
+      const msgB64 = toWireBase64(output.signedMessage, 'msg')
+      const sigB64 = toWireBase64(output.signature, 'sig')
       console.log(`[auth] signIn: msgB64=${msgB64.length}B sigB64=${sigB64.length}B (88 = healthy signature)`)
       try {
         const verified = await postVerify({ accountAddress, signedMessageBase64: msgB64, signatureBase64: sigB64 })
