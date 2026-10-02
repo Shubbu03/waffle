@@ -1,110 +1,90 @@
-/** Waffle API client for issue #21. Thin fetch wrapper; logs method+path+status, never tokens. */
+import { type AuthVerifyRequest, apiErrorSchema, authVerifyResponseSchema, sessionSchema } from '@waffle/shared'
 import { AppConfig } from '@/constants/app-config'
 import { ApiError } from './api-error'
 
 export { ApiError } from './api-error'
+export type VerifyRequest = AuthVerifyRequest
+const unauthorizedListeners = new Set<(token: string) => void>()
 
-export type VerifyRequest = {
-  accountAddress: string
-  signedMessageBase64: string
-  signatureBase64: string
+export function reportUnauthorized(token: string): void {
+  for (const listener of unauthorizedListeners) listener(token)
 }
 
-export type VerifyResponse = {
-  session: { userId: string; walletAddress: string; expiresAt: string }
-  accessToken: string
+export function onUnauthorized(listener: (token: string) => void): () => void {
+  unauthorizedListeners.add(listener)
+  return () => unauthorizedListeners.delete(listener)
 }
 
-function baseUrl(): string {
-  console.log('[api] baseUrl: reading AppConfig.apiUrl')
-  if (!AppConfig.apiUrl) {
-    throw new Error('Set EXPO_PUBLIC_WAFFLE_API_URL to the API base URL before signing in.')
+export function apiBaseUrl(): string {
+  if (!AppConfig.apiUrl) throw new Error('Configure EXPO_PUBLIC_WAFFLE_API_URL before connecting to the API.')
+  const url = new URL(AppConfig.apiUrl)
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && __DEV__)) {
+    throw new Error('The API URL must use HTTPS outside development.')
   }
+  if (url.username || url.password || url.search || url.hash) throw new Error('Invalid API base URL.')
   return AppConfig.apiUrl
 }
 
-/** Shared by feature clients for authed GET/PUT/DELETE. Logs path+status, never tokens. */
-export async function apiFetch(path: string, init: RequestInit, token?: string): Promise<Response> {
-  const url = `${baseUrl()}${path}`
-  console.log(`[api] apiFetch: ${init.method ?? 'GET'} ${path}`)
-  const started = Date.now()
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    ...((init.headers as Record<string, string> | undefined) ?? {}),
+export async function apiFetch(path: string, init: RequestInit = {}, token?: string): Promise<Response> {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  init.signal?.addEventListener('abort', abort, { once: true })
+  if (init.signal?.aborted) abort()
+  const timeout = setTimeout(abort, 10_000)
+  const headers = new Headers(init.headers)
+  headers.set('content-type', 'application/json')
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  try {
+    const response = await fetch(`${apiBaseUrl()}${path}`, { ...init, headers, signal: controller.signal })
+    if (response.status === 401 && token) {
+      reportUnauthorized(token)
+    }
+    return response
+  } finally {
+    clearTimeout(timeout)
+    init.signal?.removeEventListener('abort', abort)
   }
-  if (token) headers.authorization = `Bearer ${token}`
-  const response = await fetch(url, { ...init, headers })
-  console.log(`[api] apiFetch: ${path} -> ${response.status} in ${Date.now() - started}ms`)
-  return response
-}
-
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const url = `${baseUrl()}${path}`
-  console.log(`[api] postJson: POST ${path}`)
-  const started = Date.now()
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const elapsed = Date.now() - started
-  console.log(`[api] postJson: ${path} -> ${response.status} in ${elapsed}ms`)
-  return (await readJson(response, path)) as T
 }
 
 export async function readJson(response: Response, path: string): Promise<unknown> {
-  let payload: unknown = null
+  let payload: unknown
   try {
     payload = await response.json()
   } catch {
-    throw new ApiError(response.status, 'BAD_RESPONSE', `Invalid JSON from ${path}`)
+    throw new ApiError(response.status, 'BAD_RESPONSE', `Invalid response from ${path}`)
   }
   if (!response.ok) {
-    const record = (payload ?? {}) as { code?: unknown; message?: unknown }
+    const parsed = apiErrorSchema.safeParse(payload)
     throw new ApiError(
       response.status,
-      typeof record.code === 'string' ? record.code : 'REQUEST_FAILED',
-      typeof record.message === 'string' ? record.message : `Request to ${path} failed`,
+      parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
+      parsed.success ? parsed.data.error.message : `Request to ${path} failed`,
     )
   }
   return payload
 }
 
-/** Trade the wallet signature for a session. 401 = stale/forged message. */
-export async function postVerify(request: VerifyRequest): Promise<VerifyResponse> {
-  console.log(
-    `[api] postVerify: account=${request.accountAddress.slice(0, 8)}... ` +
-      `msgB64=${request.signedMessageBase64.length}B sigB64=${request.signatureBase64.length}B`,
+export async function postVerify(request: VerifyRequest) {
+  const response = await apiFetch('/auth/verify', { method: 'POST', body: JSON.stringify(request) })
+  const parsed = authVerifyResponseSchema.safeParse(await readJson(response, '/auth/verify'))
+  if (!parsed.success) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed sign-in response')
+  if (parsed.data.session.walletAddress !== request.accountAddress) {
+    throw new ApiError(0, 'BAD_RESPONSE', 'The session belongs to a different wallet.')
+  }
+  return parsed.data
+}
+
+export async function getSession(token: string) {
+  const response = await apiFetch('/auth/session', {}, token)
+  const payload = await readJson(response, '/auth/session')
+  const parsed = sessionSchema.safeParse(
+    payload !== null && typeof payload === 'object' && 'session' in payload ? payload.session : null,
   )
-  console.log('[api] postVerify: submitting signature')
-  const payload = (await postJson<VerifyResponse>('/auth/verify', request)) as VerifyResponse
-  if (typeof payload?.accessToken !== 'string' || typeof payload?.session !== 'object' || payload.session === null) {
-    throw new ApiError(0, 'BAD_RESPONSE', 'Malformed verify response')
-  }
-  console.log('[api] postVerify: session issued')
-  return payload
+  if (!parsed.success) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed session response')
+  return parsed.data
 }
 
-/** Validate the stored token; throws ApiError(401) when expired/invalid. */
-export async function getSession(token: string): Promise<VerifyResponse['session']> {
-  console.log('[api] getSession: validating token (value hidden)')
-  const url = `${baseUrl()}/auth/session`
-  const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } })
-  console.log(`[api] getSession: -> ${response.status}`)
-  const payload = (await readJson(response, '/auth/session')) as { session: VerifyResponse['session'] }
-  if (typeof payload?.session !== 'object' || payload.session === null) {
-    throw new ApiError(0, 'BAD_RESPONSE', 'Malformed session response')
-  }
-  return payload.session
-}
-
-/** Tell the server to burn the token. Best-effort: network errors propagate, caller decides. */
 export async function postLogout(token: string): Promise<void> {
-  console.log('[api] postLogout: burning token (value hidden)')
-  const url = `${baseUrl()}/auth/logout`
-  const response = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${token}` } })
-  console.log(`[api] postLogout: -> ${response.status}`)
-  if (response.status !== 204) {
-    await readJson(response, '/auth/logout')
-  }
+  const response = await apiFetch('/auth/logout', { method: 'POST' }, token)
+  if (response.status !== 204) await readJson(response, '/auth/logout')
 }

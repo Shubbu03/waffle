@@ -17,13 +17,13 @@ export function useCatalogWallets() {
 }
 
 export function useWalletSubscriptions() {
-  const { session } = useAuth()
+  const { session, serverLinked } = useAuth()
   const token = session?.accessToken ?? ''
   console.log(`[wallets-hooks] useWalletSubscriptions: ${token ? 'enabled' : 'disabled (signed out)'}`)
   return useQuery({
-    queryKey: ['wallet-subscriptions'],
-    queryFn: (): Promise<WalletSubscription[]> => listSubscriptions(token),
-    enabled: token !== '',
+    queryKey: ['wallet-subscriptions', session?.userId],
+    queryFn: ({ signal }): Promise<WalletSubscription[]> => listSubscriptions(token, signal),
+    enabled: token !== '' && serverLinked,
     staleTime: 30_000,
   })
 }
@@ -37,11 +37,11 @@ function useInvalidateSubscriptions() {
 }
 
 export function useFollowWallet() {
-  const { session } = useAuth()
+  const { session, serverLinked } = useAuth()
   const invalidate = useInvalidateSubscriptions()
   return useMutation({
     mutationFn: async (walletId: string) => {
-      if (!session?.accessToken) throw new Error('Sign in to follow wallets.')
+      if (!session?.accessToken || !serverLinked) throw new Error('Sign in with the API reachable to follow wallets.')
       return followWallet(session.accessToken, walletId)
     },
     onSuccess: (sub) => {
@@ -57,11 +57,11 @@ export function useFollowWallet() {
 }
 
 export function useUnfollowWallet() {
-  const { session } = useAuth()
+  const { session, serverLinked } = useAuth()
   const invalidate = useInvalidateSubscriptions()
   return useMutation({
     mutationFn: async (walletId: string) => {
-      if (!session?.accessToken) throw new Error('Sign in to change follows.')
+      if (!session?.accessToken || !serverLinked) throw new Error('Sign in with the API reachable to change follows.')
       await unfollowWallet(session.accessToken, walletId)
       return walletId
     },
@@ -73,11 +73,11 @@ export function useUnfollowWallet() {
 }
 
 export function useAlertToggle() {
-  const { session } = useAuth()
+  const { session, serverLinked } = useAuth()
   const invalidate = useInvalidateSubscriptions()
   return useMutation({
     mutationFn: async ({ walletId, alertsEnabled }: { walletId: string; alertsEnabled: boolean }) => {
-      if (!session?.accessToken) throw new Error('Sign in to change alerts.')
+      if (!session?.accessToken || !serverLinked) throw new Error('Sign in with the API reachable to change alerts.')
       return followWallet(session.accessToken, walletId, alertsEnabled)
     },
     onSuccess: (sub) => {

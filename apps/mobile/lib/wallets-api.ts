@@ -62,9 +62,9 @@ export async function listWallets(): Promise<CatalogWallet[]> {
 }
 
 /** Owner's follows — bearer required. */
-export async function listSubscriptions(token: string): Promise<WalletSubscription[]> {
+export async function listSubscriptions(token: string, signal?: AbortSignal): Promise<WalletSubscription[]> {
   console.log('[wallets-api] listSubscriptions: fetching follows')
-  const response = await apiFetch('/wallet-subscriptions', { method: 'GET' }, token)
+  const response = await apiFetch('/wallet-subscriptions', { method: 'GET', signal }, token)
   const payload = (await readJson(response, '/wallet-subscriptions')) as { items?: unknown }
   if (!Array.isArray(payload?.items)) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed subscriptions response')
   const items = payload.items.map(parseSubscription)

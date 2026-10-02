@@ -42,7 +42,35 @@ describe('parseStoredSession', () => {
   })
 
   test('complete record parses', () => {
-    const record = { userId: 'u', walletAddress: 'w', expiresAt: 'e', accessToken: 't' }
+    const record = {
+      userId: '11111111-1111-4111-8111-111111111111',
+      walletAddress: '1'.repeat(32),
+      expiresAt: '2026-10-08T10:00:00.000Z',
+      accessToken: 'a'.repeat(43),
+    }
     expect(parseStoredSession(JSON.stringify(record))).toEqual(record)
   })
+})
+
+test('legacy local sessions and malformed bearer tokens cannot restore authentication', () => {
+  expect(
+    parseStoredSession(
+      JSON.stringify({
+        userId: 'local',
+        walletAddress: '1'.repeat(32),
+        expiresAt: '2026-10-08T10:00:00Z',
+        accessToken: '',
+      }),
+    ),
+  ).toBeNull()
+  expect(
+    parseStoredSession(
+      JSON.stringify({
+        userId: '11111111-1111-4111-8111-111111111111',
+        walletAddress: '1'.repeat(32),
+        expiresAt: '2026-10-08T10:00:00Z',
+        accessToken: 'short',
+      }),
+    ),
+  ).toBeNull()
 })
