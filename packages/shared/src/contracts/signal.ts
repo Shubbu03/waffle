@@ -38,6 +38,7 @@ export const signalSummarySchema = z.strictObject({
 const mintEvidenceSchema = z.strictObject({
   address: solanaAddressSchema,
   tokenProgramId: solanaAddressSchema,
+  decimals: z.number().int().min(0).max(255).optional(),
   mintAuthority: solanaAddressSchema.nullable(),
   freezeAuthority: solanaAddressSchema.nullable(),
   fetchedAt: timestampSchema,

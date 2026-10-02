@@ -64,6 +64,7 @@ function quoteIsConsistent(quote: z.infer<typeof quoteFields>): boolean {
 export const paperQuoteSchema = quoteFields
   .extend({
     kind: z.literal("paper"),
+    outputDecimals: z.number().int().min(0).max(255).optional(),
     providerQuoteId: z.string().max(200).nullable(),
   })
   .refine((quote) => {

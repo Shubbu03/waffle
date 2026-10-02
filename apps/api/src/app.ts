@@ -22,7 +22,10 @@ import { validateQuery } from "./validation.ts";
 export function createApp(
   database: { ping(): Promise<void>; reads?: ReadStore },
   auth?: { store: AuthStore; uri: string },
-  paper?: { jupiter?: Pick<JupiterService, "getPaperQuote">; now?: () => number },
+  paper?: {
+    jupiter?: Pick<JupiterService, "getPaperQuote"> & Partial<Pick<JupiterService, "getPaperValuation">>;
+    now?: () => number;
+  },
   live?: LiveDelivery,
   push?: PushDelivery,
   trade?: { jupiter?: Pick<JupiterService, "getRealOrder" | "execute">; now?: () => number },

@@ -63,6 +63,9 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="signals/[id]" />
+      <Stack.Screen name="paper/[id]" />
+      <Stack.Screen name="paper/positions/index" />
+      <Stack.Screen name="paper/positions/[id]" />
       <Stack.Screen name="+not-found" />
       <Stack.Protected guard={!isAuthenticated || !serverLinked}>
         <Stack.Screen name="sign-in" />

@@ -25,7 +25,7 @@ A valid previously verified token survives a network outage for cached browsing,
 - AsyncStorage holds at most 200 summaries per view/owner and 50 public signal details per API. It never stores bearer tokens. Detail screens refresh on open/foreground and every 30 seconds while active.
 - Offline/failed refreshes preserve cached browsing and mark it stale. Copy readiness checks transaction age, evidence expiry, persisted suppression/history status, and stream degradation. Missing optional holders/creator/oracle stays unknown and earns zero points; it does not independently block a copy.
 
-Paper execution (#25), notification receipt/tap handling (#24), and wallet-approved real trades (#27) remain separate work. The detail screen displays copy readiness and a disabled paper entry labelled as upcoming; it does not simulate a fill or request a wallet transaction.
+The detail screen opens [paper review and positions (#25)](mobile-paper.md) when its copy checks pass. Notification receipt/tap handling (#24) and wallet-approved real trades (#27) remain separate work.
 
 ## Automated checks
 

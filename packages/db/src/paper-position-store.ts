@@ -5,7 +5,7 @@ import {
   paperPositionsResponseSchema,
   paperPositionWithFillSchema,
 } from "@waffle/shared";
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "./database.ts";
 import { paperPositions } from "./schema/index.ts";
 
@@ -26,6 +26,21 @@ function serialize(row: typeof paperPositions.$inferSelect) {
 /** Only call inside the authenticated owner's transaction. */
 export function createPaperPositionStore(tx: DatabaseExecutor, userId: string) {
   return {
+    async get(id: string) {
+      const [row] = await tx
+        .select()
+        .from(paperPositions)
+        .where(and(eq(paperPositions.id, id), eq(paperPositions.userId, userId)));
+      return row ? serialize(row) : null;
+    },
+    async byQuote(quoteId: string) {
+      const [row] = await tx
+        .select()
+        .from(paperPositions)
+        .where(and(eq(paperPositions.userId, userId), sql`${paperPositions.entryQuote} ->> 'id' = ${quoteId}`))
+        .limit(1);
+      return row ? serialize(row) : null;
+    },
     async create(quote: PaperQuote, filledAtMs: number) {
       const [row] = await tx
         .insert(paperPositions)

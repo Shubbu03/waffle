@@ -82,7 +82,7 @@ Local typechecks and tests need no credentials. Applying migrations to a disposa
 
 The initial setup used `bun init --yes --minimal`, `mkdir -p` for the planned directories, workspace manifests, and `bun add --dev --exact typescript`. Install dependencies from the root so all packages share one bun.lock. Package management follows the [Bun workspace documentation](https://bun.sh/docs/pm/workspaces).
 
-The mobile Signals tab supports All/Following, cursor pagination, foreground WebSocket recovery, and bounded offline caches. Details show original score reasons, evidence timestamps, unknown data, and copy blockers; paper and real execution remain separate issues. See [mobile acceptance steps](docs/mobile-signals.md).
+The mobile Signals tab supports All/Following, cursor pagination, foreground WebSocket recovery, and bounded offline caches. Details show original score reasons, evidence timestamps, unknown data, and copy blockers; paper review, simulated fills, owner-only positions and fresh SOL exit valuations are implemented. See [signal acceptance steps](docs/mobile-signals.md) and [paper trading acceptance steps](docs/mobile-paper.md). Wallet-approved real execution remains a separate mobile issue.
 
 Outbound HTTP requests use shared Xior policies with clients for mobile, RPC, Pyth, Jupiter, FCM, and catalog verification. See [HTTP clients](docs/http-clients.md).
 

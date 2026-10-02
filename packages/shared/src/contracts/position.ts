@@ -1,6 +1,14 @@
 import { z } from "zod";
+import { WRAPPED_SOL_MINT } from "../program-ids.ts";
 import { scorePolicyV1 } from "../scoring/config.ts";
-import { idSchema, parseRawAmount, positiveRawAmountSchema, timestampSchema } from "./primitives.ts";
+import {
+  idSchema,
+  parseRawAmount,
+  positiveRawAmountSchema,
+  rawAmountSchema,
+  solanaAddressSchema,
+  timestampSchema,
+} from "./primitives.ts";
 import { paperQuoteSchema } from "./quote.ts";
 
 export const createPaperQuoteRequestSchema = z.strictObject({
@@ -56,3 +64,33 @@ export type GetPaperPositionsQuery = z.output<typeof getPaperPositionsQuerySchem
 export type CreatePaperQuoteRequest = z.infer<typeof createPaperQuoteRequestSchema>;
 
 export const paperPositionWithFillSchema = paperPositionSchema.safeExtend({ fill: paperFillSchema });
+
+export type PaperPositionWithFill = z.infer<typeof paperPositionWithFillSchema>;
+export const paperPositionLookupSchema = z.strictObject({ position: paperPositionWithFillSchema.nullable() });
+
+/** Indicative quote for selling the exact simulated holding back to SOL. */
+export const paperValuationQuoteSchema = z
+  .strictObject({
+    inputMint: solanaAddressSchema,
+    outputMint: z.literal(WRAPPED_SOL_MINT),
+    inputAmountRaw: positiveRawAmountSchema,
+    outputLamports: positiveRawAmountSchema,
+    minOutputLamports: positiveRawAmountSchema,
+    feeLamports: rawAmountSchema,
+    slippageBps: z.number().int().min(0).max(5000),
+    priceImpactPct: z.number().min(-100).max(100),
+    fetchedAt: timestampSchema,
+    expiresAt: timestampSchema,
+  })
+  .refine(
+    (value) =>
+      BigInt(value.minOutputLamports) <= BigInt(value.outputLamports) &&
+      Date.parse(value.expiresAt) > Date.parse(value.fetchedAt),
+    "Invalid valuation quote",
+  );
+export const paperValuationSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("available"), positionId: idSchema, quote: paperValuationQuoteSchema }),
+  z.strictObject({ status: z.literal("unavailable"), positionId: idSchema, reason: z.string().min(1).max(200) }),
+]);
+export type PaperValuationQuote = z.infer<typeof paperValuationQuoteSchema>;
+export type PaperValuation = z.infer<typeof paperValuationSchema>;

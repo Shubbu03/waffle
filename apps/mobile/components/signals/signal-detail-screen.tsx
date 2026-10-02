@@ -1,5 +1,5 @@
 import { PUMP_SWAP_PROGRAM_ID, type ScoreReasonCode } from '@waffle/shared'
-import { Stack, useLocalSearchParams } from 'expo-router'
+import { router, Stack, useLocalSearchParams } from 'expo-router'
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native'
 import { AppExternalLink } from '@/components/app-external-link'
 import { AppText } from '@/components/app-text'
@@ -144,13 +144,14 @@ export function SignalDetailScreen() {
                 {blocked ?? 'Checks allow preparing a fresh quote. Every copy still needs a new quote.'}
               </AppText>
               <Pressable
-                disabled
+                disabled={!!blocked}
                 accessibilityRole="button"
-                accessibilityState={{ disabled: true }}
-                accessibilityHint={blocked ?? 'Paper trading will be added next.'}
-                style={{ opacity: 0.5, paddingVertical: 12 }}
+                accessibilityState={{ disabled: !!blocked }}
+                accessibilityHint={blocked ?? 'Review a simulated copy with a fresh quote.'}
+                onPress={() => router.push({ pathname: '/paper/[id]', params: { id } })}
+                style={{ opacity: blocked ? 0.5 : 1, paddingVertical: 12 }}
               >
-                <AppText type="defaultSemiBold">Paper copy · coming next</AppText>
+                <AppText type="defaultSemiBold">Review paper copy</AppText>
               </Pressable>
             </View>
           </>

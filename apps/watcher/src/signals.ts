@@ -44,6 +44,7 @@ function snapshot(checks: TokenChecks, now: number) {
           ? null
           : {
               address: mint.value.address,
+              decimals: mint.value.decimals,
               tokenProgramId: mint.value.tokenProgramId,
               mintAuthority: mint.value.mintAuthority,
               freezeAuthority: mint.value.freezeAuthority,

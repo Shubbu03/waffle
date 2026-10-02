@@ -410,3 +410,102 @@ test("fill rechecks liquidity freshness and rejects signals without trusted tran
   await error(await request("POST", "/quote", { signalId: crypto.randomUUID(), sizeLamports }), 404, "NOT_FOUND");
   expect(await count()).toBe(0);
 });
+
+test("quote lookup and position detail are owner-only, including unknown quote IDs", async () => {
+  const q = await quote();
+  expect(await (await request("GET", `/by-quote/${q.id}`)).json()).toEqual({ position: null });
+  const position = paperPositionWithFillSchema.parse(await (await fill(q.id)).json());
+  expect(await (await request("GET", `/by-quote/${q.id}`)).json()).toEqual({ position });
+  expect(await (await request("GET", `/by-quote/${q.id}`, undefined, tokenB)).json()).toEqual({ position: null });
+  expect(await (await request("GET", `/${position.id}`)).json()).toEqual(position);
+  await error(await request("GET", `/${position.id}`, undefined, tokenB), 404, "NOT_FOUND");
+  for (const path of ["/by-quote/bad", "/bad/valuation", `/${position.id}?userId=${ownerB}`])
+    await error(await request("GET", path), 400, "VALIDATION_ERROR");
+  await error(await request("GET", `/by-quote/${q.id}`, undefined, null), 401, "UNAUTHORIZED");
+});
+
+async function filledPosition() {
+  return paperPositionWithFillSchema.parse(await (await fill((await quote()).id)).json());
+}
+function exitQuote(quantity: string) {
+  upstream = {
+    ...upstream,
+    inputMint: PUMP_SWAP_PROGRAM_ID,
+    outputMint: WRAPPED_SOL_MINT,
+    inAmount: quantity,
+    outAmount: "110000000",
+    otherAmountThreshold: "104500000",
+  };
+}
+test("valuation quotes the exact held amount back to SOL without a taker, even after the signal ages", async () => {
+  const position = await filledPosition();
+  clock += 30_000;
+  exitQuote(position.fill.outputAmountRaw);
+  const response = await request("GET", `/${position.id}/valuation`);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    status: "available",
+    positionId: position.id,
+    quote: {
+      inputAmountRaw: "9007199254740993123",
+      outputLamports: "110000000",
+      minOutputLamports: "104500000",
+      feeLamports: "8000",
+    },
+  });
+  const url = calls.at(-1);
+  expect(url?.searchParams.get("inputMint")).toBe(PUMP_SWAP_PROGRAM_ID);
+  expect(url?.searchParams.get("outputMint")).toBe(WRAPPED_SOL_MINT);
+  expect(url?.searchParams.get("amount")).toBe(position.fill.outputAmountRaw);
+  expect(url?.searchParams.has("taker")).toBe(false);
+  expect(await count()).toBe(1);
+});
+test("foreign position valuation is blocked before provider I/O", async () => {
+  const position = await filledPosition();
+  const before = calls.length;
+  await error(await request("GET", `/${position.id}/valuation`, undefined, tokenB), 404, "NOT_FOUND");
+  expect(calls.length).toBe(before);
+});
+test("unavailable routes, mismatched amounts, transactions and expired exit quotes show no invented value", async () => {
+  const position = await filledPosition();
+  for (const update of [
+    { outAmount: "0" },
+    { inAmount: "1" },
+    { inputMint: WRAPPED_SOL_MINT },
+    { transaction: "unsafe" },
+    { taker: WRAPPED_SOL_MINT },
+    { expireAt: new Date(clock - 1).toISOString() },
+  ]) {
+    exitQuote(position.fill.outputAmountRaw);
+    Object.assign(upstream, update);
+    const response = await request("GET", `/${position.id}/valuation`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "unavailable", positionId: position.id });
+    // Reset all mutated fields for the next case.
+    delete upstream.expireAt;
+    upstream.transaction = null;
+    upstream.taker = null;
+  }
+  expect(await count()).toBe(1);
+});
+test("logout during valuation prevents a late response from disclosing the value", async () => {
+  const position = await filledPosition();
+  exitQuote(position.fill.outputAmountRaw);
+  afterFetch = async () => {
+    await drizzle(pg)
+      .delete(sessions)
+      .where(eq(sessions.tokenHash, hashSecret(tokenA)));
+  };
+  await error(await request("GET", `/${position.id}/valuation`), 401, "UNAUTHORIZED");
+});
+test("paper quotes retain verified mint decimals without imposing defaults on old signals", async () => {
+  expect((await quote()).outputDecimals).toBeUndefined();
+  const [row] = await drizzle(pg).select().from(signals).where(eq(signals.id, signalId));
+  if (!row?.snapshot.mint) throw new Error("Expected mint evidence");
+  const snapshot = structuredClone(row.snapshot);
+  if (snapshot.mint) snapshot.mint.decimals = 6;
+  await drizzle(pg).update(signals).set({ snapshot }).where(eq(signals.id, signalId));
+  const q = await quote();
+  expect(q.outputDecimals).toBe(6);
+  expect(paperPositionWithFillSchema.parse(await (await fill(q.id)).json()).entryQuote.outputDecimals).toBe(6);
+});
