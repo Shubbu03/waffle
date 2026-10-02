@@ -153,10 +153,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
           `msgBytes=${output.signedMessage?.length ?? -1} sigBytes=${output.signature?.length ?? -1}`,
       )
       try {
+        // MWA returns base64 STRINGS at runtime despite Uint8Array typings;
+        // fromUint8Array on a string mangles it (88 chars -> 120). Pass through.
+        const toB64 = (value: Uint8Array | string): string =>
+          typeof value === 'string' ? value : fromUint8Array(value)
         const verified = await postVerify({
           accountAddress,
-          signedMessageBase64: fromUint8Array(output.signedMessage),
-          signatureBase64: fromUint8Array(output.signature),
+          signedMessageBase64: toB64(output.signedMessage),
+          signatureBase64: toB64(output.signature),
         })
         console.log('[auth] signIn: server verified, persisting session')
         const stored: StoredSession = { ...verified.session, accessToken: verified.accessToken }
