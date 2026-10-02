@@ -4,6 +4,7 @@ import { fromUint8Array } from 'js-base64'
 import { createContext, type PropsWithChildren, use, useEffect, useMemo, useState } from 'react'
 import { AppConfig } from '@/constants/app-config'
 import { ApiError, getSession, postLogout, postVerify } from '@/lib/api-client'
+import { WALLET_SIGN_TIMEOUT_MS, withTransactTimeout } from '@/lib/mwa-transact'
 import { isSessionExpired } from '@/lib/session'
 import { clearSession, loadSession, type StoredSession, saveSession } from '@/lib/session-store'
 import { buildSignInInput } from '@/lib/sign-in-input'
@@ -120,12 +121,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const signInMutation = useMutation({
     mutationFn: async () => {
-      // A live MWA session + a new authorize-in-transact stalls the wallet
-      // prompt (builder-verified on device). Start clean when already connected.
-      if (connectedAddress) {
-        console.log('[auth] signIn: existing wallet session, disconnecting for a clean transact')
-        await disconnect()
-      }
       // Stateless SIWS: input built locally, server checks freshness (no challenge round-trip).
       console.log('[auth] signIn: building local SIWS input')
       if (!AppConfig.uri) {
@@ -135,33 +130,38 @@ export function AuthProvider({ children }: PropsWithChildren) {
       console.log(
         `[auth] signIn: wallet payload domain=${payload.domain} uri=${payload.uri} chain=${payload.chainId} nonce=${payload.nonce ? 'present' : 'MISSING'} expiry=${payload.expirationTime ?? 'MISSING'}`,
       )
-      console.log('[auth] signIn: asking wallet to sign')
-      const walletStart = Date.now()
-      const output = await walletSignIn({
-        domain: payload.domain,
-        statement: payload.statement ?? 'Sign in to waffle. This does not authorize any transactions.',
-        uri: payload.uri,
-        version: payload.version,
-        chainId: payload.chainId,
-        nonce: payload.nonce,
-        issuedAt: payload.issuedAt,
-        expirationTime: payload.expirationTime,
-      })
-      const accountAddress = output.account.address.toString()
-      console.log(
-        `[auth] signIn: wallet answered in ${Date.now() - walletStart}ms as ${accountAddress.slice(0, 8)}... ` +
-          `msgBytes=${output.signedMessage?.length ?? -1} sigBytes=${output.signature?.length ?? -1}`,
-      )
-      try {
-        // MWA returns base64 STRINGS at runtime despite Uint8Array typings;
-        // fromUint8Array on a string mangles it (88 chars -> 120). Pass through.
-        const toB64 = (value: Uint8Array | string): string =>
-          typeof value === 'string' ? value : fromUint8Array(value)
-        const verified = await postVerify({
-          accountAddress,
-          signedMessageBase64: toB64(output.signedMessage),
-          signatureBase64: toB64(output.signature),
+      const askWallet = () =>
+        walletSignIn({
+          domain: payload.domain,
+          statement: payload.statement ?? 'Sign in to waffle. This does not authorize any transactions.',
+          uri: payload.uri,
+          version: payload.version,
+          chainId: payload.chainId,
+          nonce: payload.nonce,
+          issuedAt: payload.issuedAt,
+          expirationTime: payload.expirationTime,
         })
+      // Try on the live session first. A prior deauthorize+reauthorize cycle is
+      // itself a stall source, so disconnect-and-retry is the fallback, not the default.
+      console.log('[auth] signIn: asking wallet to sign')
+      let output: Awaited<ReturnType<typeof walletSignIn>>
+      try {
+        output = await withTransactTimeout('wallet-sign', WALLET_SIGN_TIMEOUT_MS, askWallet)
+      } catch {
+        console.log('[auth] signIn: first attempt stalled/failed, disconnecting for one clean retry')
+        await disconnect()
+        output = await withTransactTimeout('wallet-sign-retry', WALLET_SIGN_TIMEOUT_MS, askWallet)
+      }
+      const accountAddress = output.account.address.toString()
+      console.log(`[auth] signIn: wallet answered as ${accountAddress.slice(0, 8)}...`)
+      // MWA returns base64 STRINGS at runtime despite Uint8Array typings;
+      // fromUint8Array on a string mangles it (88 chars -> 120). Pass through.
+      const toB64 = (value: Uint8Array | string): string => (typeof value === 'string' ? value : fromUint8Array(value))
+      const msgB64 = toB64(output.signedMessage)
+      const sigB64 = toB64(output.signature)
+      console.log(`[auth] signIn: msgB64=${msgB64.length}B sigB64=${sigB64.length}B (88 = healthy signature)`)
+      try {
+        const verified = await postVerify({ accountAddress, signedMessageBase64: msgB64, signatureBase64: sigB64 })
         console.log('[auth] signIn: server verified, persisting session')
         const stored: StoredSession = { ...verified.session, accessToken: verified.accessToken }
         await saveSession(stored)
