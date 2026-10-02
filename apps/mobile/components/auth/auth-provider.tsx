@@ -154,11 +154,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       const accountAddress = output.account.address.toString()
       console.log(`[auth] signIn: wallet answered as ${accountAddress.slice(0, 8)}...`)
-      // MWA returns base64 STRINGS at runtime despite Uint8Array typings;
-      // fromUint8Array on a string mangles it (88 chars -> 120). Pass through.
-      const toB64 = (value: Uint8Array | string): string => (typeof value === 'string' ? value : fromUint8Array(value))
-      const msgB64 = toB64(output.signedMessage)
-      const sigB64 = toB64(output.signature)
+      // MWA runtime shapes vary by wallet/version despite Uint8Array typings:
+      // base64 string (use as-is) | Uint8Array | number[] (encode). Log the shape.
+      const sigValue = output.signature as unknown
+      const msgValue = output.signedMessage as unknown
+      const shapeOf = (v: unknown): string =>
+        `${typeof v} ${(v as { constructor?: { name?: string } })?.constructor?.name ?? '?'} len=${(v as { length?: unknown })?.length ?? '?'}`
+      console.log(`[auth] signIn: sigShape=${shapeOf(sigValue)} msgShape=${shapeOf(msgValue)}`)
+      const toB64 = (value: unknown): string => {
+        if (typeof value === 'string') {
+          if (value.length === 88) return value // already base64
+          return fromUint8Array(new TextEncoder().encode(value))
+        }
+        if (value instanceof Uint8Array) return fromUint8Array(value)
+        if (Array.isArray(value)) return fromUint8Array(Uint8Array.from(value as number[]))
+        throw new Error(`Unsupported signature bytes shape: ${shapeOf(value)}`)
+      }
+      const msgB64 = toB64(msgValue)
+      const sigB64 = toB64(sigValue)
       console.log(`[auth] signIn: msgB64=${msgB64.length}B sigB64=${sigB64.length}B (88 = healthy signature)`)
       try {
         const verified = await postVerify({ accountAddress, signedMessageBase64: msgB64, signatureBase64: sigB64 })
