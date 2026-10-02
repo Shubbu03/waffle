@@ -1,5 +1,6 @@
 import { PublicKey } from '@solana/web3.js'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { Link } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView } from 'react-native'
 import { AccountUiBalance } from '@/components/account/account-ui-balance'
@@ -29,6 +30,11 @@ export function AccountFeature() {
 
   return (
     <AppPage>
+      <AppView style={{ paddingVertical: 16 }}>
+        <Link href="/paper/positions">
+          <AppText type="link">Paper positions · simulated</AppText>
+        </Link>
+      </AppView>
       {account ? (
         <ScrollView
           contentContainerStyle={{}}

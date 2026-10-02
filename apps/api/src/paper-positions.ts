@@ -6,7 +6,9 @@ import {
   checkTradeLimits,
   type GetPaperPositionsQuery,
   type PaperQuote,
+  type PaperValuation,
   paperQuoteSchema,
+  paperValuationQuoteSchema,
   type Session,
   type SignalDetail,
   scorePolicyV1,
@@ -66,7 +68,7 @@ function assertQuoteFresh(quote: PaperQuote, now: number) {
 /** Owner-bound, single-use quotes are short-lived; durable fills live in Postgres. */
 export function createPaperPositionService(
   auth: AuthStore,
-  jupiter?: Pick<JupiterService, "getPaperQuote">,
+  jupiter?: Pick<JupiterService, "getPaperQuote"> & Partial<Pick<JupiterService, "getPaperValuation">>,
   now: () => number = Date.now,
 ) {
   const quotes = new Map<string, { userId: string; quote: PaperQuote }>();
@@ -107,6 +109,7 @@ export function createPaperPositionService(
       ) {
         throw new PaperPositionError("QUOTE_UNAVAILABLE", 503, "Quote does not match the requested signal and size");
       }
+      quote = paperQuoteSchema.parse({ ...quote, outputDecimals: signal.snapshot.mint?.decimals });
       const userId = await owner(tokenHash, async (tx, session) => {
         await signalFor(tx, input);
         assertQuoteFresh(quote, now());
@@ -148,6 +151,57 @@ export function createPaperPositionService(
         if (reserved && now() < Date.parse(reserved.quote.expiresAt)) quotes.set(input.quoteId, reserved);
         throw error;
       }
+    },
+    async get(tokenHash: string, id: string) {
+      return owner(tokenHash, async (tx, session) => {
+        const position = await createPaperPositionStore(tx, session.userId).get(id);
+        if (!position) throw new PaperPositionError("NOT_FOUND", 404, "Position not found");
+        return position;
+      });
+    },
+    async byQuote(tokenHash: string, quoteId: string) {
+      return owner(tokenHash, async (tx, session) => ({
+        position: await createPaperPositionStore(tx, session.userId).byQuote(quoteId),
+      }));
+    },
+    async valuation(tokenHash: string, id: string): Promise<PaperValuation> {
+      const position = await owner(tokenHash, async (tx, session) => {
+        const found = await createPaperPositionStore(tx, session.userId).get(id);
+        if (!found) throw new PaperPositionError("NOT_FOUND", 404, "Position not found");
+        return found;
+      });
+      let result: PaperValuation = {
+        status: "unavailable",
+        positionId: id,
+        reason: "No fresh exit quote is available. Try again later.",
+      };
+      if (position.status === "open" && jupiter?.getPaperValuation) {
+        try {
+          const quote = paperValuationQuoteSchema.parse(
+            await jupiter.getPaperValuation({
+              positionId: id,
+              inputMint: position.entryQuote.outputMint,
+              inputAmountRaw: position.fill.outputAmountRaw,
+            }),
+          );
+          const age = now() - Date.parse(quote.fetchedAt);
+          if (
+            quote.inputMint === position.entryQuote.outputMint &&
+            quote.inputAmountRaw === position.fill.outputAmountRaw &&
+            age >= 0 &&
+            age < scorePolicyV1.freshness.quoteMs &&
+            now() < Date.parse(quote.expiresAt)
+          ) {
+            result = { status: "available", positionId: id, quote };
+          }
+        } catch (error) {
+          if (!(error instanceof JupiterServiceError) && !(error instanceof Error && error.name === "ZodError"))
+            throw error;
+        }
+      }
+      // Revalidate the session after provider I/O, including logout while a request was pending.
+      await owner(tokenHash, async () => true);
+      return result;
     },
     async list(tokenHash: string, input: GetPaperPositionsQuery) {
       return owner(tokenHash, async (tx, session) => {

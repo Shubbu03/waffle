@@ -224,6 +224,7 @@ describe("signal pipeline", () => {
     await h.pipeline.handle(h.event);
     expect(saved(h)).toMatchObject({ status: "suppressed", score: 60 });
     expect(saved(h).snapshot.mint?.mintAuthority).toBe(wallet);
+    expect(saved(h).snapshot.mint?.decimals).toBe(6);
   });
 
   test("fresh complete evidence scores 100; excessive same-asset oracle deviation suppresses", async () => {

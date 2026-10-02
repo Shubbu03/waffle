@@ -3,6 +3,7 @@ import {
   createPaperPositionRequestSchema,
   createPaperQuoteRequestSchema,
   getPaperPositionsQuerySchema,
+  idSchema,
 } from "@waffle/shared";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -12,11 +13,11 @@ import { apiError } from "./errors.ts";
 import type { JupiterService } from "./jupiter.ts";
 import { createPaperPositionService, PaperPositionError } from "./paper-positions.ts";
 import type { AppEnv } from "./types.ts";
-import { validateJson, validateQuery } from "./validation.ts";
+import { validateJson, validateParams, validateQuery } from "./validation.ts";
 
 export function createPaperPositionRoutes(
   auth: AuthStore,
-  jupiter?: Pick<JupiterService, "getPaperQuote">,
+  jupiter?: Pick<JupiterService, "getPaperQuote"> & Partial<Pick<JupiterService, "getPaperValuation">>,
   now?: () => number,
 ) {
   const app = new Hono<AppEnv>();
@@ -45,6 +46,30 @@ export function createPaperPositionRoutes(
   );
   app.get("/", validateQuery(getPaperPositionsQuerySchema), async (c) =>
     c.json(await service.list(hashSecret(bearerToken(c.req.header("Authorization")) ?? ""), c.req.valid("query"))),
+  );
+  app.get(
+    "/by-quote/:quoteId",
+    validateQuery(z.strictObject({})),
+    validateParams(z.strictObject({ quoteId: idSchema })),
+    async (c) =>
+      c.json(
+        await service.byQuote(
+          hashSecret(bearerToken(c.req.header("Authorization")) ?? ""),
+          c.req.valid("param").quoteId,
+        ),
+      ),
+  );
+  app.get(
+    "/:id/valuation",
+    validateQuery(z.strictObject({})),
+    validateParams(z.strictObject({ id: idSchema })),
+    async (c) =>
+      c.json(
+        await service.valuation(hashSecret(bearerToken(c.req.header("Authorization")) ?? ""), c.req.valid("param").id),
+      ),
+  );
+  app.get("/:id", validateQuery(z.strictObject({})), validateParams(z.strictObject({ id: idSchema })), async (c) =>
+    c.json(await service.get(hashSecret(bearerToken(c.req.header("Authorization")) ?? ""), c.req.valid("param").id)),
   );
   app.onError((error, c) => {
     if (!(error instanceof PaperPositionError)) throw error;

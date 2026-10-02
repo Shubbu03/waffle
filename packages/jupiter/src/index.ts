@@ -1,6 +1,7 @@
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { type HttpClient, type HttpRequest, HttpResponseError, type HttpTransport } from "@waffle/http";
 import {
+  idSchema,
   type JupiterExecutionResult,
   jupiterExecuteRequestSchema,
   jupiterExecutionResultSchema,
@@ -8,6 +9,7 @@ import {
   jupiterRealOrderRequestSchema,
   type PaperQuote,
   paperQuoteSchema,
+  paperValuationQuoteSchema,
   positiveRawAmountSchema,
   type RealOrder,
   rawAmountSchema,
@@ -130,6 +132,50 @@ export class JupiterService {
     this.assertFresh(quote.data.expiresAt);
     this.remember(this.paperQuotes, quote.data.id, quote.data);
     return structuredClone(quote.data);
+  }
+
+  async getPaperValuation(input: unknown) {
+    const parsed = z
+      .strictObject({ positionId: idSchema, inputMint: solanaAddressSchema, inputAmountRaw: positiveRawAmountSchema })
+      .safeParse(input);
+    if (!parsed.success || parsed.data.inputMint === WRAPPED_SOL_MINT) throw new JupiterServiceError("INVALID_REQUEST");
+    const request = parsed.data;
+    const requestedAt = this.now();
+    const response = await this.fetchOrder(WRAPPED_SOL_MINT, request.inputAmountRaw, undefined, request.inputMint);
+    if (
+      response.inputMint !== request.inputMint ||
+      response.outputMint !== WRAPPED_SOL_MINT ||
+      response.inAmount !== request.inputAmountRaw ||
+      response.taker != null ||
+      response.transaction !== null
+    ) {
+      throw new JupiterServiceError("UPSTREAM_INVALID");
+    }
+    this.assertResponseFresh(response, requestedAt);
+    const quote = paperValuationQuoteSchema.safeParse({
+      inputMint: response.inputMint,
+      outputMint: response.outputMint,
+      inputAmountRaw: response.inAmount,
+      outputLamports: response.outAmount,
+      minOutputLamports: response.otherAmountThreshold,
+      feeLamports: (
+        BigInt(response.signatureFeeLamports) +
+        BigInt(response.prioritizationFeeLamports) +
+        BigInt(response.rentFeeLamports)
+      ).toString(),
+      slippageBps: response.slippageBps,
+      priceImpactPct: response.priceImpact,
+      fetchedAt: new Date(requestedAt).toISOString(),
+      expiresAt: new Date(
+        Math.min(
+          requestedAt + scorePolicyV1.freshness.quoteMs,
+          response.expireAt ? Date.parse(response.expireAt) : Infinity,
+        ),
+      ).toISOString(),
+    });
+    if (!quote.success) throw new JupiterServiceError("UPSTREAM_INVALID");
+    this.assertFresh(quote.data.expiresAt);
+    return quote.data;
   }
 
   /** Price provenance includes a block ID; callers must verify its age before using USD values. */
@@ -354,9 +400,9 @@ export class JupiterService {
     };
   }
 
-  private async fetchOrder(outputMint: string, amount: string, taker?: string) {
+  private async fetchOrder(outputMint: string, amount: string, taker?: string, inputMint: string = WRAPPED_SOL_MINT) {
     const url = new URL(`${BASE_URL}/order`);
-    url.searchParams.set("inputMint", WRAPPED_SOL_MINT);
+    url.searchParams.set("inputMint", inputMint);
     url.searchParams.set("outputMint", outputMint);
     url.searchParams.set("amount", amount);
     if (taker) {

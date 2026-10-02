@@ -48,6 +48,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const queryKey = ['wallet-subscriptions', previousOwner.current]
         void queryClient.cancelQueries({ queryKey })
         queryClient.removeQueries({ queryKey })
+        const paperKey = ['paper', previousOwner.current]
+        void queryClient.cancelQueries({ queryKey: paperKey })
+        queryClient.removeQueries({ queryKey: paperKey })
       }
       previousOwner.current = owner
     }
