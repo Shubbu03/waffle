@@ -9,7 +9,7 @@ import { FontFamily } from '@/constants/fonts'
 import { useThemeColor } from '@/hooks/use-theme-color'
 
 export default function SignIn() {
-  const { signIn } = useAuth()
+  const { signIn, isSigningIn, status } = useAuth()
   const buttonBg = useThemeColor({}, 'text')
   const buttonFg = useThemeColor({}, 'background')
   const { width: screenWidth } = useWindowDimensions()
@@ -52,6 +52,8 @@ export default function SignIn() {
           </AppText>
           <Pressable
             accessibilityRole="button"
+            accessibilityState={{ disabled: isSigningIn || status === 'loading', busy: isSigningIn }}
+            disabled={isSigningIn || status === 'loading'}
             style={{ backgroundColor: buttonBg, borderRadius: 16, paddingVertical: 16, alignItems: 'center' }}
             onPress={async () => {
               try {
@@ -63,8 +65,19 @@ export default function SignIn() {
             }}
           >
             <AppText type="defaultSemiBold" lightColor={buttonFg} darkColor={buttonFg}>
-              Connect wallet
+              {isSigningIn
+                ? 'Waiting for your wallet…'
+                : status === 'loading'
+                  ? 'Restoring session…'
+                  : 'Connect wallet'}
             </AppText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace('/')}
+            style={{ padding: 12, alignItems: 'center' }}
+          >
+            <AppText type="link">Browse signals</AppText>
           </Pressable>
         </View>
       </SafeAreaView>

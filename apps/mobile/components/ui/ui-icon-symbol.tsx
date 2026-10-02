@@ -9,6 +9,7 @@ import type { OpaqueColorValue, StyleProp, TextStyle } from 'react-native'
  * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
  */
 const MAPPING = {
+  'list.bullet': 'list',
   'gearshape.fill': 'settings',
   'wallet.pass.fill': 'wallet',
   'ladybug.fill': 'bug-report',

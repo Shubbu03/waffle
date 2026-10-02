@@ -2,8 +2,9 @@ import Clipboard from '@react-native-clipboard/clipboard'
 import * as Dropdown from '@rn-primitives/dropdown-menu'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { Fragment } from 'react'
-import { Linking, StyleSheet } from 'react-native'
+import { Alert, Linking, StyleSheet } from 'react-native'
 import { AppText } from '@/components/app-text'
+import { useAuth } from '@/components/auth/auth-provider'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { useWalletUiTheme } from '@/components/solana/use-wallet-ui-theme'
 import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
@@ -12,7 +13,8 @@ import { WalletUiButtonConnect } from './wallet-ui-button-connect'
 
 function useDropdownItems() {
   const { getExplorerUrl } = useCluster()
-  const { account, disconnect } = useMobileWallet()
+  const { account } = useMobileWallet()
+  const { signOut } = useAuth()
   if (!account) {
     return []
   }
@@ -27,7 +29,11 @@ function useDropdownItems() {
     },
     {
       label: 'Disconnect',
-      onPress: async () => await disconnect(),
+      onPress: () => {
+        void signOut().catch(() =>
+          Alert.alert('Sign-out incomplete', 'Retry to finish clearing secure storage and disconnecting the wallet.'),
+        )
+      },
     },
   ]
 }

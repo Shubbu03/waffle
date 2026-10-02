@@ -1,230 +1,122 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { fromUint8Array } from 'js-base64'
-import { createContext, type PropsWithChildren, use, useEffect, useMemo, useState } from 'react'
+import { createContext, type PropsWithChildren, use, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { AppState } from 'react-native'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
-import { ApiError, getSession, postLogout, postVerify } from '@/lib/api-client'
+import { ApiError, apiBaseUrl, getSession, onUnauthorized, postLogout, postVerify } from '@/lib/api-client'
 import { toWireBase64 } from '@/lib/b64'
 import { WALLET_SIGN_TIMEOUT_MS, withTransactTimeout } from '@/lib/mwa-transact'
-import { isSessionExpired } from '@/lib/session'
-import { clearSession, loadSession, type StoredSession, saveSession } from '@/lib/session-store'
+import { SessionController, type SessionState } from '@/lib/session-controller'
+import { clearSession, loadSession, saveSession } from '@/lib/session-store'
 import { buildSignInInput } from '@/lib/sign-in-input'
 
-export interface AuthState {
-  isAuthenticated: boolean
-  status: 'loading' | 'signed-in' | 'signed-out'
-  session: StoredSession | null
-  /** False when signed in wallet-only (server unreachable/verify failed). Demo works; authed API calls wait. */
-  serverLinked: boolean
-  signIn: () => Promise<void>
-  signOut: () => Promise<void>
-  isSigningIn: boolean
-}
-
-const Context = createContext<AuthState>({} as AuthState)
-
+type AuthState = SessionState & { isAuthenticated: boolean; signIn: () => Promise<void>; signOut: () => Promise<void> }
+const Context = createContext<AuthState | null>(null)
 export function useAuth() {
   const value = use(Context)
-  if (!value) {
-    throw new Error('useAuth must be wrapped in a <AuthProvider />')
-  }
+  if (!value) throw new Error('useAuth must be wrapped in an AuthProvider')
   return value
 }
-
-/** Wallet-side cancellation looks different from real failures — say so plainly. */
-function toFriendlyError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error)
-  console.log('[auth] toFriendlyError: classifying failure')
-  if (/cancel|dismiss|reject|decline|no wallet|not found/i.test(message)) {
-    return new Error('Sign-in cancelled in your wallet — no problem, try again when ready.')
-  }
-  if (error instanceof ApiError && error.status === 401) {
-    return new Error('Sign-in challenge expired — please try again.')
-  }
-  return error instanceof Error ? error : new Error('Sign-in failed. Please try again.')
-}
-
 export function AuthProvider({ children }: PropsWithChildren) {
-  const { accounts, disconnect, signIn: walletSignIn } = useMobileWallet()
+  const { account, disconnect, signIn: walletSignIn } = useMobileWallet()
+  const { selectedCluster } = useCluster()
   const queryClient = useQueryClient()
-  const [session, setSession] = useState<StoredSession | null>(null)
-  const [status, setStatus] = useState<AuthState['status']>('loading')
-  const connectedAddress = accounts?.[0]?.address?.toString() ?? null
-  const accountCount = accounts?.length ?? 0
-
-  /** Launch restore: stored session -> expiry check -> server truth. */
-  useEffect(() => {
-    let cancelled = false
-    async function restore(): Promise<void> {
-      console.log('[auth] restore: loading stored session')
-      const stored = await loadSession()
-      if (cancelled) return
-      if (!stored) {
-        console.log('[auth] restore: empty, signed out')
-        setStatus('signed-out')
-        return
-      }
-      if (isSessionExpired(stored.expiresAt)) {
-        console.log('[auth] restore: stored session expired, clearing')
-        await clearSession()
-        if (!cancelled) setStatus('signed-out')
-        return
-      }
-      if (!stored.accessToken) {
-        // Wallet-only session: no server to check with, trust it (wallet-change effect still guards).
-        console.log('[auth] restore: wallet-only session, skipping server check')
-        if (!cancelled) setStatus('signed-in')
-        return
-      }
-      try {
-        const live = await getSession(stored.accessToken)
-        if (cancelled) return
-        console.log('[auth] restore: server confirmed session')
-        setSession({ ...stored, expiresAt: live.expiresAt })
-        setStatus('signed-in')
-      } catch (error) {
-        console.log(
-          `[auth] restore: server rejected token (${error instanceof ApiError ? error.status : 'network'}), clearing`,
-        )
-        await clearSession()
-        if (!cancelled) setStatus('signed-out')
-      }
-    }
-    void restore()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  /** Wallet switched accounts mid-session -> old session belongs to someone else. */
-  useEffect(() => {
-    console.log(
-      `[auth] wallet-watch: accounts=${accountCount} connected=${connectedAddress?.slice(0, 8) ?? 'none'}... status=${status}`,
-    )
-    if (status !== 'signed-in' || !session) return
-    if (connectedAddress === null) return // wallet disconnected; session stays until explicit sign-out
-    if (connectedAddress !== session.walletAddress) {
-      console.log('[auth] wallet-change: connected wallet differs from session, signing out')
-      void (async () => {
-        try {
-          await postLogout(session.accessToken)
-        } catch {
-          console.log('[auth] wallet-change: server logout failed, clearing locally anyway')
-        }
-        await clearSession()
-        await disconnect()
-        queryClient.clear()
-        setSession(null)
-        setStatus('signed-out')
-      })()
-    }
-  }, [accountCount, connectedAddress, session, status, disconnect, queryClient])
-
-  const signInMutation = useMutation({
-    mutationFn: async () => {
-      // Stateless SIWS: input built locally, server checks freshness (no challenge round-trip).
-      console.log('[auth] signIn: building local SIWS input')
-      if (!AppConfig.uri) {
-        throw new Error('Set EXPO_PUBLIC_WAFFLE_APP_URI to your public HTTPS app URL before signing in.')
-      }
-      const payload = buildSignInInput(AppConfig.uri)
-      console.log(
-        `[auth] signIn: wallet payload domain=${payload.domain} uri=${payload.uri} chain=${payload.chainId} nonce=${payload.nonce ? 'present' : 'MISSING'} expiry=${payload.expirationTime ?? 'MISSING'}`,
-      )
-      const askWallet = () =>
-        walletSignIn({
-          domain: payload.domain,
-          statement: payload.statement ?? 'Sign in to waffle. This does not authorize any transactions.',
-          uri: payload.uri,
-          version: payload.version,
-          chainId: payload.chainId,
-          nonce: payload.nonce,
-          issuedAt: payload.issuedAt,
-          expirationTime: payload.expirationTime,
-        })
-      // Try on the live session first. A prior deauthorize+reauthorize cycle is
-      // itself a stall source, so disconnect-and-retry is the fallback, not the default.
-      console.log('[auth] signIn: asking wallet to sign')
-      let output: Awaited<ReturnType<typeof walletSignIn>>
-      try {
-        output = await withTransactTimeout('wallet-sign', WALLET_SIGN_TIMEOUT_MS, askWallet)
-      } catch {
-        console.log('[auth] signIn: first attempt stalled/failed, disconnecting for one clean retry')
-        await disconnect()
-        output = await withTransactTimeout('wallet-sign-retry', WALLET_SIGN_TIMEOUT_MS, askWallet)
-      }
-      const accountAddress = output.account.address.toString()
-      console.log(`[auth] signIn: wallet answered as ${accountAddress.slice(0, 8)}...`)
-      const msgB64 = toWireBase64(output.signedMessage, 'msg')
-      const sigB64 = toWireBase64(output.signature, 'sig')
-      console.log(`[auth] signIn: msgB64=${msgB64.length}B sigB64=${sigB64.length}B (88 = healthy signature)`)
-      try {
-        const verified = await postVerify({ accountAddress, signedMessageBase64: msgB64, signatureBase64: sigB64 })
-        console.log('[auth] signIn: server verified, persisting session')
-        const stored: StoredSession = { ...verified.session, accessToken: verified.accessToken }
-        await saveSession(stored)
-        setSession(stored)
-        setStatus('signed-in')
-        return
-      } catch (error) {
-        console.log(
-          `[auth] signIn: server verify failed (${error instanceof Error ? error.message : 'network'}) — continuing wallet-only`,
-        )
-      }
-      // Degraded path: wallet proved ownership, server did not countersign.
-      // Demo flows work; authed API calls wait for a linked session.
-      const weekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-      const local: StoredSession = {
-        userId: 'local',
-        walletAddress: accountAddress,
-        expiresAt: weekOut,
-        accessToken: '',
-      }
-      console.log('[auth] signIn: persisting wallet-only session')
-      await saveSession(local)
-      setSession(local)
-      setStatus('signed-in')
-    },
-    onError: (error) => {
-      console.log('[auth] signIn: failed, staying signed out')
-      setStatus(session ? 'signed-in' : 'signed-out')
-      throw toFriendlyError(error)
-    },
-  })
-
-  const value: AuthState = useMemo(
-    () => ({
-      isAuthenticated: status === 'signed-in' && session !== null,
-      status,
-      session,
-      serverLinked: session !== null && session.accessToken !== '',
-      isSigningIn: signInMutation.isPending,
-      signIn: async () => {
-        await signInMutation.mutateAsync()
-      },
-      signOut: async () => {
-        console.log('[auth] signOut: burning server session best-effort')
-        if (session?.accessToken) {
-          try {
-            await postLogout(session.accessToken)
-          } catch {
-            console.log('[auth] signOut: server unreachable, clearing locally anyway')
-          }
-        } else {
-          console.log('[auth] signOut: wallet-only session, nothing to burn server-side')
-        }
-        console.log('[auth] signOut: disconnecting wallet')
-        await clearSession()
-        await disconnect()
-        console.log('[auth] signOut: wallet disconnected, clearing query cache')
-        queryClient.clear()
-        setSession(null)
-        setStatus('signed-out')
-        console.log('[auth] signOut: done')
-      },
-    }),
-    [status, session, signInMutation, disconnect, queryClient],
+  const [controller] = useState(
+    () =>
+      new SessionController({
+        load: loadSession,
+        save: saveSession,
+        clear: clearSession,
+        verify: getSession,
+        revoke: postLogout,
+      }),
   )
-
-  return <Context value={value}>{children}</Context>
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  const previousOwner = useRef<string | null>(null)
+  const connectedAddress = account?.address.toString() ?? null
+  useEffect(() => {
+    void controller.restore()
+    return onUnauthorized((token) => {
+      void controller.invalidate(token).catch(() => {})
+    })
+  }, [controller])
+  useEffect(() => {
+    const owner = state.session?.userId ?? null
+    if (previousOwner.current !== owner) {
+      if (previousOwner.current) {
+        const queryKey = ['wallet-subscriptions', previousOwner.current]
+        void queryClient.cancelQueries({ queryKey })
+        queryClient.removeQueries({ queryKey })
+      }
+      previousOwner.current = owner
+    }
+  }, [state.session?.userId, queryClient])
+  useEffect(() => {
+    if (!state.session || state.isSigningIn) return
+    if (
+      (connectedAddress && connectedAddress !== state.session.walletAddress) ||
+      selectedCluster.id !== 'solana:mainnet'
+    ) {
+      void controller.signOut().catch(() => {})
+    }
+  }, [connectedAddress, selectedCluster.id, state.session, state.isSigningIn, controller])
+  useEffect(() => {
+    if (!state.session) return
+    const expire = () => {
+      void controller.signOut().catch(() => {})
+    }
+    const timer = setTimeout(expire, Math.max(0, Date.parse(state.session.expiresAt) - Date.now()))
+    const listener = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void controller.refresh()
+    })
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void controller.refresh()
+    }, 30_000)
+    return () => {
+      clearTimeout(timer)
+      clearInterval(interval)
+      listener.remove()
+    }
+  }, [state.session, controller])
+  const signIn = async () => {
+    try {
+      await controller.signIn(async () => {
+        if (!AppConfig.uri) throw new Error('Configure the public HTTPS app URL before signing in.')
+        apiBaseUrl()
+        if (selectedCluster.id !== 'solana:mainnet') throw new Error('Switch to Mainnet in Settings to sign in.')
+        const askWallet = () => walletSignIn(buildSignInInput(AppConfig.uri))
+        let output: Awaited<ReturnType<typeof walletSignIn>>
+        try {
+          output = await withTransactTimeout('wallet-sign', WALLET_SIGN_TIMEOUT_MS, askWallet)
+        } catch (error) {
+          // Rejection is final; only a stalled transport gets one fresh attempt.
+          if (!(error instanceof Error) || !error.message.includes('timed out')) throw error
+          await disconnect()
+          output = await withTransactTimeout('wallet-sign-retry', WALLET_SIGN_TIMEOUT_MS, askWallet)
+        }
+        const verified = await postVerify({
+          accountAddress: output.account.address.toString(),
+          signedMessageBase64: toWireBase64(output.signedMessage, 'msg'),
+          signatureBase64: toWireBase64(output.signature, 'sig'),
+        })
+        return { ...verified.session, accessToken: verified.accessToken }
+      })
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401)
+        throw new Error('Wallet verification failed or expired. Try again.')
+      if (error instanceof Error && /cancel|dismiss|reject|decline/i.test(error.message)) {
+        throw new Error('Sign-in cancelled in your wallet.')
+      }
+      throw error
+    }
+  }
+  const signOut = async () => {
+    try {
+      await controller.signOut()
+    } finally {
+      await disconnect()
+    }
+  }
+  return <Context value={{ ...state, isAuthenticated: state.session !== null, signIn, signOut }}>{children}</Context>
 }

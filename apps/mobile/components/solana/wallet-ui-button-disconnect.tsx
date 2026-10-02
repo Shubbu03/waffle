@@ -1,8 +1,18 @@
-import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { Alert } from 'react-native'
+import { useAuth } from '@/components/auth/auth-provider'
 import { BaseButton } from '@/components/solana/base-button'
 
 export function WalletUiButtonDisconnect({ label = 'Disconnect' }: { label?: string }) {
-  const { disconnect } = useMobileWallet()
+  const { signOut } = useAuth()
 
-  return <BaseButton label={label} onPress={() => disconnect()} />
+  return (
+    <BaseButton
+      label={label}
+      onPress={() => {
+        void signOut().catch(() =>
+          Alert.alert('Sign-out incomplete', 'Retry to finish clearing secure storage and disconnecting the wallet.'),
+        )
+      }}
+    />
+  )
 }

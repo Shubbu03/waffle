@@ -1,5 +1,2 @@
-import { Redirect } from 'expo-router'
-
-export default function TabsIndexScreen() {
-  return <Redirect href="/(tabs)/account" />
-}
+import { SignalFeedScreen } from '@/components/signals/signal-feed-screen'
+export default SignalFeedScreen

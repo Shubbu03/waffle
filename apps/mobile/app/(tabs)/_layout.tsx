@@ -4,8 +4,13 @@ import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
 export default function TabLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false }}>
-      {/* The index redirects to the account screen */}
-      <Tabs.Screen name="index" options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Signals',
+          tabBarIcon: ({ color }) => <UiIconSymbol size={28} name="list.bullet" color={color} />,
+        }}
+      />
       <Tabs.Screen
         name="account"
         options={{
