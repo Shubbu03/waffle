@@ -84,4 +84,6 @@ The initial setup used `bun init --yes --minimal`, `mkdir -p` for the planned di
 
 The mobile Signals tab supports All/Following, cursor pagination, foreground WebSocket recovery, and bounded offline caches. Details show original score reasons, evidence timestamps, unknown data, and copy blockers; paper and real execution remain separate issues. See [mobile acceptance steps](docs/mobile-signals.md).
 
+Outbound HTTP requests use shared Xior policies with clients for mobile, RPC, Pyth, Jupiter, FCM, and catalog verification. See [HTTP clients](docs/http-clients.md).
+
 UI and device acceptance checks are performed manually by the user. Suggested commit checkpoints in the plans do not authorize staging, committing, or pushing.

@@ -1,4 +1,5 @@
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
+import { type HttpClient, type HttpRequest, HttpResponseError, type HttpTransport } from "@waffle/http";
 import {
   type JupiterExecutionResult,
   jupiterExecuteRequestSchema,
@@ -18,9 +19,9 @@ import {
 } from "@waffle/shared";
 import * as nacl from "tweetnacl";
 import { z } from "zod";
+import { createJupiterClient } from "./client.ts";
 
 const BASE_URL = "https://api.jup.ag/swap/v2";
-const MAX_RESPONSE_BYTES = 100_000;
 const MAX_PENDING = 256;
 const feeLamports = z.number().int().nonnegative();
 
@@ -92,12 +93,14 @@ type PendingOrder = { expiresAt: string; order: RealOrder; message: Uint8Array }
 export class JupiterService {
   private readonly pendingOrders = new Map<string, PendingOrder>();
   private readonly paperQuotes = new Map<string, PaperQuote>();
+  private readonly client: HttpClient;
 
   constructor(
     private readonly apiKey: string,
-    private readonly fetchImpl: typeof fetch = fetch,
+    transport?: HttpTransport,
     private readonly now: () => number = Date.now,
   ) {
+    this.client = createJupiterClient(transport);
     if (!apiKey.trim()) throw new JupiterServiceError("INVALID_REQUEST");
   }
 
@@ -136,7 +139,7 @@ export class JupiterService {
     url.searchParams.set("ids", mintAddress);
     const payload = await this.fetchJson(url, {
       headers: { "x-api-key": this.apiKey },
-      signal: AbortSignal.timeout(8_000),
+      timeoutMs: 8000,
     });
     const parsed = z
       .record(
@@ -262,12 +265,12 @@ export class JupiterService {
         {
           method: "POST",
           headers: { "x-api-key": this.apiKey, "content-type": "application/json" },
-          body: JSON.stringify({
+          data: {
             signedTransaction: request.signedTransactionBase64,
             requestId: pending.order.requestId,
             lastValidBlockHeight: pending.order.lastValidBlockHeight,
-          }),
-          signal: AbortSignal.timeout(20_000),
+          },
+          timeoutMs: 20_000,
         },
         true,
       );
@@ -362,44 +365,24 @@ export class JupiterService {
     }
     const payload = await this.fetchJson(url, {
       headers: { "x-api-key": this.apiKey },
-      signal: AbortSignal.timeout(8_000),
+      timeoutMs: 8000,
     });
     const parsed = orderResponseSchema.safeParse(payload);
     if (!parsed.success) throw new JupiterServiceError("UPSTREAM_INVALID");
     return parsed.data;
   }
 
-  private async fetchJson(url: URL | string, init: RequestInit, execution = false): Promise<unknown> {
-    let response: Response;
+  private async fetchJson(url: URL | string, init: Omit<HttpRequest, "url">, execution = false): Promise<unknown> {
     try {
-      response = await this.fetchImpl(url, { ...init, redirect: "error" });
-    } catch {
+      const response = await this.client.request({ ...init, url: String(url) });
+      if (response.status < 200 || response.status >= 300)
+        throw new JupiterServiceError(execution ? "EXECUTION_UNKNOWN" : "UPSTREAM_UNAVAILABLE", response.status);
+      return response.data;
+    } catch (error) {
+      if (error instanceof JupiterServiceError) throw error;
+      if (error instanceof HttpResponseError)
+        throw new JupiterServiceError(execution ? "EXECUTION_UNKNOWN" : "UPSTREAM_INVALID");
       throw new JupiterServiceError(execution ? "EXECUTION_UNKNOWN" : "UPSTREAM_UNAVAILABLE");
-    }
-    if (!response.ok)
-      throw new JupiterServiceError(execution ? "EXECUTION_UNKNOWN" : "UPSTREAM_UNAVAILABLE", response.status);
-    try {
-      if (!response.body) throw new Error("missing response body");
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        while (true) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          size += chunk.value.length;
-          if (size > MAX_RESPONSE_BYTES) {
-            await reader.cancel();
-            throw new Error("oversized response");
-          }
-          chunks.push(chunk.value);
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
-    } catch {
-      throw new JupiterServiceError(execution ? "EXECUTION_UNKNOWN" : "UPSTREAM_INVALID");
     }
   }
 

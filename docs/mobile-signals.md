@@ -10,6 +10,8 @@ For live updates, configure the API's delivery database connection as described 
 
 ## Session behavior
 
+REST requests use the mobile Xior client, with a ten-second deadline that includes response parsing. See [HTTP clients](http-clients.md) for provider policies and cancellation behavior.
+
 Sign-in builds fresh SIWS input, obtains the wallet signature, verifies it through `/auth/verify`, and stores the validated token/session in SecureStore. A cancelled wallet prompt is surfaced without retry. A stalled wallet call gets one clean retry with newly generated input. Failed verification never creates a local authenticated session. Legacy wallet-only sessions are discarded.
 
 A valid previously verified token survives a network outage for cached browsing, with its API link marked offline. Authenticated feature requests remain disabled until session verification succeeds again. Local expiry, wallet/account or network changes, and a 401 for the current token clear authentication. A response for an old token cannot clear a newer session. Logout clears local state before best-effort server revocation; storage writes are serialized so a late sign-in reply cannot undo logout.

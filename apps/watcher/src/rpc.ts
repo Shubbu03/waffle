@@ -1,6 +1,8 @@
+import type { HttpClient, HttpTransport } from "@waffle/http";
 import { solanaAddressSchema, transactionSignatureSchema } from "@waffle/shared";
 import { type ClassificationSkipReason, classifyPumpSwapBuy, type PumpSwapBuy } from "./classify.ts";
 import { parseWatcherRpcEnv } from "./config.ts";
+import { createRpcClient } from "./http-clients.ts";
 import {
   RpcHttpError,
   type RpcMethod,
@@ -22,7 +24,7 @@ export type BackfillSignature = { signature: string; slot: number; err: unknown 
 
 type RpcOptions = RpcSchedulerOptions & {
   url: string;
-  fetchImpl?: typeof fetch;
+  transport?: HttpTransport;
   dedupeTtlMs?: number;
   maxRemembered?: number;
 };
@@ -45,7 +47,7 @@ function parseSignatures(value: unknown): BackfillSignature[] {
 export class WatcherRpc {
   readonly scheduler: RpcScheduler;
   private readonly url: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly client: HttpClient;
   private readonly dedupeTtlMs: number;
   private readonly maxRemembered: number;
   private requestId = 0;
@@ -61,7 +63,7 @@ export class WatcherRpc {
     }
     if (url.protocol !== "https:") throw new Error("RPC URL must use HTTPS");
     this.url = url.toString();
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.client = createRpcClient(options.timeoutMs ?? 4000, options.transport);
     this.scheduler = new RpcScheduler(options);
     this.dedupeTtlMs = options.dedupeTtlMs ?? 300_000;
     this.maxRemembered = options.maxRemembered ?? 10_000;
@@ -242,14 +244,15 @@ export class WatcherRpc {
 
   private async call(method: RpcMethod, params: unknown[], signal: AbortSignal): Promise<unknown> {
     const id = ++this.requestId;
-    const response = await this.fetchImpl(this.url, {
+    const response = await this.client.request({
+      url: this.url,
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+      data: { jsonrpc: "2.0", id, method, params },
       signal,
     });
-    if (!response.ok) throw new RpcHttpError(response.status);
-    const payload: unknown = await response.json();
+    if (response.status < 200 || response.status >= 300) throw new RpcHttpError(response.status);
+    const payload: unknown = response.data;
     if (payload === null || typeof payload !== "object") throw new Error("Invalid RPC response");
     const message = payload as Record<string, unknown>;
     if (message.jsonrpc !== "2.0" || message.id !== id) throw new Error("Invalid RPC response ID");
@@ -265,12 +268,12 @@ export class WatcherRpc {
   }
 }
 
-export function createWatcherRpc(env: Record<string, string | undefined>, fetchImpl?: typeof fetch): WatcherRpc {
+export function createWatcherRpc(env: Record<string, string | undefined>, transport?: HttpTransport): WatcherRpc {
   const config = parseWatcherRpcEnv(env);
   return new WatcherRpc({
     url: config.HELIUS_RPC_URL,
     requestsPerSecond: config.RPC_REQUESTS_PER_SECOND,
     programAccountsPerSecond: config.RPC_PROGRAM_ACCOUNTS_PER_SECOND,
-    ...(fetchImpl ? { fetchImpl } : {}),
+    ...(transport ? { transport } : {}),
   });
 }

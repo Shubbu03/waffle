@@ -26,7 +26,17 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "style": {
+        "noRestrictedGlobals": {
+          "level": "error",
+          "options": {
+            "deniedGlobals": {
+              "fetch": "Use the Xior clients from @waffle/http for outbound HTTP requests."
+            }
+          }
+        }
+      }
     }
   },
   "javascript": {
