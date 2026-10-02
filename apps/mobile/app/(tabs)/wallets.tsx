@@ -1,5 +1,6 @@
 import Clipboard from '@react-native-clipboard/clipboard'
 import { router } from 'expo-router'
+import { useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, Switch, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppPage } from '@/components/app-page'
@@ -19,6 +20,7 @@ function WalletCard({ row }: { row: WalletRow }) {
   const buttonBg = useThemeColor({}, 'text')
   const buttonFg = useThemeColor({}, 'background')
   const busy = follow.isPending || unfollow.isPending || alerts.isPending
+  const [cardError, setCardError] = useState<string | null>(null)
 
   const onFollowPress = () => {
     if (!session) {
@@ -26,12 +28,29 @@ function WalletCard({ row }: { row: WalletRow }) {
       router.push('/sign-in')
       return
     }
+    if (!session.accessToken) {
+      // Wallet-only session: the server cannot attribute this follow yet.
+      console.log('[wallets-screen] follow pressed wallet-only — server sign-in required')
+      setCardError('Server sign-in needed — reconnect with the API reachable to follow.')
+      return
+    }
+    setCardError(null)
     if (!row.followed) {
       follow.mutate(row.id)
     } else {
       unfollow.mutate(row.id)
     }
   }
+
+  const mutationError =
+    follow.error instanceof Error
+      ? follow.error.message
+      : unfollow.error instanceof Error
+        ? unfollow.error.message
+        : alerts.error instanceof Error
+          ? alerts.error.message
+          : null
+  const visibleError = cardError ?? mutationError
 
   const onAlertToggle = () => {
     const next = nextAlertsValue(row)
@@ -89,6 +108,7 @@ function WalletCard({ row }: { row: WalletRow }) {
       {row.followed && !row.alertsEnabled ? (
         <AppText style={{ opacity: 0.7 }}>Following without alerts. Toggle on to get push alerts.</AppText>
       ) : null}
+      {visibleError ? <AppText style={{ color: '#B00020' }}>{visibleError}</AppText> : null}
     </AppView>
   )
 }
