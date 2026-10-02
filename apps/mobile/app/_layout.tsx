@@ -21,6 +21,10 @@ export default function RootLayout() {
   })
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    PlaywriteZA: require('../assets/fonts/Playwrite_ZA/static/PlaywriteZA-Regular.ttf'),
+    Poppins: require('../assets/fonts/Poppins/Poppins-Regular.ttf'),
+    'Poppins-Medium': require('../assets/fonts/Poppins/Poppins-Medium.ttf'),
+    'Poppins-Light': require('../assets/fonts/Poppins/Poppins-Light.ttf'),
   })
 
   const onLayoutRootView = useCallback(async () => {

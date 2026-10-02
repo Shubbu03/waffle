@@ -1,28 +1,36 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Waffle brand: lime base (#E4FF97) with black type.
+ * Light mode is the brand statement (lime bg, black ink).
+ * Dark mode inverts it (black bg, lime ink).
  */
 
-const tintColorLight = '#0a7ea4'
-const tintColorDark = '#fff'
+export const Brand = {
+  lime: '#E4FF97',
+  limeSoft: '#F2FFC7',
+  ink: '#000000',
+} as const
 
 export const Colors = {
   light: {
-    background: '#fff',
-    border: '#e0e0e0',
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-    text: '#11181C',
-    tint: tintColorLight,
+    background: Brand.lime,
+    surface: Brand.limeSoft,
+    border: Brand.ink,
+    icon: Brand.ink,
+    tabIconDefault: '#3A3A00',
+    tabIconSelected: Brand.ink,
+    text: Brand.ink,
+    muted: '#3A3A00',
+    tint: Brand.ink,
   },
   dark: {
-    background: '#151718',
-    border: '#2A2C2E',
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-    text: '#ECEDEE',
-    tint: tintColorDark,
+    background: Brand.ink,
+    surface: '#1C1C00',
+    border: Brand.lime,
+    icon: Brand.lime,
+    tabIconDefault: '#8A8A5C',
+    tabIconSelected: Brand.lime,
+    text: Brand.lime,
+    muted: '#B8C48A',
+    tint: Brand.lime,
   },
 }
