@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { HttpTransport } from "@waffle/http";
 import { parseWatcherRpcEnv } from "../src/config.ts";
 import { WatcherRpc } from "../src/rpc.ts";
 import { RpcHttpError, RpcScheduler, RpcTimeoutError } from "../src/rpc-scheduler.ts";
@@ -10,12 +11,12 @@ const rpcUrl = "https://rpc.example.test/?api-key=test-only";
 
 type RpcRequest = { id: number; method: string; params: unknown[] };
 
-function fakeFetch(handler: (request: RpcRequest) => unknown | Promise<unknown>): typeof fetch {
-  return (async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+function fakeTransport(handler: (request: RpcRequest) => unknown | Promise<unknown>): HttpTransport {
+  return (async (_input: Parameters<HttpTransport>[0], init?: RequestInit) => {
     const request = JSON.parse(String(init?.body)) as RpcRequest;
     const result = await handler(request);
     return Response.json({ jsonrpc: "2.0", id: request.id, result });
-  }) as typeof fetch;
+  }) as HttpTransport;
 }
 
 describe("RPC configuration", () => {
@@ -175,7 +176,7 @@ describe("watcher RPC client", () => {
     let encoding: unknown;
     const rpc = new WatcherRpc({
       url: rpcUrl,
-      fetchImpl: fakeFetch((request) => {
+      transport: fakeTransport((request) => {
         encoding = (request.params[1] as { encoding?: unknown }).encoding;
         return transaction;
       }),
@@ -190,7 +191,7 @@ describe("watcher RPC client", () => {
     const methods: string[] = [];
     const rpc = new WatcherRpc({
       url: rpcUrl,
-      fetchImpl: fakeFetch((request) => {
+      transport: fakeTransport((request) => {
         methods.push(request.method);
         if (request.method === "getSignaturesForAddress")
           return [
@@ -217,7 +218,7 @@ describe("watcher RPC client", () => {
     const methods: string[] = [];
     const rpc = new WatcherRpc({
       url: rpcUrl,
-      fetchImpl: fakeFetch((request) => {
+      transport: fakeTransport((request) => {
         methods.push(request.method);
         return { value: null };
       }),
@@ -232,7 +233,7 @@ describe("watcher RPC client", () => {
     const rpc = new WatcherRpc({
       url: rpcUrl,
       retryDelayMs: 0,
-      fetchImpl: fakeFetch((request) => {
+      transport: fakeTransport((request) => {
         if (request.method !== "getTransaction") throw new Error("Unexpected method");
         calls++;
         return calls <= 2 ? null : { slot: 456 };
@@ -246,7 +247,7 @@ describe("watcher RPC client", () => {
 });
 
 test("in-flight duplicates wait for confirmation and propagate retryable outcomes", async () => {
-  const rpc = new WatcherRpc({ url: rpcUrl, retryDelayMs: 0, fetchImpl: fakeFetch(() => null) });
+  const rpc = new WatcherRpc({ url: rpcUrl, retryDelayMs: 0, transport: fakeTransport(() => null) });
   const original = rpc.queueTransaction(wallet, signature, "provisional");
   const recovery = rpc.queueTransaction(wallet, signature, "backfill");
   expect((await original).status).toBe("not-ready");
@@ -258,7 +259,7 @@ test("account snapshots and block timestamps use the shared evidence scheduler",
   const requests: RpcRequest[] = [];
   const rpc = new WatcherRpc({
     url: rpcUrl,
-    fetchImpl: fakeFetch((request) => {
+    transport: fakeTransport((request) => {
       requests.push(request);
       return request.method === "getBlockTime" ? 1_800_000_000 : { context: { slot: 500 }, value: [null, null] };
     }),

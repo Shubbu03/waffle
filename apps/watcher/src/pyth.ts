@@ -1,6 +1,8 @@
+import type { HttpClient, HttpTransport } from "@waffle/http";
 import { scorePolicyV1, solanaAddressSchema } from "@waffle/shared";
 import { z } from "zod";
 import { type Evidence, EvidenceCache, EvidenceUnavailable } from "./evidence-cache.ts";
+import { createPythClient } from "./http-clients.ts";
 
 export const pythFeedMapSchema = z
   .record(solanaAddressSchema, z.string().regex(/^(0x)?[a-fA-F0-9]{64}$/))
@@ -27,14 +29,16 @@ export class PythPrices {
   private readonly cache: EvidenceCache<PythPrice>;
   private readonly feeds: Record<string, string>;
   private nextRequestAt = 0;
+  private readonly client: HttpClient;
   constructor(
     private readonly options: {
       apiKey?: string;
       feeds: Record<string, string>;
-      fetchImpl?: typeof fetch;
+      transport?: HttpTransport;
       now?: () => number;
     },
   ) {
+    this.client = createPythClient(options.transport);
     this.feeds = pythFeedMapSchema.parse(options.feeds);
     this.cache = new EvidenceCache(this.now);
   }
@@ -50,32 +54,12 @@ export class PythPrices {
       const url = new URL("https://pyth.dourolabs.app/hermes/v2/updates/price/latest");
       url.searchParams.set("ids[]", normalized(feed));
       url.searchParams.set("parsed", "true");
-      const response = await (this.options.fetchImpl ?? fetch)(url, {
+      const response = await this.client.request({
+        url: url.toString(),
         headers: { authorization: `Bearer ${this.options.apiKey}` },
-        redirect: "error",
-        signal: AbortSignal.timeout(4000),
       });
-      if (!response.ok) throw new EvidenceUnavailable("oracle-unavailable");
-      // Stop reading at the cap; never buffer an unbounded upstream payload.
-      if (!response.body) throw new EvidenceUnavailable("invalid-oracle-response");
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        while (true) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          size += chunk.value.length;
-          if (size > 100_000) {
-            await reader.cancel();
-            throw new EvidenceUnavailable("invalid-oracle-response");
-          }
-          chunks.push(chunk.value);
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      const parsed = updateSchema.safeParse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      if (response.status < 200 || response.status >= 300) throw new EvidenceUnavailable("oracle-unavailable");
+      const parsed = updateSchema.safeParse(response.data);
       const update = parsed.success ? parsed.data.parsed[0] : undefined;
       if (!update || normalized(update.id) !== normalized(feed)) throw new EvidenceUnavailable("oracle-feed-mismatch");
       const price = Number(update.price.price);

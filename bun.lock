@@ -19,6 +19,7 @@
         "@noble/curves": "1.9.7",
         "@solana/wallet-standard-util": "1.1.4",
         "@waffle/db": "workspace:*",
+        "@waffle/http": "workspace:*",
         "@waffle/jupiter": "workspace:*",
         "@waffle/observability": "workspace:*",
         "@waffle/shared": "workspace:*",
@@ -50,6 +51,7 @@
         "@solana/spl-token": "^0.4.14",
         "@solana/web3.js": "^1.98.4",
         "@tanstack/react-query": "^5.85.5",
+        "@waffle/http": "workspace:*",
         "@waffle/shared": "workspace:*",
         "@wallet-ui/react-native-web3js": "^4.0.1",
         "expo": "~55.0.23",
@@ -97,6 +99,7 @@
       "dependencies": {
         "@solana/web3.js": "1.99.0",
         "@waffle/db": "workspace:*",
+        "@waffle/http": "workspace:*",
         "@waffle/jupiter": "workspace:*",
         "@waffle/observability": "workspace:*",
         "@waffle/shared": "workspace:*",
@@ -111,6 +114,7 @@
       "name": "@waffle/db",
       "version": "0.0.0",
       "dependencies": {
+        "@waffle/http": "workspace:*",
         "@waffle/shared": "workspace:*",
         "drizzle-orm": "0.45.3",
         "postgres": "3.4.9",
@@ -122,11 +126,22 @@
         "drizzle-kit": "0.31.11",
       },
     },
+    "packages/http": {
+      "name": "@waffle/http",
+      "version": "0.0.0",
+      "dependencies": {
+        "xior": "0.8.5",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
+      },
+    },
     "packages/jupiter": {
       "name": "@waffle/jupiter",
       "version": "0.0.0",
       "dependencies": {
         "@solana/web3.js": "1.99.0",
+        "@waffle/http": "workspace:*",
         "@waffle/shared": "workspace:*",
         "tweetnacl": "1.0.3",
         "zod": "4.6.5",
@@ -836,6 +851,8 @@
     "@waffle/api": ["@waffle/api@workspace:apps/api"],
 
     "@waffle/db": ["@waffle/db@workspace:packages/db"],
+
+    "@waffle/http": ["@waffle/http@workspace:packages/http"],
 
     "@waffle/jupiter": ["@waffle/jupiter@workspace:packages/jupiter"],
 
@@ -1761,6 +1778,8 @@
 
     "throat": ["throat@5.0.0", "", {}, "sha512-fcwX4mndzpLQKBS1DVYhGAcYaYt7vsHNIvQV+WXMvnow5cgjPphq5CaayLaGsjRdSCKZFNGt7/GYAuXaNOiYCA=="],
 
+    "tiny-lru": ["tiny-lru@11.4.7", "", {}, "sha512-w/Te7uMUVeH0CR8vZIjr+XiN41V+30lkDdK+NRIDCUYKKuL9VcmaUEmaPISuwGhLlrTGh5yu18lENtR9axSxYw=="],
+
     "tmpl": ["tmpl@1.0.5", "", {}, "sha512-3f0uOEAQwIqGuWW2MVzYg8fV/QNnc/IpuJNG837rLuczAaLVHslWHZQj4IGiEl5Hs3kkbhwL9Ab7Hrsmuj+Smw=="],
 
     "to-regex-range": ["to-regex-range@5.0.1", "", { "dependencies": { "is-number": "^7.0.0" } }, "sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ=="],
@@ -1850,6 +1869,8 @@
     "ws": ["ws@7.5.13", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": "^5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA=="],
 
     "xcode": ["xcode@3.0.1", "", { "dependencies": { "simple-plist": "^1.1.0", "uuid": "^7.0.3" } }, "sha512-kCz5k7J7XbJtjABOvkc5lJmkiDh8VhjVCGNiqdKCscmVpdVUpEAyXv1xmCLkQJ5dsHqx3IPO4XW+NTDhU/fatA=="],
+
+    "xior": ["xior@0.8.5", "", { "dependencies": { "tiny-lru": "^11.2.11" } }, "sha512-oAabZs2ZakveaGam4Mq2z1MvyIQKiyXYOc++MUEW5oK/8VftZ1NaxIjhELb4K+QKz2UqdTzstAm1XZnH3pp+Vg=="],
 
     "xml2js": ["xml2js@0.6.0", "", { "dependencies": { "sax": ">=0.6.0", "xmlbuilder": "~11.0.0" } }, "sha512-eLTh0kA8uHceqesPqSE+VvO1CDDJWMwlQfB6LuN6T8w6MaDJ8Txm8P7s5cHD0miF0V+GGTZrDQfxPZQVsur33w=="],
 
@@ -2198,6 +2219,8 @@
     "@waffle/api/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@waffle/db/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
+    "@waffle/http/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@waffle/jupiter/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
@@ -2812,6 +2835,8 @@
     "@waffle/api/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@waffle/db/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@waffle/http/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@waffle/jupiter/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 

@@ -2,8 +2,11 @@
  * Usage: bun src/seeds/verify-catalog.ts <address...> [--json]
  * Reads HELIUS_RPC_URL from apps/watcher/.env (value never printed).
  * Budget: ~1 sig-list + ≤12 bodies per wallet. Stays far under 10rps (150ms spacing). */
+import { createHttpClient } from "@waffle/http";
 import { PUMP_SWAP_PROGRAM_ID } from "@waffle/shared";
 import { config as loadDotenv } from "dotenv";
+
+const rpcClient = createHttpClient({ timeoutMs: 10_000 });
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const HISTORY_LIMIT = 100;
@@ -28,14 +31,14 @@ function loadConfig(): string {
 }
 
 async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
-  const response = await fetch(url, {
+  const response = await rpcClient.request({
+    url,
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    signal: AbortSignal.timeout(10000),
+    data: { jsonrpc: "2.0", id: 1, method, params },
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status} on ${method}`);
-  const payload = (await response.json()) as { result?: T; error?: unknown };
+  if (response.status < 200 || response.status >= 300) throw new Error(`HTTP ${response.status} on ${method}`);
+  const payload = response.data as { result?: T; error?: unknown };
   if (payload.error !== undefined) throw new Error(`RPC ${method}: ${JSON.stringify(payload.error).slice(0, 100)}`);
   return payload.result as T;
 }
@@ -78,19 +81,19 @@ type Body = {
 
 /** One body, jsonParsed. Null = not rooted yet. */
 async function fetchBody(url: string, signature: string): Promise<Body | null> {
-  const response = await fetch(url, {
+  const response = await rpcClient.request({
+    url,
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
+    data: {
       jsonrpc: "2.0",
       id: 1,
       method: "getTransaction",
       params: [signature, { commitment: "confirmed", encoding: "jsonParsed", maxSupportedTransactionVersion: 0 }],
-    }),
-    signal: AbortSignal.timeout(10000),
+    },
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = (await response.json()) as { result?: Body | null; error?: unknown };
+  if (response.status < 200 || response.status >= 300) throw new Error(`HTTP ${response.status}`);
+  const payload = response.data as { result?: Body | null; error?: unknown };
   if (payload.error !== undefined) throw new Error(`RPC getTransaction: ${JSON.stringify(payload.error).slice(0, 80)}`);
   return payload.result ?? null;
 }

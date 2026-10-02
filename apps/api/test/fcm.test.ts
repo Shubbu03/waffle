@@ -11,7 +11,7 @@ const credentials = JSON.stringify({
 let clock: number;
 let requests: { url: string; init: RequestInit }[];
 let reply: () => Response;
-const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
+const transport = async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input);
   requests.push({ url, init: init ?? {} });
   if (url === "https://oauth2.googleapis.com/token")
@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 
 test("uses a verified RS256 service-account assertion, caches OAuth, and sends bounded data-only messages", async () => {
-  const fcm = createFcm(credentials, fetcher, () => clock);
+  const fcm = createFcm(credentials, transport, () => clock);
   const [send] = await Promise.all([fcm.prepare(), fcm.prepare()]);
   expect(requests).toHaveLength(1);
   const oauth = requests[0];
@@ -100,7 +100,7 @@ test.each([
   [500, undefined, false, "retry"],
 ] as const)("classifies HTTP %s / %s safely (bad request %s)", async (status, code, badRequest, expected) => {
   reply = () => providerError(status, code, undefined, badRequest);
-  const send = await createFcm(credentials, fetcher, () => clock).prepare();
+  const send = await createFcm(credentials, transport, () => clock).prepare();
   const result = await send(message());
   expect(result.status).toBe(expected);
   expect(JSON.stringify(result)).not.toContain("device-secret");
@@ -108,7 +108,7 @@ test.each([
 
 test("429 pauses subsequent sends and respects a longer Retry-After header", async () => {
   reply = () => providerError(429, "QUOTA_EXCEEDED", { "Retry-After": "120" });
-  const send = await createFcm(credentials, fetcher, () => clock).prepare();
+  const send = await createFcm(credentials, transport, () => clock).prepare();
   expect(await send(message())).toMatchObject({ status: "retry", retryAfterMs: 120000 });
   expect(await send(message())).toMatchObject({ status: "retry", retryAfterMs: 120000 });
   expect(requests).toHaveLength(2);
@@ -117,14 +117,14 @@ test("429 pauses subsequent sends and respects a longer Retry-After header", asy
 test("Retry-After dates are honored and expired messages never reach FCM", async () => {
   const retryAt = new Date(clock + 45000).toUTCString();
   reply = () => providerError(503, "UNAVAILABLE", { "Retry-After": retryAt });
-  const send = await createFcm(credentials, fetcher, () => clock).prepare();
+  const send = await createFcm(credentials, transport, () => clock).prepare();
   expect(await send(message())).toMatchObject({ status: "retry", retryAfterMs: Date.parse(retryAt) - clock });
   expect(await send({ ...message(), expiresAt: clock })).toEqual({ status: "expired", code: "EXPIRED" });
   expect(requests).toHaveLength(2);
 });
 
 test("401 invalidates cached OAuth credentials; malformed acceptance remains retryable", async () => {
-  const fcm = createFcm(credentials, fetcher, () => clock);
+  const fcm = createFcm(credentials, transport, () => clock);
   const send = await fcm.prepare();
   reply = () => providerError(401);
   expect((await send(message())).status).toBe("retry");

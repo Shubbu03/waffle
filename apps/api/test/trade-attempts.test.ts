@@ -3,6 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { createAuthStore, type DatabaseTransaction } from "@waffle/db";
 import { sessions, signalEvents, signals, tradeAttempts, users, watchedWallets } from "@waffle/db/schema";
+import type { HttpTransport } from "@waffle/http";
 import { createLogger } from "@waffle/observability";
 import {
   PUMP_SWAP_PROGRAM_ID,
@@ -224,14 +225,14 @@ beforeEach(async () => {
   });
   await db.insert(signalEvents).values({ signalId });
 
-  const fakeFetch = (async (url: string | URL | Request, init: RequestInit = {}) => {
+  const fakeTransport = (async (url: string | URL | Request, init: RequestInit = {}) => {
     const parsed = new URL(String(url));
     requests.push({ url: parsed, init });
     if (parsed.pathname.endsWith("/execute")) return Response.json(executionReply());
     await afterOrder();
     return Response.json(orderReply());
-  }) as typeof fetch;
-  const jupiter = new JupiterService("server-test-key", fakeFetch, () => clock);
+  }) as HttpTransport;
+  const jupiter = new JupiterService("server-test-key", fakeTransport, () => clock);
   app = createApp(
     { async ping() {} },
     { store: auth, uri: "https://waffle.example" },

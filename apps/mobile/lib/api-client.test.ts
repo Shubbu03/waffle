@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { AppConfig } from '../constants/app-config'
-import { ApiError, getSession, onUnauthorized, postVerify, readJson } from './api-client'
+import { ApiError, apiRequest, getSession, onUnauthorized, postLogout, postVerify } from './api-client'
 
 const originalApi = AppConfig.apiUrl
 const originalDevelopment = typeof __DEV__ === 'undefined' ? undefined : __DEV__
@@ -32,12 +32,12 @@ const input = {
 
 describe('mobile API wire integration', () => {
   test('reads the shared nested error envelope rather than replacing its useful message', async () => {
-    await expect(
-      readJson(
-        Response.json({ error: { code: 'STALE_SIGNAL', message: 'Signal evidence is stale' } }, { status: 409 }),
-        '/signals',
-      ),
-    ).rejects.toMatchObject({ status: 409, code: 'STALE_SIGNAL', message: 'Signal evidence is stale' })
+    api(() => Response.json({ error: { code: 'STALE_SIGNAL', message: 'Signal evidence is stale' } }, { status: 409 }))
+    await expect(apiRequest('/signals')).rejects.toMatchObject({
+      status: 409,
+      code: 'STALE_SIGNAL',
+      message: 'Signal evidence is stale',
+    })
   })
   test('sign-in sends only signed wallet data and validates the issued session', async () => {
     let body: unknown
@@ -76,5 +76,19 @@ describe('mobile API wire integration', () => {
   test('restored session responses are validated before authentication', async () => {
     api(() => Response.json({ session: { ...session, expiresAt: 'garbage' } }))
     await expect(getSession('a'.repeat(43))).rejects.toMatchObject({ code: 'BAD_RESPONSE' })
+  })
+  test('logout accepts an empty 204 and the next public request carries no bearer token', async () => {
+    const authorizations: (string | null)[] = []
+    api((request) => {
+      authorizations.push(request.headers.get('authorization'))
+      return request.method === 'POST' ? new Response(null, { status: 204 }) : Response.json({ items: [] })
+    })
+    await postLogout('a'.repeat(43))
+    expect(await apiRequest('/wallets')).toEqual({ items: [] })
+    expect(authorizations).toEqual([`Bearer ${'a'.repeat(43)}`, null])
+  })
+  test('malformed JSON remains an API error', async () => {
+    api(() => new Response('{broken', { headers: { 'content-type': 'application/json' } }))
+    await expect(apiRequest('/signals')).rejects.toMatchObject({ status: 200, code: 'BAD_RESPONSE' })
   })
 })

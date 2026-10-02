@@ -19,7 +19,8 @@
     "bs58": "6.0.0",
     "dotenv": "17.4.2",
     "hono": "4.13.9",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@waffle/http": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

@@ -8,6 +8,7 @@ import {
   type DatabaseTransaction,
 } from "@waffle/db";
 import { sessions, signalEvents, signals, users, userWalletSubscriptions, watchedWallets } from "@waffle/db/schema";
+import { createHttpClient } from "@waffle/http";
 import { createLogger } from "@waffle/observability";
 import {
   type LiveServerEvent,
@@ -374,9 +375,10 @@ test("Bun upgrades /live and sends protocol frames; token query parameters are r
   });
   let socket: WebSocket | undefined;
   try {
-    const rejected = await fetch(`${server.url.origin}/live?accessToken=never-in-a-url`);
+    const rejected = await createHttpClient({ timeoutMs: 3000 }).request({
+      url: `${server.url.origin}/live?accessToken=never-in-a-url`,
+    });
     expect(rejected.status).toBe(400);
-    await rejected.text();
     const frames: LiveServerEvent[] = [];
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("WebSocket test timed out")), 3000);

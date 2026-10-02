@@ -7,6 +7,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+import type { HttpTransport } from "@waffle/http";
 import { PUMP_SWAP_PROGRAM_ID, WRAPPED_SOL_MINT } from "@waffle/shared";
 import { JupiterService, JupiterServiceError } from "../src/jupiter.ts";
 
@@ -86,12 +87,12 @@ function mockService(
   clock: () => number = () => now,
   executeResponse?: unknown,
 ) {
-  const fakeFetch = async (url: string | URL | Request, init: RequestInit = {}) => {
+  const fakeTransport = async (url: string | URL | Request, init: RequestInit = {}) => {
     const parsed = new URL(String(url));
     requests.push({ url: parsed, init });
     return Response.json(parsed.pathname.endsWith("/execute") ? executeResponse : response);
   };
-  return new JupiterService("server-secret", fakeFetch as typeof fetch, clock);
+  return new JupiterService("server-secret", fakeTransport as HttpTransport, clock);
 }
 
 const realRequest = {
@@ -254,7 +255,7 @@ describe("Jupiter quote and order service", () => {
     const request = { signalId, outputMint: PUMP_SWAP_PROGRAM_ID, inputAmountLamports: "50000000" };
     const unavailable = new JupiterService(
       "server-secret",
-      (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch,
+      (async () => new Response("rate limited", { status: 429 })) as unknown as HttpTransport,
       () => now,
     );
     await expect(unavailable.getPaperQuote(request)).rejects.toMatchObject({
@@ -280,24 +281,24 @@ describe("Jupiter quote and order service", () => {
       code: -1000,
       signature: null,
     });
-    const failedFetch = new JupiterService(
+    const failedTransport = new JupiterService(
       "server-secret",
       (async (url) => {
         if (String(url).endsWith("/execute")) throw new Error("timeout");
         return Response.json(upstreamOrder());
-      }) as typeof fetch,
+      }) as HttpTransport,
       () => now,
     );
-    const uncertainOrder = await failedFetch.getRealOrder(realRequest, wallet.publicKey.toBase58());
+    const uncertainOrder = await failedTransport.getRealOrder(realRequest, wallet.publicKey.toBase58());
     const attempt = {
       orderId: uncertainOrder.id,
       requestId: uncertainOrder.requestId,
       signedTransactionBase64: signedBase64,
     };
-    await expect(failedFetch.execute(attempt, wallet.publicKey.toBase58())).rejects.toMatchObject({
+    await expect(failedTransport.execute(attempt, wallet.publicKey.toBase58())).rejects.toMatchObject({
       code: "EXECUTION_UNKNOWN",
     });
-    await expect(failedFetch.execute(attempt, wallet.publicKey.toBase58())).rejects.toMatchObject({
+    await expect(failedTransport.execute(attempt, wallet.publicKey.toBase58())).rejects.toMatchObject({
       code: "INVALID_ORDER",
     });
   });
@@ -310,15 +311,15 @@ test("USD price requests preserve exact mint identity and source block", async (
     expect(new Headers(init?.headers).get("x-api-key")).toBe("private");
     expect(init?.redirect).toBe("error");
     return Response.json({ [WRAPPED_SOL_MINT]: { usdPrice: 150, blockId: 100, decimals: 9 } });
-  }) as typeof fetch);
+  }) as HttpTransport);
   expect(await service.getUsdPrice(WRAPPED_SOL_MINT)).toEqual({ usdPrice: 150, blockId: 100, decimals: 9 });
   for (const payload of [
     {},
     { [WRAPPED_SOL_MINT]: null },
     { [WRAPPED_SOL_MINT]: { usdPrice: -1, blockId: 100, decimals: 9 } },
   ]) {
-    const invalid = new JupiterService("private", (async (_url: Parameters<typeof fetch>[0]) =>
-      Response.json(payload)) as typeof fetch);
+    const invalid = new JupiterService("private", (async (_url: Parameters<HttpTransport>[0]) =>
+      Response.json(payload)) as HttpTransport);
     await expect(invalid.getUsdPrice(WRAPPED_SOL_MINT)).rejects.toThrow("UPSTREAM_INVALID");
   }
 });

@@ -3,6 +3,7 @@
 **Target:** CLOCK IN submission 8 Oct 2026. **Status:** Bun workspace, shared contracts, reviewed Postgres migrations, API runtime foundation, and watcher RPC scheduler exist; a Neon branch and feature integrations are pending.
 
 **Workflow:** commit messages below are planned checkpoints, not authorization to stage, commit, or push. Browser/UI verification is performed manually by the user.
+**HTTP clients:** use Xior through `@waffle/http` for all outbound HTTP requests, including mobile, backend providers, scripts, and wire tests. Do not use native `fetch` or Axios. Create clients with the consuming service's deadlines and response limits; keep retries in the domain scheduler so requests remain budgeted and trade execution is never replayed automatically. Bun's `fetch` handlers and Hono's `app.fetch` handle incoming requests and are server entry points.
 **Database queries:** use Drizzle's typed query builder for application reads, inserts, updates, deletes, joins, upserts, and transactions in all future implementations. Use parameterized Drizzle `sql` fragments only for PostgreSQL-specific expressions, locks, session settings, and system-catalog checks. Never interpolate request values into SQL strings or use `sql.raw`/driver `.unsafe` for application queries. Reviewed migration/DDL SQL remains appropriate. See [database conventions](docs/database.md#query-conventions).
 **Rule:** after each feature -> commit. After each module -> auto tests + manual test. No profit claims. Paper default. Wallet signs every real trade.
 

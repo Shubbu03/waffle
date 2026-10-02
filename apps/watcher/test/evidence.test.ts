@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PublicKey } from "@solana/web3.js";
+import type { HttpTransport } from "@waffle/http";
 import {
   type PaperQuote,
   PUMP_SWAP_PROGRAM_ID,
@@ -389,12 +390,12 @@ describe("token and pool evidence", () => {
 describe("Pyth HTTP boundary", () => {
   test("no configured feed or key makes no request", async () => {
     let calls = 0;
-    const fetchImpl = (async (_url: Parameters<typeof fetch>[0]) => {
+    const transport = (async (_url: Parameters<HttpTransport>[0]) => {
       calls++;
       return new Response(null, { status: 503 });
-    }) as typeof fetch;
-    expect((await new PythPrices({ apiKey: "private", feeds: {}, fetchImpl }).get(mint)).status).toBe("unknown");
-    expect((await new PythPrices({ feeds: { [mint]: feedId }, fetchImpl }).get(mint)).status).toBe("unknown");
+    }) as HttpTransport;
+    expect((await new PythPrices({ apiKey: "private", feeds: {}, transport }).get(mint)).status).toBe("unknown");
+    expect((await new PythPrices({ feeds: { [mint]: feedId }, transport }).get(mint)).status).toBe("unknown");
     expect(calls).toBe(0);
   });
 
@@ -405,7 +406,7 @@ describe("Pyth HTTP boundary", () => {
         apiKey: "private",
         feeds: { [mint]: feedId },
         now: () => start,
-        fetchImpl: (async (url, init) => {
+        transport: (async (url, init) => {
           called = true;
           expect(new URL(String(url)).searchParams.get("ids[]")).toBe(feedId);
           expect(new Headers(init?.headers).get("authorization")).toBe("Bearer private");
@@ -425,7 +426,7 @@ describe("Pyth HTTP boundary", () => {
               },
             ],
           });
-        }) as typeof fetch,
+        }) as HttpTransport,
       });
       const result = await pyth.get(mint);
       expect(called).toBe(true);

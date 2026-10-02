@@ -1,3 +1,4 @@
+import { createHttpClient, type HttpRequest, HttpResponseError } from '@waffle/http'
 import { type AuthVerifyRequest, apiErrorSchema, authVerifyResponseSchema, sessionSchema } from '@waffle/shared'
 import { AppConfig } from '@/constants/app-config'
 import { ApiError } from './api-error'
@@ -5,6 +6,7 @@ import { ApiError } from './api-error'
 export { ApiError } from './api-error'
 export type VerifyRequest = AuthVerifyRequest
 const unauthorizedListeners = new Set<(token: string) => void>()
+const mobileClient = createHttpClient({ timeoutMs: 10_000 })
 
 export function reportUnauthorized(token: string): void {
   for (const listener of unauthorizedListeners) listener(token)
@@ -25,48 +27,39 @@ export function apiBaseUrl(): string {
   return AppConfig.apiUrl
 }
 
-export async function apiFetch(path: string, init: RequestInit = {}, token?: string): Promise<Response> {
-  const controller = new AbortController()
-  const abort = () => controller.abort()
-  init.signal?.addEventListener('abort', abort, { once: true })
-  if (init.signal?.aborted) abort()
-  const timeout = setTimeout(abort, 10_000)
-  const headers = new Headers(init.headers)
-  headers.set('content-type', 'application/json')
-  if (token) headers.set('authorization', `Bearer ${token}`)
+export async function apiRequest(path: string, init: Omit<HttpRequest, 'url' | 'onResponse'> = {}, token?: string) {
   try {
-    const response = await fetch(`${apiBaseUrl()}${path}`, { ...init, headers, signal: controller.signal })
-    if (response.status === 401 && token) {
-      reportUnauthorized(token)
+    const response = await mobileClient.request({
+      ...init,
+      url: `${apiBaseUrl()}${path}`,
+      headers: {
+        'content-type': 'application/json',
+        ...init.headers,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      onResponse(status) {
+        if (status === 401 && token) reportUnauthorized(token)
+      },
+    })
+    if (response.status < 200 || response.status >= 300) {
+      const parsed = apiErrorSchema.safeParse(response.data)
+      throw new ApiError(
+        response.status,
+        parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
+        parsed.success ? parsed.data.error.message : `Request to ${path} failed`,
+      )
     }
-    return response
-  } finally {
-    clearTimeout(timeout)
-    init.signal?.removeEventListener('abort', abort)
+    return response.data
+  } catch (error) {
+    if (error instanceof HttpResponseError)
+      throw new ApiError(error.status, 'BAD_RESPONSE', `Invalid response from ${path}`)
+    throw error
   }
-}
-
-export async function readJson(response: Response, path: string): Promise<unknown> {
-  let payload: unknown
-  try {
-    payload = await response.json()
-  } catch {
-    throw new ApiError(response.status, 'BAD_RESPONSE', `Invalid response from ${path}`)
-  }
-  if (!response.ok) {
-    const parsed = apiErrorSchema.safeParse(payload)
-    throw new ApiError(
-      response.status,
-      parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
-      parsed.success ? parsed.data.error.message : `Request to ${path} failed`,
-    )
-  }
-  return payload
 }
 
 export async function postVerify(request: VerifyRequest) {
-  const response = await apiFetch('/auth/verify', { method: 'POST', body: JSON.stringify(request) })
-  const parsed = authVerifyResponseSchema.safeParse(await readJson(response, '/auth/verify'))
+  const payload = await apiRequest('/auth/verify', { method: 'POST', data: request })
+  const parsed = authVerifyResponseSchema.safeParse(payload)
   if (!parsed.success) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed sign-in response')
   if (parsed.data.session.walletAddress !== request.accountAddress) {
     throw new ApiError(0, 'BAD_RESPONSE', 'The session belongs to a different wallet.')
@@ -75,8 +68,7 @@ export async function postVerify(request: VerifyRequest) {
 }
 
 export async function getSession(token: string) {
-  const response = await apiFetch('/auth/session', {}, token)
-  const payload = await readJson(response, '/auth/session')
+  const payload = await apiRequest('/auth/session', {}, token)
   const parsed = sessionSchema.safeParse(
     payload !== null && typeof payload === 'object' && 'session' in payload ? payload.session : null,
   )
@@ -85,6 +77,5 @@ export async function getSession(token: string) {
 }
 
 export async function postLogout(token: string): Promise<void> {
-  const response = await apiFetch('/auth/logout', { method: 'POST' }, token)
-  if (response.status !== 204) await readJson(response, '/auth/logout')
+  await apiRequest('/auth/logout', { method: 'POST' }, token)
 }

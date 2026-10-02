@@ -17,7 +17,8 @@
     "@waffle/db": "workspace:*",
     "dotenv": "17.4.2",
     "@waffle/jupiter": "workspace:*",
-    "@solana/web3.js": "1.99.0"
+    "@solana/web3.js": "1.99.0",
+    "@waffle/http": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.3.13"

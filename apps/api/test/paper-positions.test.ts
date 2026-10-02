@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 import { createAuthStore, createPaperPositionStore, type DatabaseTransaction } from "@waffle/db";
 import { paperPositions, sessions, signalEvents, signals, users, watchedWallets } from "@waffle/db/schema";
+import type { HttpTransport } from "@waffle/http";
 import {
   type ApiErrorCode,
   apiErrorSchema,
@@ -161,16 +162,16 @@ beforeEach(async () => {
     taker: null,
     transaction: null,
   };
-  const fakeFetch = (async (url: string | URL | Request) => {
+  const fakeTransport = (async (url: string | URL | Request) => {
     calls.push(new URL(String(url)));
     await afterFetch();
     return Response.json(upstream);
-  }) as typeof fetch;
+  }) as HttpTransport;
   app = createApp(
     { async ping() {} },
     { store: auth, uri: "https://waffle.example" },
     {
-      jupiter: new JupiterService("test-secret", fakeFetch, () => clock),
+      jupiter: new JupiterService("test-secret", fakeTransport, () => clock),
       now: () => clock,
     },
   );

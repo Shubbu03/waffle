@@ -1,6 +1,6 @@
 /** Wallet catalog + subscription API for issue #22. Logs paths, never tokens. */
 
-import { apiFetch, readJson } from './api-client'
+import { apiRequest } from './api-client'
 import { ApiError } from './api-error'
 
 export type CatalogWallet = {
@@ -53,8 +53,7 @@ function parseSubscription(value: unknown): WalletSubscription {
 /** Public catalog — no session needed. */
 export async function listWallets(): Promise<CatalogWallet[]> {
   console.log('[wallets-api] listWallets: fetching catalog')
-  const response = await apiFetch('/wallets', { method: 'GET' })
-  const payload = (await readJson(response, '/wallets')) as { items?: unknown }
+  const payload = (await apiRequest('/wallets', { method: 'GET' })) as { items?: unknown }
   if (!Array.isArray(payload?.items)) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed catalog response')
   const items = payload.items.map(parseWallet)
   console.log(`[wallets-api] listWallets: ${items.length} wallets`)
@@ -64,8 +63,7 @@ export async function listWallets(): Promise<CatalogWallet[]> {
 /** Owner's follows — bearer required. */
 export async function listSubscriptions(token: string, signal?: AbortSignal): Promise<WalletSubscription[]> {
   console.log('[wallets-api] listSubscriptions: fetching follows')
-  const response = await apiFetch('/wallet-subscriptions', { method: 'GET', signal }, token)
-  const payload = (await readJson(response, '/wallet-subscriptions')) as { items?: unknown }
+  const payload = (await apiRequest('/wallet-subscriptions', { method: 'GET', signal }, token)) as { items?: unknown }
   if (!Array.isArray(payload?.items)) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed subscriptions response')
   const items = payload.items.map(parseSubscription)
   console.log(`[wallets-api] listSubscriptions: ${items.length} follows`)
@@ -79,12 +77,11 @@ export async function followWallet(
   alertsEnabled?: boolean,
 ): Promise<WalletSubscription> {
   console.log(`[wallets-api] followWallet: ${walletId.slice(0, 8)}... alerts=${alertsEnabled ?? '(unchanged)'}`)
-  const response = await apiFetch(
+  const payload = await apiRequest(
     `/wallet-subscriptions/${walletId}`,
-    { method: 'PUT', body: JSON.stringify(alertsEnabled === undefined ? {} : { alertsEnabled }) },
+    { method: 'PUT', data: alertsEnabled === undefined ? {} : { alertsEnabled } },
     token,
   )
-  const payload = (await readJson(response, `/wallet-subscriptions/${walletId}`)) as unknown
   console.log('[wallets-api] followWallet: ok')
   return parseSubscription(payload)
 }
@@ -92,9 +89,6 @@ export async function followWallet(
 /** Idempotent unfollow — 204 expected. */
 export async function unfollowWallet(token: string, walletId: string): Promise<void> {
   console.log(`[wallets-api] unfollowWallet: ${walletId.slice(0, 8)}...`)
-  const response = await apiFetch(`/wallet-subscriptions/${walletId}`, { method: 'DELETE' }, token)
-  if (response.status !== 204) {
-    await readJson(response, `/wallet-subscriptions/${walletId}`)
-  }
+  await apiRequest(`/wallet-subscriptions/${walletId}`, { method: 'DELETE' }, token)
   console.log('[wallets-api] unfollowWallet: ok')
 }
