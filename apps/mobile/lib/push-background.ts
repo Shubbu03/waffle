@@ -1,19 +1,23 @@
-/** Killed/background tap sink for issue #24. Imported for side effects at bundle load
- * (see app/_layout.tsx) — RNFirebase requires this outside any component. */
+import notifee, { EventType } from '@notifee/react-native'
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging'
+import { Platform } from 'react-native'
+import { queuePushTap, receivePush } from './push-notifications'
 
-let registered = false
-
-export function registerPushBackgroundHandler(): void {
-  if (registered) {
-    console.log('[push] background handler already registered')
-    return
-  }
-  registered = true
+// Android Headless JS does not mount Expo Router's root layout.
+if (Platform.OS === 'android') {
   setBackgroundMessageHandler(getMessaging(), async (message) => {
-    // Keep it minimal: the OS shows the notification; navigation happens on tap
-    // via getInitialNotification/onNotificationOpenedApp in the provider.
-    console.log(`[push] background message: ${message.messageId ?? 'no-id'}`)
+    try {
+      await receivePush(message.data)
+    } catch {
+      console.warn('[push] background delivery unavailable')
+    }
   })
-  console.log('[push] background handler registered')
+  notifee.onBackgroundEvent(async ({ type, detail }) => {
+    if (type !== EventType.PRESS) return
+    try {
+      await queuePushTap(detail.notification?.data)
+    } catch {
+      console.warn('[push] could not save notification tap')
+    }
+  })
 }

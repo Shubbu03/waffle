@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import * as SecureStore from 'expo-secure-store'
 import { createContext, type PropsWithChildren, use, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { AppState } from 'react-native'
 import { useCluster } from '@/components/cluster/cluster-provider'
@@ -8,7 +7,7 @@ import { AppConfig } from '@/constants/app-config'
 import { ApiError, apiBaseUrl, getSession, onUnauthorized, postLogout, postVerify } from '@/lib/api-client'
 import { toWireBase64 } from '@/lib/b64'
 import { WALLET_SIGN_TIMEOUT_MS, withTransactTimeout } from '@/lib/mwa-transact'
-import { deletePushToken, PUSH_ID_KEY } from '@/lib/push-tokens-api'
+import { pushDevice } from '@/lib/push-device'
 import { SessionController, type SessionState } from '@/lib/session-controller'
 import { clearSession, loadSession, saveSession } from '@/lib/session-store'
 import { buildSignInInput } from '@/lib/sign-in-input'
@@ -32,6 +31,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         clear: clearSession,
         verify: getSession,
         revoke: postLogout,
+        beforeSessionEnd: (session) => pushDevice.end(session),
       }),
   )
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
@@ -118,17 +118,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }
   const signOut = async () => {
     try {
-      // Best-effort: unregister this device for push before burning the session.
-      const pushId = await SecureStore.getItemAsync(PUSH_ID_KEY).catch(() => null)
-      if (pushId && state.session?.accessToken) {
-        try {
-          await deletePushToken(state.session.accessToken, pushId)
-          console.log('[auth] signOut: push device unregistered')
-        } catch {
-          console.log('[auth] signOut: push unregister failed, continuing')
-        }
-      }
-      await SecureStore.deleteItemAsync(PUSH_ID_KEY).catch(() => {})
       await controller.signOut()
     } finally {
       await disconnect()

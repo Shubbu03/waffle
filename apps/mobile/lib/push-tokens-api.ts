@@ -11,7 +11,7 @@ export type PushTokenRegistration = {
   notificationPermission: 'granted' | 'denied'
 }
 
-/** Register this device (bearer). 409 = device limit reached. */
+/** Register this device for the session owner; 409 also covers another owner's token. */
 export async function registerPushToken(token: string, body: PushTokenRegistration): Promise<{ id: string }> {
   console.log(`[push-api] registerPushToken: permission=${body.notificationPermission}`)
   const payload = await apiRequest('/push-tokens', { method: 'POST', data: body }, token)
