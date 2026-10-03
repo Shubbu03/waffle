@@ -7,6 +7,7 @@ import { AppConfig } from '@/constants/app-config'
 import { ApiError, apiBaseUrl, getSession, onUnauthorized, postLogout, postVerify } from '@/lib/api-client'
 import { toWireBase64 } from '@/lib/b64'
 import { WALLET_SIGN_TIMEOUT_MS, withTransactTimeout } from '@/lib/mwa-transact'
+import { pushDevice } from '@/lib/push-device'
 import { SessionController, type SessionState } from '@/lib/session-controller'
 import { clearSession, loadSession, saveSession } from '@/lib/session-store'
 import { buildSignInInput } from '@/lib/sign-in-input'
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         clear: clearSession,
         verify: getSession,
         revoke: postLogout,
+        beforeSessionEnd: (session) => pushDevice.end(session),
       }),
   )
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)

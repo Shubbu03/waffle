@@ -42,8 +42,11 @@
   "dependencies": {
     "@expo/metro-runtime": "~55.0.6",
     "@expo/vector-icons": "^15.0.3",
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-clipboard/clipboard": "^1.16.2",
+    "@react-native-firebase/app": "^26.4.0",
+    "@react-native-firebase/messaging": "^26.4.0",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
@@ -52,6 +55,7 @@
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
     "@tanstack/react-query": "^5.85.5",
+    "@waffle/http": "workspace:*",
     "@waffle/shared": "workspace:*",
     "@wallet-ui/react-native-web3js": "^4.0.1",
     "expo": "~55.0.23",
@@ -86,8 +90,7 @@
     "react-native-web": "~0.21.1",
     "react-native-webview": "13.16.0",
     "react-native-worklets": "0.7.4",
-    "react-qr-code": "^2.0.16",
-    "@waffle/http": "workspace:*"
+    "react-qr-code": "^2.0.16"
   },
   "devDependencies": {
     "@types/react": "~19.2.14",

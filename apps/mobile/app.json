@@ -15,7 +15,9 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.waffle.app"
+      "package": "com.waffle.app",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["android.permission.POST_NOTIFICATIONS"]
     },
     "web": {
       "bundler": "metro",
@@ -39,7 +41,9 @@
         }
       ],
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
     "experiments": {
       "typedRoutes": true

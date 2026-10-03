@@ -14,6 +14,7 @@ type Dependencies = {
   clear: () => Promise<void>
   verify: (token: string) => Promise<Session>
   revoke: (token: string) => Promise<void>
+  beforeSessionEnd?: (session: StoredSession) => Promise<void>
 }
 const signedOut: SessionState = { status: 'signed-out', session: null, serverLinked: false, isSigningIn: false }
 
@@ -22,6 +23,7 @@ export class SessionController {
   private state: SessionState = { ...signedOut, status: 'loading' }
   private generation = 0
   private writes: Promise<void> = Promise.resolve()
+  private endingSession: Promise<void> = Promise.resolve()
   private listeners = new Set<() => void>()
   constructor(private readonly dependencies: Dependencies) {}
   getSnapshot = (): SessionState => this.state
@@ -45,7 +47,8 @@ export class SessionController {
       if (generation !== this.generation) return
       if (!session?.accessToken || isSessionExpired(session.expiresAt)) {
         this.set(signedOut)
-        await this.write(this.dependencies.clear)
+        const ending = session?.accessToken ? this.endSession(session) : Promise.resolve()
+        await Promise.all([ending, this.write(this.dependencies.clear)])
         return
       }
       this.set({ ...signedOut, status: 'signed-in', session })
@@ -86,10 +89,18 @@ export class SessionController {
     const generation = ++this.generation
     this.set({ ...this.state, isSigningIn: true })
     try {
+      await this.endingSession
+      if (generation !== this.generation) throw new Error('Sign-in was cancelled.')
       const session = await operation()
       if (generation !== this.generation) throw new Error('Sign-in was cancelled.')
       if (!session.accessToken || isSessionExpired(session.expiresAt))
         throw new Error('The sign-in session has expired.')
+      const previous = this.state.session
+      if (previous && previous.accessToken !== session.accessToken) {
+        this.set({ ...signedOut, isSigningIn: true })
+        await this.endSession(previous)
+      }
+      if (generation !== this.generation) throw new Error('Sign-in was cancelled.')
       await this.write(() => this.dependencies.save(session))
       if (generation !== this.generation) throw new Error('Sign-in was cancelled.')
       this.set({ status: 'signed-in', session, serverLinked: true, isSigningIn: false })
@@ -102,10 +113,20 @@ export class SessionController {
     if (this.state.session?.accessToken === token) await this.signOut()
   }
   async signOut(): Promise<void> {
-    const token = this.state.session?.accessToken
+    const session = this.state.session
     ++this.generation
     this.set(signedOut)
-    if (token) void this.dependencies.revoke(token).catch(() => {})
-    await this.write(this.dependencies.clear)
+    const ending = session ? this.endSession(session) : this.endingSession
+    await Promise.all([ending, this.write(this.dependencies.clear)])
+  }
+  private endSession(session: StoredSession): Promise<void> {
+    // Invoke synchronously so push delivery is disabled as soon as the session ends.
+    const cleanup = this.dependencies.beforeSessionEnd?.(session) ?? Promise.resolve()
+    this.endingSession = cleanup
+      .catch(() => {})
+      .then(() => {
+        void this.dependencies.revoke(session.accessToken).catch(() => {})
+      })
+    return this.endingSession
   }
 }
