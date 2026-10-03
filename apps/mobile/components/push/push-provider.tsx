@@ -1,190 +1,217 @@
-import {
-  AuthorizationStatus,
-  getInitialNotification,
-  getMessaging,
-  getToken,
-  hasPermission,
-  onMessage,
-  onNotificationOpenedApp,
-  onTokenRefresh,
-  type RemoteMessage,
-  requestPermission,
-} from '@react-native-firebase/messaging'
-import { router } from 'expo-router'
-import * as SecureStore from 'expo-secure-store'
-import { createContext, type PropsWithChildren, use, useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, View } from 'react-native'
+import notifee, { EventType } from '@notifee/react-native'
+import { getMessaging, onMessage, onTokenRefresh } from '@react-native-firebase/messaging'
+import { useQueryClient } from '@tanstack/react-query'
+import { router, useRootNavigationState } from 'expo-router'
+import { createContext, type PropsWithChildren, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AppState, Platform, Pressable, View } from 'react-native'
 import { AppText } from '@/components/app-text'
 import { useAuth } from '@/components/auth/auth-provider'
-import { type PushPermission, parseSignalTap, toPushPermission } from '@/lib/push-tap'
-import { deletePushToken, PUSH_ID_KEY, registerPushToken } from '@/lib/push-tokens-api'
+import { AppConfig } from '@/constants/app-config'
+import { useThemeColor } from '@/hooks/use-theme-color'
+import { pushDevice, readPushPermission } from '@/lib/push-device'
+import {
+  clearPendingPushTap,
+  onPushTap,
+  type PushTap,
+  queuePushTap,
+  readPendingPushTap,
+  receivePush,
+} from '@/lib/push-notifications'
+import type { PushPermission, SignalPush } from '@/lib/push-tap'
 
 export interface PushState {
-  permission: PushPermission
+  permission: PushPermission | 'checking'
   foregroundSignalId: string | null
   dismissForeground: () => void
 }
 
-const Context = createContext<PushState>({} as PushState)
-
+const Context = createContext<PushState | null>(null)
 export function usePush() {
   const value = use(Context)
   if (!value) throw new Error('usePush must be wrapped in <PushProvider />')
   return value
 }
 
-function routeToSignal(signalId: string, source: string): void {
-  console.log(`[push] routing to signal from ${source}`)
-  router.push(`/signals/${signalId}`)
-}
-
 export function PushProvider({ children }: PropsWithChildren) {
-  const { session } = useAuth()
-  const token = session?.accessToken ?? ''
-  const [permission, setPermission] = useState<PushPermission>('default')
-  const [foregroundSignalId, setForegroundSignalId] = useState<string | null>(null)
+  const { session, status } = useAuth()
+  const accessToken = session?.accessToken
+  const sessionRef = useRef(session)
+  sessionRef.current = session
+  const navigation = useRootNavigationState()
+  const client = useQueryClient()
+  const [permission, setPermission] = useState<PushState['permission']>('checking')
+  const [registrationUnavailable, setRegistrationUnavailable] = useState(false)
+  const [foreground, setForeground] = useState<SignalPush | null>(null)
+  const [pendingTap, setPendingTap] = useState<PushTap | null>(null)
+  const lastTap = useRef({ id: '', at: 0 })
+  const background = useThemeColor({}, 'background')
+  const text = useThemeColor({}, 'text')
 
-  /** Permission + registration, re-run on sign-in. Denial is a state, never a crash. */
   useEffect(() => {
-    if (!token) {
-      console.log('[push] no session, skipping registration')
-      return
-    }
-    const messaging = getMessaging()
+    setForeground(null)
+    setRegistrationUnavailable(false)
+    if (Platform.OS !== 'android' || !accessToken) return
+    const owner = sessionRef.current
+    if (!owner) return
+    pushDevice.activate(owner)
     let cancelled = false
-    async function setup(): Promise<void> {
-      console.log('[push] setup: checking permission')
-      const current = await hasPermission(messaging)
-      let state = toPushPermission(
-        current === AuthorizationStatus.AUTHORIZED,
-        current === AuthorizationStatus.PROVISIONAL,
-      )
-      console.log(`[push] setup: current=${current} -> ${state}`)
-      if (state === 'default') {
-        console.log('[push] setup: requesting permission')
-        const next = await requestPermission(messaging)
-        state = toPushPermission(next === AuthorizationStatus.AUTHORIZED, next === AuthorizationStatus.PROVISIONAL)
-        console.log(`[push] setup: requested -> ${state}`)
-      }
-      if (cancelled) return
-      setPermission(state)
-      console.log('[push] setup: fetching FCM token')
-      const fcmToken = await getToken(messaging)
-      if (cancelled) return
-      console.log('[push] setup: token received (value hidden), registering')
-      const registration = await registerPushToken(token, {
-        token: fcmToken,
-        platform: 'android',
-        notificationPermission: state === 'granted' ? 'granted' : 'denied',
-      })
-      await SecureStore.setItemAsync(PUSH_ID_KEY, registration.id)
-      console.log('[push] setup: registered')
+    const synchronize = (request = false) => {
+      void pushDevice
+        .synchronize(owner, request)
+        .then((value) => {
+          if (!cancelled && value) {
+            setPermission(value)
+            setRegistrationUnavailable(false)
+            if (value === 'denied') setForeground(null)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setRegistrationUnavailable(true)
+            void readPushPermission()
+              .then((value) => {
+                if (!cancelled) setPermission(value)
+              })
+              .catch(() => {
+                if (!cancelled) setPermission('denied')
+              })
+          }
+          console.warn('[push] registration unavailable')
+        })
     }
-    setup().catch((error: unknown) => {
-      console.log(`[push] setup failed (${error instanceof Error ? error.message : 'unknown'}) — alerts off, app works`)
-      if (!cancelled) setPermission('denied')
+    setPermission('checking')
+    synchronize(true)
+    const unsubscribeRefresh = onTokenRefresh(getMessaging(), () => synchronize())
+    const listener = AppState.addEventListener('change', (next) => {
+      if (next === 'active') synchronize()
     })
     return () => {
       cancelled = true
+      unsubscribeRefresh()
+      listener.remove()
     }
-  }, [token])
+  }, [accessToken])
 
-  /** Token rotation: delete old id, register new. */
   useEffect(() => {
-    if (!token) return
-    const messaging = getMessaging()
-    console.log('[push] watching token refresh')
-    const unsubscribe = onTokenRefresh(messaging, async (fcmToken) => {
-      console.log('[push] token refreshed, re-registering')
-      try {
-        const oldId = await SecureStore.getItemAsync(PUSH_ID_KEY)
-        if (oldId) {
-          try {
-            await deletePushToken(token, oldId)
-          } catch {
-            console.log('[push] old id delete failed, continuing')
-          }
-        }
-        const registration = await registerPushToken(token, {
-          token: fcmToken,
-          platform: 'android',
-          notificationPermission: 'granted',
+    if (Platform.OS !== 'android') return
+    return onMessage(getMessaging(), (message) => {
+      const owner = sessionRef.current?.userId
+      void receivePush(message.data, (_signal, push) => {
+        if (owner && sessionRef.current?.userId === owner && pushDevice.canDeliver(owner)) setForeground(push)
+      }).catch(() => console.warn('[push] foreground delivery unavailable'))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return
+    let cancelled = false
+    const loadTap = () => {
+      void readPendingPushTap()
+        .then((tap) => {
+          if (!cancelled && tap) setPendingTap(tap)
         })
-        await SecureStore.setItemAsync(PUSH_ID_KEY, registration.id)
-        console.log('[push] refresh registered')
-      } catch (error) {
-        console.log(`[push] refresh failed (${error instanceof Error ? error.message : 'unknown'})`)
-      }
+        .catch(() => console.warn('[push] pending tap unavailable'))
+    }
+    const unsubscribeTap = onPushTap(setPendingTap)
+    const unsubscribeEvents = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS)
+        void queuePushTap(detail.notification?.data).catch(() => console.warn('[push] tap unavailable'))
     })
-    return unsubscribe
-  }, [token])
-
-  /** Foreground messages: in-app banner (FCM stays silent when foregrounded). */
-  useEffect(() => {
-    const messaging = getMessaging()
-    console.log('[push] listening for foreground messages')
-    const unsubscribe = onMessage(messaging, (message: RemoteMessage) => {
-      const signalId = parseSignalTap(message.data)
-      if (!signalId) {
-        console.log('[push] foreground message without signal, ignoring')
-        return
-      }
-      console.log('[push] foreground signal banner')
-      setForegroundSignalId(signalId)
-    })
-    return unsubscribe
-  }, [])
-
-  /** Background tap: app was alive in background. */
-  useEffect(() => {
-    const messaging = getMessaging()
-    console.log('[push] listening for background taps')
-    const unsubscribe = onNotificationOpenedApp(messaging, (message: RemoteMessage) => {
-      const signalId = parseSignalTap(message?.data)
-      if (signalId) routeToSignal(signalId, 'background-tap')
-    })
-    return unsubscribe
-  }, [])
-
-  /** Killed-app tap: cold start from notification. */
-  useEffect(() => {
-    const messaging = getMessaging()
-    console.log('[push] checking killed-app tap')
-    getInitialNotification(messaging)
-      .then((message) => {
-        const signalId = parseSignalTap(message?.data)
-        if (signalId) routeToSignal(signalId, 'killed-tap')
-        else console.log('[push] no killed-app tap')
+    void notifee
+      .getInitialNotification()
+      .then((initial) => {
+        if (!cancelled && initial) return queuePushTap(initial.notification.data)
       })
-      .catch(() => console.log('[push] killed-app check failed'))
+      .catch(() => console.warn('[push] initial notification unavailable'))
+    loadTap()
+    const listener = AppState.addEventListener('change', (next) => {
+      if (next === 'active') loadTap()
+    })
+    return () => {
+      cancelled = true
+      unsubscribeTap()
+      unsubscribeEvents()
+      listener.remove()
+    }
   }, [])
 
-  const dismissForeground = useCallback(() => {
-    console.log('[push] foreground banner dismissed')
-    setForegroundSignalId(null)
-  }, [])
+  const openSignal = useCallback(
+    (id: string) => {
+      void client.invalidateQueries({ queryKey: ['signal-detail', AppConfig.apiUrl, id] })
+      router.push({ pathname: '/signals/[id]', params: { id } })
+    },
+    [client],
+  )
 
+  useEffect(() => {
+    if (!pendingTap || !navigation?.key || status === 'loading') return
+    setPendingTap(null)
+    void clearPendingPushTap().catch(() => console.warn('[push] tap cleanup unavailable'))
+    if (session?.userId && session.userId !== pendingTap.userId) return
+    const now = Date.now()
+    if (lastTap.current.id === pendingTap.id && now - lastTap.current.at < 2000) return
+    lastTap.current = { id: pendingTap.id, at: now }
+    openSignal(pendingTap.id)
+  }, [pendingTap, navigation?.key, status, session?.userId, openSignal])
+
+  useEffect(() => {
+    if (!foreground) return
+    const timer = setTimeout(() => setForeground(null), Math.max(0, foreground.expiresAt - Date.now()))
+    return () => clearTimeout(timer)
+  }, [foreground])
+
+  const dismissForeground = useCallback(() => setForeground(null), [])
   const value = useMemo<PushState>(
-    () => ({ permission, foregroundSignalId, dismissForeground }),
-    [permission, foregroundSignalId, dismissForeground],
+    () => ({
+      permission,
+      foregroundSignalId: foreground?.id ?? null,
+      dismissForeground,
+    }),
+    [permission, foreground, dismissForeground],
   )
 
   return (
     <Context value={value}>
       {children}
-      {foregroundSignalId ? (
-        <View style={{ position: 'absolute', top: 60, left: 16, right: 16 }}>
-          <Pressable
-            accessibilityRole="button"
-            style={{ borderRadius: 16, padding: 16 }}
-            onPress={() => {
-              const id = foregroundSignalId
-              dismissForeground()
-              routeToSignal(id, 'foreground-banner')
-            }}
-          >
-            <AppText type="defaultSemiBold">Whale alert — tap to view signal</AppText>
-          </Pressable>
+      {session && Platform.OS === 'android' && (foreground || permission === 'denied' || registrationUnavailable) ? (
+        <View style={{ position: 'absolute', top: 60, left: 16, right: 16, gap: 8 }}>
+          {permission === 'denied' || registrationUnavailable ? (
+            <View
+              accessibilityRole="alert"
+              style={{ backgroundColor: background, borderColor: text, borderWidth: 1, borderRadius: 16, padding: 16 }}
+            >
+              <AppText>
+                {permission === 'denied'
+                  ? 'Alerts are off. Enable notifications in Android Settings and reopen the app.'
+                  : 'Alerts are unavailable. Check your connection and reopen the app to retry.'}
+              </AppText>
+            </View>
+          ) : null}
+          {foreground ? (
+            <View
+              style={{
+                backgroundColor: background,
+                borderColor: text,
+                borderWidth: 1,
+                borderRadius: 16,
+                padding: 16,
+                gap: 8,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  dismissForeground()
+                  openSignal(foreground.id)
+                }}
+              >
+                <AppText type="defaultSemiBold">Whale alert — tap to view signal</AppText>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={dismissForeground}>
+                <AppText>Dismiss</AppText>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </Context>

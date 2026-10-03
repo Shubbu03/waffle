@@ -1,6 +1,6 @@
 # Background push alerts (#20)
 
-The API registers Android device tokens for authenticated owners and sends FCM HTTP v1 data messages from durable `push_deliveries` jobs. Foreground WebSockets continue independently. Native permission prompts, token refresh callbacks, receiving/displaying notifications, and device deduplication are mobile work (#24).
+The API registers Android device tokens for authenticated owners and sends FCM HTTP v1 data messages from durable `push_deliveries` jobs. Foreground WebSockets continue independently. The Android client uses RNFirebase for receipt and token refresh, and Notifee for permission requests, notification display, and taps (#24).
 
 ## Configuration
 
@@ -13,6 +13,29 @@ Set these server-only values in `apps/api/.env` or the process secret environmen
 Enable the Firebase Cloud Messaging API in the project and grant the service account permission to send messages (Firebase Cloud Messaging API Admin). Its project must match the Android app's Firebase configuration. The API validates the credential shape/key at startup, obtains short-lived OAuth tokens using an RS256 service-account assertion, and sends only to Google's fixed HTTPS OAuth/FCM endpoints. Redirects are refused; requests have four-second timeouts. Credentials and raw provider errors are never logged or returned. The implementation uses Bun's Node crypto support and native fetch; no new dependency is needed. See [Firebase authorization](https://firebase.google.com/docs/cloud-messaging/send/v1-api) and [Google's service-account flow](https://developers.google.com/identity/protocols/oauth2/service-account).
 
 Missing FCM configuration disables the worker with an explicit startup log; registration and REST remain available. Setting FCM credentials without the delivery database URL fails startup. Registration success means a preference was stored, not that FCM is configured or a device received anything. No schema migration or additional role grant is needed.
+
+### Android configuration and rebuild
+
+Save the Android Firebase configuration (the JSON with `project_info` and `client`) at `apps/mobile/google-services.json`. `apps/mobile/app.json` references it through `expo.android.googleServicesFile`; its Android client package must match `com.waffle.app`. The file is ignored by Git. This is a different file from the private service-account JSON used by the API; never place a service-account private key in the mobile app. Both configurations must use the same Firebase project.
+
+From the repository root, run `bun install`, then `cd apps/mobile` and `bun run android`. Expo prebuild generates the native Android configuration, and the native dependencies are autolinked. Rebuild an existing development client after installing these dependencies; Expo Go cannot run RNFirebase or Notifee. A native build requires the real Android configuration file and the Android SDK/JDK.
+
+Use JDK 17 for local Android builds. Select it with `JAVA_HOME` and put its `bin` directory first in `PATH` before running `bun run android`; `java -version` should report version 17. On Apple Silicon macOS with Homebrew `openjdk@17` installed:
+
+```sh
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version
+bun run android
+```
+
+If Gradle reports `JvmVendorSpec IBM_SEMERU`, check this Java selection first. React Native 0.83.6's Foojay resolver references a vendor constant removed by Gradle 9 when it tries to download a missing Java 17 toolchain. Selecting an installed JDK 17 avoids that resolver path. See [the React Native issue](https://github.com/facebook/react-native/issues/55781) and [Gradle 9's upgrade guide](https://docs.gradle.org/current/userguide/upgrading_major_version_9.html).
+
+The bundle entry registers Android background handlers before Expo Router loads. Data-only messages are explicitly displayed through Notifee on the `waffle-signals` channel, using the signal ID as the notification ID and its remaining lifetime as the display timeout. Foreground delivery uses an expiring, dismissible in-app banner. Both paths reload current signal detail, validate the backend `id`/event/wallet/mint/slot fields, reject expired or ineligible data, and persist a bounded per-owner/API list of displayed IDs. Notification taps wait for navigation and session restoration, reject another owner's saved tap, invalidate detail queries, and open the signal. Paper review continues to obtain a new quote before confirmation; notification payloads never supply an executable quote.
+
+Notifee requests Android 13+ notification permission. Denial and a blocked alert channel keep registration inactive and show an alerts-off message. Resuming the app reconciles settings without repeatedly prompting. Token refresh also reads current permission. Registration, receiving, and cleanup are serialized. Explicit logout, wallet/cluster changes, session expiry, unauthorized sessions, and replacement sign-ins all attempt server unregistration before revocation and invalidate the native token. If the previous owner is unavailable, rotate the native token before registration; failed rotations must be retried before a new owner registers. Provider or registration failures show an unavailable state without reporting native permission as granted.
+
+Dependency audit on 2026-10-03 reports nine existing transitive advisories (four high, four moderate, one low) through Expo, RNFirebase, Solana, and tooling dependencies; none is reported through Notifee. Dependency upgrades are deferred to a separate compatibility review before the 2026-10-08 submission, since changes to those SDKs require their own native and trade-flow verification. The audit is not a passing security gate.
 
 ## Owner-bound registration
 

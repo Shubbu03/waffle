@@ -1,29 +1,42 @@
-/** Push helper unit tests for issue #24 (pure logic, no device needed). */
 import { describe, expect, test } from 'bun:test'
-import { parseSignalTap, toPushPermission } from './push-tap'
+import { pushFixture } from '../test-support/push-fixture'
+import { parseSignalPush, parseSignalTap } from './push-tap'
 
-describe('toPushPermission', () => {
-  test('authorized or provisional count as granted', () => {
-    expect(toPushPermission(true, false)).toBe('granted')
-    expect(toPushPermission(false, true)).toBe('granted')
+describe('signal push contract', () => {
+  test('accepts the actual backend wire fields and preserves bigint event IDs', () => {
+    const now = Date.now()
+    const { data } = pushFixture(now)
+    expect(parseSignalTap(data)).toBe(data.id)
+    expect(parseSignalPush(data, now)).toMatchObject({ id: data.id, eventId: data.eventId, score: 80, slot: 100 })
   })
-
-  test('anything else stays undecided', () => {
-    expect(toPushPermission(false, false)).toBe('default')
+  test('rejects malformed IDs and the obsolete signalId field', () => {
+    for (const data of [
+      null,
+      'abc',
+      {},
+      { signalId: crypto.randomUUID() },
+      { id: 42 },
+      { id: '' },
+      { id: '../sign-in' },
+      { id: 'x'.repeat(200) },
+    ])
+      expect(parseSignalTap(data)).toBeNull()
   })
-})
-
-describe('parseSignalTap', () => {
-  test('routes a well-formed signal id', () => {
-    expect(parseSignalTap({ signalId: 'abc-123' })).toBe('abc-123')
-  })
-
-  test('rejects garbage without throwing', () => {
-    expect(parseSignalTap(null)).toBeNull()
-    expect(parseSignalTap('abc')).toBeNull()
-    expect(parseSignalTap({})).toBeNull()
-    expect(parseSignalTap({ signalId: 42 })).toBeNull()
-    expect(parseSignalTap({ signalId: '' })).toBeNull()
-    expect(parseSignalTap({ signalId: 'x'.repeat(200) })).toBeNull()
+  test('drops expired, malformed and excessively long-lived pushes before receipt', () => {
+    const now = Date.now()
+    const { data } = pushFixture(now)
+    for (const changes of [
+      { expiresAt: new Date(now).toISOString() },
+      { expiresAt: 'bad' },
+      { expiresAt: new Date(now + 90_001).toISOString() },
+      { wallet: 'bad' },
+      { mint: 'bad' },
+      { score: '69' },
+      { score: '101' },
+      { slot: '9007199254740992' },
+      { eventId: '0' },
+    ])
+      expect(parseSignalPush({ ...data, ...changes }, now)).toBeNull()
+    expect(parseSignalTap({ ...data, expiresAt: 'expired' })).toBe(data.id)
   })
 })
