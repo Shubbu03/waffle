@@ -153,6 +153,16 @@ export function SignalDetailScreen() {
               >
                 <AppText type="defaultSemiBold">Review paper copy</AppText>
               </Pressable>
+              <Pressable
+                disabled={!!blocked}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !!blocked }}
+                accessibilityHint={blocked ?? 'Review a wallet-approved real trade.'}
+                onPress={() => router.push({ pathname: '/trade/[id]', params: { id } })}
+                style={{ opacity: blocked ? 0.5 : 1, paddingVertical: 12 }}
+              >
+                <AppText type="defaultSemiBold">Review real trade</AppText>
+              </Pressable>
             </View>
           </>
         )}
