@@ -10,6 +10,10 @@ import { AppProviders } from '@/components/app-providers'
 import { AppSplashController } from '@/components/app-splash-controller'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useTrackLocations } from '@/hooks/use-track-locations'
+import { registerPushBackgroundHandler } from '@/lib/push-background'
+
+// RNFirebase requires the background handler at bundle load, outside components.
+registerPushBackgroundHandler()
 
 SplashScreen.preventAutoHideAsync()
 
