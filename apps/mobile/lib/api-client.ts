@@ -28,10 +28,11 @@ export function apiBaseUrl(): string {
 }
 
 export async function apiRequest(path: string, init: Omit<HttpRequest, 'url' | 'onResponse'> = {}, token?: string) {
+  const baseUrl = apiBaseUrl()
   try {
     const response = await mobileClient.request({
       ...init,
-      url: `${apiBaseUrl()}${path}`,
+      url: `${baseUrl}${path}`,
       headers: {
         'content-type': 'application/json',
         ...init.headers,
@@ -53,7 +54,8 @@ export async function apiRequest(path: string, init: Omit<HttpRequest, 'url' | '
   } catch (error) {
     if (error instanceof HttpResponseError)
       throw new ApiError(error.status, 'BAD_RESPONSE', `Invalid response from ${path}`)
-    throw error
+    if (error instanceof ApiError || init.signal?.aborted) throw error
+    throw new ApiError(0, 'NETWORK_UNAVAILABLE', 'Unable to reach waffle. Check your connection and try again.')
   }
 }
 
@@ -65,6 +67,13 @@ export async function postVerify(request: VerifyRequest) {
     throw new ApiError(0, 'BAD_RESPONSE', 'The session belongs to a different wallet.')
   }
   return parsed.data
+}
+
+export async function checkApiConnection(signal?: AbortSignal): Promise<void> {
+  const payload = await apiRequest('/health', { signal })
+  if (!payload || typeof payload !== 'object' || !('status' in payload) || payload.status !== 'ok') {
+    throw new ApiError(0, 'BAD_RESPONSE', 'The waffle service is not ready yet. Try again shortly.')
+  }
 }
 
 export async function getSession(token: string) {

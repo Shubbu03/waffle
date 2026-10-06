@@ -51,9 +51,9 @@ function parseSubscription(value: unknown): WalletSubscription {
 }
 
 /** Public catalog — no session needed. */
-export async function listWallets(): Promise<CatalogWallet[]> {
+export async function listWallets(signal?: AbortSignal): Promise<CatalogWallet[]> {
   console.log('[wallets-api] listWallets: fetching catalog')
-  const payload = (await apiRequest('/wallets', { method: 'GET' })) as { items?: unknown }
+  const payload = (await apiRequest('/wallets', { method: 'GET', signal })) as { items?: unknown }
   if (!Array.isArray(payload?.items)) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed catalog response')
   const items = payload.items.map(parseWallet)
   console.log(`[wallets-api] listWallets: ${items.length} wallets`)

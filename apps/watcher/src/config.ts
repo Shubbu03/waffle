@@ -16,6 +16,15 @@ const envSchema = z.strictObject({
   RPC_PROGRAM_ACCOUNTS_PER_SECOND: rate(5, "5"),
 });
 
+export class WatcherConfigurationError extends Error {
+  constructor(
+    readonly fields: string[],
+    scope = "watcher",
+  ) {
+    super(`Invalid ${scope} environment: ${fields.join(", ")}`);
+  }
+}
+
 export function parseWatcherRpcEnv(env: Record<string, string | undefined>) {
   const result = envSchema.safeParse({
     HELIUS_RPC_URL: env.HELIUS_RPC_URL,
@@ -23,8 +32,8 @@ export function parseWatcherRpcEnv(env: Record<string, string | undefined>) {
     RPC_PROGRAM_ACCOUNTS_PER_SECOND: env.RPC_PROGRAM_ACCOUNTS_PER_SECOND,
   });
   if (!result.success) {
-    const fields = [...new Set(result.error.issues.map((issue) => issue.path[0]).filter(Boolean))].join(", ");
-    throw new Error(`Invalid watcher RPC environment: ${fields}`);
+    const fields = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
+    throw new WatcherConfigurationError(fields, "watcher RPC");
   }
   return result.data;
 }
@@ -67,8 +76,8 @@ export function parseWatcherEnv(env: Record<string, string | undefined>) {
     Object.fromEntries(Object.keys(watcherEnvSchema.shape).map((key) => [key, env[key]])),
   );
   if (!result.success) {
-    const fields = [...new Set(result.error.issues.map((issue) => issue.path[0]).filter(Boolean))].join(", ");
-    throw new Error(`Invalid watcher environment: ${fields}`);
+    const fields = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
+    throw new WatcherConfigurationError(fields);
   }
   return result.data;
 }

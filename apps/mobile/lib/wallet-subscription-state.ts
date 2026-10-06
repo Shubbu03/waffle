@@ -2,7 +2,7 @@
  *
  * Rules (from docs/wallet-selection.md):
  * - New follows default to alerts OFF; omission preserves the existing preference.
- * - Paused (inactive) wallets: no new follows, no alert changes, existing follows stay visible.
+ * - Paused wallets reject new follows/alerts; existing follows can be removed or muted.
  * - Unfollow never deletes shared history (client just drops the row).
  */
 import type { CatalogWallet, WalletSubscription } from './wallets-api'
@@ -14,7 +14,7 @@ export type WalletRow = CatalogWallet & {
   followDisabled: boolean
 }
 
-/** Join catalog with the owner's follows. Paused wallets render disabled but stay listed. */
+/** Join catalog with the owner's follows, retaining controls for removing paused follows. */
 export function mergeCatalog(wallets: CatalogWallet[], subscriptions: WalletSubscription[]): WalletRow[] {
   console.log(`[wallets-state] mergeCatalog: ${wallets.length} wallets, ${subscriptions.length} follows`)
   const byId = new Map(subscriptions.map((s) => [s.walletId, s]))
@@ -25,19 +25,19 @@ export function mergeCatalog(wallets: CatalogWallet[], subscriptions: WalletSubs
       followed: sub !== undefined,
       alertsEnabled: sub?.alertsEnabled ?? false,
       alertsEnabledAt: sub?.alertsEnabledAt ?? null,
-      followDisabled: !wallet.active,
+      followDisabled: !wallet.active && !sub,
     }
   })
 }
 
-/** Next alerts value for a toggle. Paused or unfollowed rows never toggle. */
+/** A paused wallet may be muted but never newly enabled. */
 export function nextAlertsValue(row: WalletRow): boolean | null {
-  if (!row.followed || !row.active) return null
+  if (!row.followed || (!row.active && !row.alertsEnabled)) return null
   return !row.alertsEnabled
 }
 
 /** Whether the follow button should offer "Follow" (vs "Following"). */
 export function followLabel(row: WalletRow): 'Follow' | 'Following' | 'Paused' {
-  if (!row.active) return 'Paused'
+  if (!row.active && !row.followed) return 'Paused'
   return row.followed ? 'Following' : 'Follow'
 }

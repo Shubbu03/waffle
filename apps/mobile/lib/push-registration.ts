@@ -20,6 +20,7 @@ export class PushRegistrationController {
   private owner: StoredSession | null | undefined
   private generation = 0
   private rotationRequired = false
+  private nativeOwnerReady = false
   constructor(private readonly dependencies: Dependencies) {}
 
   run<T>(operation: () => Promise<T>): Promise<T> {
@@ -33,7 +34,10 @@ export class PushRegistrationController {
   }
 
   activate(session: StoredSession): void {
-    if (this.owner?.accessToken !== session.accessToken) ++this.generation
+    if (this.owner?.accessToken !== session.accessToken) {
+      ++this.generation
+      this.nativeOwnerReady = false
+    }
     this.owner = session
   }
 
@@ -49,15 +53,16 @@ export class PushRegistrationController {
       if (
         this.rotationRequired ||
         record?.rotationRequired ||
-        !record ||
-        record.userId !== session.userId ||
-        record.apiUrl !== this.dependencies.apiUrl
+        (!record && !this.nativeOwnerReady) ||
+        (record && (record.userId !== session.userId || record.apiUrl !== this.dependencies.apiUrl))
       ) {
         // Unknown/expired previous owner: invalidate its native token before obtaining another.
         if (record?.userId === session.userId && record.apiUrl === this.dependencies.apiUrl)
           await this.dependencies.remove(session, record.id).catch(() => {})
         await this.dependencies.rotate()
         await this.dependencies.clear()
+        if (!current()) return null
+        this.nativeOwnerReady = true
         this.rotationRequired = false
         record = null
       }
@@ -71,6 +76,7 @@ export class PushRegistrationController {
       try {
         await this.dependencies.save(next)
       } catch (error) {
+        this.nativeOwnerReady = false
         await this.dependencies.remove(session, next.id).catch(() => {})
         await this.dependencies.rotate()
         throw error
@@ -84,6 +90,7 @@ export class PushRegistrationController {
     ++this.generation
     this.owner = null
     this.rotationRequired = true
+    this.nativeOwnerReady = false
     return this.run(async () => {
       const record = await this.dependencies.load()
       if (record) await this.dependencies.save({ ...record, rotationRequired: true }).catch(() => {})

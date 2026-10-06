@@ -1,19 +1,19 @@
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { useRouter } from 'expo-router'
-import { AccountFeatureSend } from '@/components/account/account-feature-send'
+import { Redirect, useRouter } from 'expo-router'
+import { AccountFeatureAirdrop } from '@/components/account/account-feature-airdrop'
 import { AppView } from '@/components/app-view'
 
-export default function Send() {
+export default function Airdrop() {
   const router = useRouter()
   const { account } = useMobileWallet()
 
   if (!account) {
-    return router.replace('/(tabs)/account')
+    return <Redirect href="/account" />
   }
 
   return (
     <AppView style={{ flex: 1, padding: 16 }}>
-      <AccountFeatureSend address={account.address} />
+      <AccountFeatureAirdrop back={() => router.navigate('/account')} />
     </AppView>
   )
 }

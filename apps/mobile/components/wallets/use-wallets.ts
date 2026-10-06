@@ -1,6 +1,11 @@
 /** React Query hooks for issue #22 catalog screen. Thin over lib/*, logs transitions. */
+
+import { useIsFocused } from '@react-navigation/native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { AppState } from 'react-native'
 import { useAuth } from '@/components/auth/auth-provider'
+import { AppConfig } from '@/constants/app-config'
 import { ApiError } from '@/lib/api-error'
 import { mergeCatalog } from '@/lib/wallet-subscription-state'
 import {
@@ -12,8 +17,19 @@ import {
 } from '@/lib/wallets-api'
 
 export function useCatalogWallets() {
-  console.log('[wallets-hooks] useCatalogWallets: subscribing')
-  return useQuery({ queryKey: ['wallets'], queryFn: listWallets, staleTime: 60_000 })
+  const focused = useIsFocused()
+  const [foreground, setForeground] = useState(AppState.currentState === 'active')
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (state) => setForeground(state === 'active'))
+    return () => listener.remove()
+  }, [])
+  return useQuery({
+    queryKey: ['wallets', AppConfig.apiUrl],
+    queryFn: ({ signal }) => listWallets(signal),
+    enabled: focused && foreground,
+    staleTime: 30_000,
+    refetchInterval: focused && foreground ? 30_000 : false,
+  })
 }
 
 export function useWalletSubscriptions() {

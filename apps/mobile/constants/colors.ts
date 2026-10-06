@@ -1,36 +1,40 @@
-/**
- * Waffle brand: lime base (#E4FF97) with black type.
- * Light mode is the brand statement (lime bg, black ink).
- * Dark mode inverts it (black bg, lime ink).
- */
-
 export const Brand = {
   lime: '#E4FF97',
   limeSoft: '#F2FFC7',
-  ink: '#000000',
+  ink: '#171A16',
 } as const
 
 export const Colors = {
   light: {
-    background: Brand.lime,
-    surface: Brand.limeSoft,
-    border: Brand.ink,
-    icon: Brand.ink,
-    tabIconDefault: '#3A3A00',
-    tabIconSelected: Brand.ink,
-    text: Brand.ink,
-    muted: '#3A3A00',
-    tint: Brand.ink,
+    background: '#F6F7F3',
+    surface: '#FFFFFF',
+    surfaceMuted: '#ECEEE7',
+    border: '#E1E5DA',
+    icon: '#171A16',
+    tabIconDefault: '#797F73',
+    tabIconSelected: '#171A16',
+    text: '#171A16',
+    muted: '#697060',
+    tint: '#171A16',
+    accent: Brand.lime,
+    accentSoft: Brand.limeSoft,
+    accentText: Brand.ink,
+    danger: '#B33B32',
   },
   dark: {
-    background: Brand.ink,
-    surface: '#1C1C00',
-    border: Brand.lime,
-    icon: Brand.lime,
-    tabIconDefault: '#8A8A5C',
+    background: '#11140F',
+    surface: '#1B2018',
+    surfaceMuted: '#272D23',
+    border: '#333B2D',
+    icon: '#F2F5ED',
+    tabIconDefault: '#959E8D',
     tabIconSelected: Brand.lime,
-    text: Brand.lime,
-    muted: '#B8C48A',
+    text: '#F2F5ED',
+    muted: '#A6AF9E',
     tint: Brand.lime,
+    accent: Brand.lime,
+    accentSoft: '#29351D',
+    accentText: Brand.ink,
+    danger: '#FF9B90',
   },
-}
+} as const

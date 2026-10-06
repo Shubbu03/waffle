@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { apiErrorSchema } from "@waffle/shared";
+import { DrizzleQueryError } from "drizzle-orm";
 import { z } from "zod";
 import { createApp } from "../src/app.ts";
 import { parseApiEnv } from "../src/config.ts";
@@ -22,6 +23,27 @@ describe("API environment", () => {
     });
   });
 
+  test("rejects malformed credential escapes before the Postgres driver can crash", () => {
+    for (const key of ["DATABASE_URL", "DELIVERY_DATABASE_URL"] as const) {
+      for (const credential of ["secret%oops", "secret%FF", "secret%2"]) {
+        for (const databaseUrl of [
+          `postgresql://waffle_login:${credential}@localhost/waffle?sslmode=require`,
+          `postgresql://${credential}:password@localhost/waffle?sslmode=require`,
+        ]) {
+          const input = { AUTH_URI, DATABASE_URL: validUrl, [key]: databaseUrl };
+          expect(() => parseApiEnv(input)).toThrow(key);
+          try {
+            parseApiEnv(input);
+          } catch (error) {
+            expect(String(error)).not.toContain(credential);
+          }
+        }
+      }
+    }
+    const encoded = "postgresql://waffle_login:secret%25%40%3A%2F@localhost/waffle?sslmode=require";
+    expect(parseApiEnv({ AUTH_URI, DATABASE_URL: encoded, DELIVERY_DATABASE_URL: encoded }).DATABASE_URL).toBe(encoded);
+  });
+
   test("rejects missing or unsafe configuration without revealing credentials", () => {
     for (const databaseUrl of [
       undefined,
@@ -41,6 +63,88 @@ describe("API environment", () => {
 });
 
 describe("API responses", () => {
+  test("database DNS failures return retryable 503 without exposing connection details", async () => {
+    const app = createApp({ async ping() {} });
+    app.get("/test-database-read", () => {
+      throw new DrizzleQueryError(
+        "select private_sql",
+        [],
+        Object.assign(new Error("private database hostname"), { code: "ENOTFOUND" }),
+      );
+    });
+    const response = await app.request(request("/test-database-read"));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("5");
+    const body = apiErrorSchema.parse(await response.json());
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
+    expect(JSON.stringify(body)).not.toContain("private");
+  });
+
+  test("public wallet and signal reads retry one failed DNS lookup and return real handler results", async () => {
+    let walletReads = 0;
+    let signalReads = 0;
+    const dnsFailure = () =>
+      new DrizzleQueryError("select private_sql", [], Object.assign(new Error("private host"), { code: "ENOTFOUND" }));
+    const app = createApp({
+      async ping() {},
+      reads: {
+        async wallets() {
+          if (++walletReads === 1) throw dnsFailure();
+          return { items: [] };
+        },
+        async signals(input) {
+          if (++signalReads === 1) throw dnsFailure();
+          return { view: input.view, direction: input.direction, items: [], nextCursor: null, hasMore: false };
+        },
+        async signal() {
+          return null;
+        },
+      },
+    });
+    expect((await app.request(request("/wallets"))).status).toBe(200);
+    expect((await app.request(request("/signals"))).status).toBe(200);
+    expect(walletReads).toBe(2);
+    expect(signalReads).toBe(2);
+  });
+
+  test("persistent DNS failures stop after two public read attempts; SQL errors are not retried", async () => {
+    for (const code of ["ENOTFOUND", "EAI_AGAIN", "42601"]) {
+      let attempts = 0;
+      const app = createApp({
+        async ping() {},
+        reads: {
+          async wallets() {
+            attempts++;
+            throw new DrizzleQueryError("select private_sql", [], Object.assign(new Error("private host"), { code }));
+          },
+          async signals(input) {
+            return { view: input.view, direction: input.direction, items: [], nextCursor: null, hasMore: false };
+          },
+          async signal() {
+            return null;
+          },
+        },
+      });
+      const response = await app.request(request("/wallets"));
+      expect(response.status).toBe(code === "42601" ? 500 : 503);
+      expect(attempts).toBe(code === "42601" ? 1 : 2);
+    }
+  });
+
+  test("database failures in writes and provider DNS errors are never retried", async () => {
+    const app = createApp({ async ping() {} });
+    let writes = 0;
+    app.post("/test-database-write", () => {
+      writes++;
+      throw new DrizzleQueryError("private write", [], Object.assign(new Error("private host"), { code: "ENOTFOUND" }));
+    });
+    app.get("/test-provider", () => {
+      throw Object.assign(new Error("provider host"), { code: "ENOTFOUND" });
+    });
+    expect((await app.request(request("/test-database-write", { method: "POST" }))).status).toBe(503);
+    expect(writes).toBe(1);
+    expect((await app.request(request("/test-provider"))).status).toBe(500);
+  });
   test("health confirms database connectivity", async () => {
     let pings = 0;
     const app = createApp({

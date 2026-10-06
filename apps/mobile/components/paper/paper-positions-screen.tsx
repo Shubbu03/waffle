@@ -63,7 +63,7 @@ export function PaperPositionsScreen() {
           <PaperCard>
             <AppText type="subtitle">No simulated fills yet</AppText>
             <AppText>Open a fresh eligible signal and review a paper copy to add your first position.</AppText>
-            <Link href="/(tabs)">
+            <Link href="/(tabs)/signals">
               <AppText type="link">Browse signals</AppText>
             </Link>
           </PaperCard>

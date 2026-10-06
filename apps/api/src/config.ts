@@ -5,6 +5,9 @@ const portSchema = z.string().regex(/^\d+$/).default("3000").transform(Number).p
 const databaseUrlSchema = z.url().refine((value) => {
   try {
     const url = new URL(value);
+    // URL accepts malformed escapes that postgres.js cannot decode.
+    decodeURIComponent(url.username);
+    decodeURIComponent(url.password);
     return (
       ["postgres:", "postgresql:"].includes(url.protocol) &&
       url.username.length > 0 &&
@@ -32,6 +35,12 @@ const envSchema = z.strictObject({
   API_PORT: portSchema,
 });
 
+export class ApiConfigurationError extends Error {
+  constructor(readonly fields: string[]) {
+    super(`Invalid API environment: ${fields.join(", ")}`);
+  }
+}
+
 export function parseApiEnv(env: Record<string, string | undefined>) {
   const result = envSchema.safeParse({
     DATABASE_URL: env.DATABASE_URL,
@@ -41,8 +50,8 @@ export function parseApiEnv(env: Record<string, string | undefined>) {
     API_PORT: env.API_PORT,
   });
   if (!result.success) {
-    const fields = [...new Set(result.error.issues.map((issue) => issue.path[0]).filter(Boolean))].join(", ");
-    throw new Error(`Invalid API environment: ${fields}`);
+    const fields = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
+    throw new ApiConfigurationError(fields);
   }
   return result.data;
 }

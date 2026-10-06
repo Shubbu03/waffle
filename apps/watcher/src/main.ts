@@ -1,8 +1,8 @@
-import { createWatcherDatabase } from "@waffle/db";
+import { createWatcherDatabase, waitForDatabase } from "@waffle/db";
 import { JupiterService } from "@waffle/jupiter";
 import { createLogger } from "@waffle/observability";
 import { config } from "dotenv";
-import { parseWatcherEnv } from "./config.ts";
+import { parseWatcherEnv, WatcherConfigurationError } from "./config.ts";
 import { TokenEvidenceCollector } from "./evidence.ts";
 import { PythPrices } from "./pyth.ts";
 import { createWatcherRpc } from "./rpc.ts";
@@ -56,7 +56,9 @@ async function main(): Promise<void> {
     logger.info("watcher.stopped");
   }
   try {
-    await database.assertRestrictedLogin();
+    await waitForDatabase(() => database.assertRestrictedLogin(), {
+      onRetry: (status) => logger.warn("watcher.database.waiting", status),
+    });
     await watcher.start();
     server = Bun.serve({
       hostname: "127.0.0.1",
@@ -88,6 +90,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  logger.error("watcher.startup.failed", { error });
+  logger.error("watcher.startup.failed", {
+    ...(error instanceof WatcherConfigurationError
+      ? { reason: `Invalid configuration: ${error.fields.join(", ")}` }
+      : {}),
+    error,
+  });
   process.exitCode = 1;
 });

@@ -1,63 +1,102 @@
 import { PublicKey } from '@solana/web3.js'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { Link } from 'expo-router'
-import { useCallback, useMemo, useState } from 'react'
-import { RefreshControl, ScrollView } from 'react-native'
+import { router } from 'expo-router'
+import { useState } from 'react'
+import { RefreshControl, ScrollView, View } from 'react-native'
 import { AccountUiBalance } from '@/components/account/account-ui-balance'
 import { AccountUiTokenAccounts } from '@/components/account/account-ui-token-accounts'
 import { useGetBalanceInvalidate } from '@/components/account/use-get-balance'
 import { useGetTokenAccountsInvalidate } from '@/components/account/use-get-token-accounts'
-import { AppPage } from '@/components/app-page'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
+import { useAuth } from '@/components/auth/auth-provider'
 import { WalletUiButtonConnect } from '@/components/solana/wallet-ui-button-connect'
+import { AppButton } from '@/components/ui/app-button'
+import { AppCard } from '@/components/ui/app-card'
+import { useThemeColor } from '@/hooks/use-theme-color'
 import { ellipsify } from '@/utils/ellipsify'
 import { AccountUiButtons } from './account-ui-buttons'
 
 export function AccountFeature() {
   const { account } = useMobileWallet()
-  // useMobileWallet exposes the address as a string — build a real PublicKey
-  // (web3.js calls .toBase58() on it; a bare `as PublicKey` cast crashes).
-  const address = useMemo(() => (account?.address ? new PublicKey(account.address.toString()) : undefined), [account])
-  const [refreshing, setRefreshing] = useState(false)
-  const invalidateBalance = useGetBalanceInvalidate({ address: address as PublicKey })
-  const invalidateTokenAccounts = useGetTokenAccountsInvalidate({ address: address as PublicKey })
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true)
-    await Promise.all([invalidateBalance(), invalidateTokenAccounts()])
-    setRefreshing(false)
-  }, [invalidateBalance, invalidateTokenAccounts])
-
+  const { session, serverLinked } = useAuth()
+  const muted = useThemeColor({}, 'muted')
+  const walletAddress = session?.walletAddress
   return (
-    <AppPage>
-      <AppView style={{ paddingVertical: 16 }}>
-        <Link href="/paper/positions">
-          <AppText type="link">Paper positions · simulated</AppText>
-        </Link>
-      </AppView>
-      {account ? (
-        <ScrollView
-          contentContainerStyle={{}}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => onRefresh()} />}
-        >
-          <AppView style={{ alignItems: 'center', gap: 4 }}>
-            <AppText type="defaultSemiBold">Connected</AppText>
-            <AccountUiBalance address={address as PublicKey} />
-            <AppText style={{ opacity: 0.7 }}>{ellipsify(account.address.toString(), 8)}</AppText>
-          </AppView>
-          <AppView style={{ marginTop: 16, alignItems: 'center' }}>
-            <AccountUiButtons />
-          </AppView>
-          <AppView style={{ marginTop: 16, alignItems: 'center' }}>
-            <AccountUiTokenAccounts address={address as PublicKey} />
-          </AppView>
-        </ScrollView>
+    <AppView style={{ flex: 1, gap: 0 }}>
+      {walletAddress ? (
+        <WalletAccount
+          address={new PublicKey(walletAddress)}
+          connected={account?.address.toString() === walletAddress}
+          serverLinked={serverLinked}
+        />
       ) : (
-        <AppView style={{ flexDirection: 'column', justifyContent: 'flex-end' }}>
-          <AppText>Connect your wallet.</AppText>
-          <WalletUiButtonConnect />
-        </AppView>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 20, gap: 20 }}>
+          <AppCard>
+            <AppText type="title">Your wallet, in one place.</AppText>
+            <AppText style={{ color: muted }}>
+              Sign in to see your account and keep your follows and paper positions together.
+            </AppText>
+            <AppButton title="Sign in with wallet" onPress={() => router.push('/sign-in')} />
+          </AppCard>
+          <AppButton
+            title="Explore public signals"
+            variant="secondary"
+            onPress={() => router.push('/(tabs)/signals')}
+          />
+        </ScrollView>
       )}
-    </AppPage>
+    </AppView>
+  )
+}
+function WalletAccount({
+  address,
+  connected,
+  serverLinked,
+}: {
+  address: PublicKey
+  connected: boolean
+  serverLinked: boolean
+}) {
+  const invalidateBalance = useGetBalanceInvalidate({ address })
+  const invalidateTokens = useGetTokenAccountsInvalidate({ address })
+  const [refreshing, setRefreshing] = useState(false)
+  const muted = useThemeColor({}, 'muted')
+  const refresh = async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([invalidateBalance(), invalidateTokens()])
+    } finally {
+      setRefreshing(false)
+    }
+  }
+  return (
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 36 }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
+    >
+      <AppCard>
+        <AppText style={{ color: muted, fontSize: 12 }}>SOL BALANCE</AppText>
+        <AccountUiBalance address={address} />
+        <AppText selectable style={{ color: muted, fontSize: 13 }}>
+          {ellipsify(address.toBase58(), 8)}
+        </AppText>
+        <AppText style={{ color: muted, fontSize: 12 }}>
+          {serverLinked ? 'Verified waffle account' : 'Session offline'}
+        </AppText>
+        {connected ? <AccountUiButtons /> : <WalletUiButtonConnect label="Reconnect wallet" />}
+      </AppCard>
+      <AppCard>
+        <AppText type="subtitle">Practice before you copy.</AppText>
+        <AppText style={{ color: muted, fontSize: 14 }}>
+          Paper positions use quoted prices and are always marked simulated.
+        </AppText>
+        <AppButton title="Open paper positions →" onPress={() => router.push('/paper/positions')} />
+      </AppCard>
+      <View style={{ gap: 12 }}>
+        <AccountUiTokenAccounts address={address} />
+      </View>
+    </ScrollView>
   )
 }

@@ -1,6 +1,18 @@
 import { SymbolView, type SymbolViewProps, type SymbolWeight } from 'expo-symbols'
 import type { StyleProp, ViewStyle } from 'react-native'
 
+export type UiIconSymbolName =
+  | 'house.fill'
+  | 'waveform.path'
+  | 'list.bullet'
+  | 'gearshape.fill'
+  | 'wallet.pass.fill'
+  | 'person.2.fill'
+  | 'chevron.down'
+  | 'doc.on.doc'
+  | 'person.crop.circle'
+  | 'chart.bar'
+
 export function UiIconSymbol({
   name,
   size = 24,

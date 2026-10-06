@@ -36,6 +36,14 @@ Serialize Drizzle `Date` results to ISO strings at API boundaries and bigint eve
 
 The local automated suite verifies SQL against PGlite. A migration run and role/RLS test against a real Neon branch still remain before the database milestone is accepted; no Neon project or credential is configured in this repository.
 
+## Temporary connection failures
+
+A Drizzle query error with cause code `ENOTFOUND` or `EAI_AGAIN` means the database hostname lookup failed. The public API reads for wallets, All signals, and signal details retry that failure once after 250 ms. Persistent database transport failures return `503 SERVICE_UNAVAILABLE` with `Retry-After: 5`, while logs retain the original safe error code. SQL and validation errors are not retried. Writes, authenticated transactions, and trade execution are not replayed by this policy.
+
+API and watcher startup wait through database transport failures while checking their restricted logins. The delay starts at two seconds and doubles up to thirty seconds; a `*.database.waiting` log reports the safe failure code and next delay. Traffic and ingestion start only after permission checks succeed. Incorrect credentials, role permissions, configuration, and SQL failures stop immediately. Bun watch mode's `Running…` line alone does not confirm service startup: look for `api.started` or `watcher.started`.
+
+The mobile catalog refreshes while active and keeps previously loaded wallets visible when a refresh fails. A persistent lookup outage still requires restoring the API host's DNS/network connectivity; retry handling cannot make an unreachable database available. Check the hostname in the server-only database URL without sharing credentials. [Bun's DNS documentation](https://bun.sh/docs/runtime/networking/dns) describes the runtime resolver and cache behavior.
+
 ## References
 
 * [Drizzle Kit generate](https://orm.drizzle.team/docs/drizzle-kit-generate) and [migrate](https://orm.drizzle.team/docs/drizzle-kit-migrate)

@@ -11,7 +11,7 @@ export type AppTextProps = TextProps & {
 
 export function AppText({ style, lightColor, darkColor, type = 'default', family, ...rest }: AppTextProps) {
   const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text')
-  const resolvedFamily = family ?? (type === 'title' || type === 'subtitle' ? FontFamily.serif : FontFamily.sans)
+  const resolvedFamily = family ?? FontFamily.sans
 
   return (
     <Text
@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sansMedium,
   },
   title: {
-    fontSize: 32,
+    fontSize: 30,
     fontFamily: FontFamily.sansMedium,
     lineHeight: 36,
   },

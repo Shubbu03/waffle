@@ -1,4 +1,4 @@
-import type { AuthStore, ReadStore } from "@waffle/db";
+import { type AuthStore, databaseConnectionErrorCode, type ReadStore } from "@waffle/db";
 import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -66,6 +66,7 @@ export function createApp(
       return c.json({ status: "ok", ...delivery });
     } catch (error) {
       health.fail({ error, requestId: c.get("requestId") });
+      c.header("Retry-After", "5");
       return apiError(c, 503, "SERVICE_UNAVAILABLE", "Service unavailable");
     }
   });
@@ -86,6 +87,10 @@ export function createApp(
       return apiError(c, 400, "VALIDATION_ERROR", "Malformed request body");
     }
     c.set("failure", error);
+    if (databaseConnectionErrorCode(error)) {
+      c.header("Retry-After", "5");
+      return apiError(c, 503, "SERVICE_UNAVAILABLE", "The database is temporarily unavailable. Try again shortly.");
+    }
     return apiError(c, 500, "INTERNAL_ERROR", "Internal server error");
   });
   return app;

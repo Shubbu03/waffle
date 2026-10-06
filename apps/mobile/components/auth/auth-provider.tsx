@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { createContext, type PropsWithChildren, use, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { AppState } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
-import { ApiError, apiBaseUrl, getSession, onUnauthorized, postLogout, postVerify } from '@/lib/api-client'
+import { ApiError, checkApiConnection, getSession, onUnauthorized, postLogout, postVerify } from '@/lib/api-client'
 import { toWireBase64 } from '@/lib/b64'
 import { WALLET_SIGN_TIMEOUT_MS, withTransactTimeout } from '@/lib/mwa-transact'
 import { pushDevice } from '@/lib/push-device'
@@ -87,9 +87,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signIn = async () => {
     try {
       await controller.signIn(async () => {
+        if (Platform.OS !== 'android')
+          throw new Error('Wallet sign-in requires an Android build with a compatible Solana wallet.')
         if (!AppConfig.uri) throw new Error('Configure the public HTTPS app URL before signing in.')
-        apiBaseUrl()
         if (selectedCluster.id !== 'solana:mainnet') throw new Error('Switch to Mainnet in Settings to sign in.')
+        await checkApiConnection()
         const askWallet = () => walletSignIn(buildSignInInput(AppConfig.uri))
         let output: Awaited<ReturnType<typeof walletSignIn>>
         try {

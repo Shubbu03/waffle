@@ -1,9 +1,9 @@
-import { createApiDatabase, createDeliveryDatabase } from "@waffle/db";
+import { createApiDatabase, createDeliveryDatabase, waitForDatabase } from "@waffle/db";
 import { createLogger } from "@waffle/observability";
 import { config } from "dotenv";
 import { websocket } from "hono/bun";
 import { createApp } from "./app.ts";
-import { parseApiEnv } from "./config.ts";
+import { ApiConfigurationError, parseApiEnv } from "./config.ts";
 import { createFcm } from "./fcm.ts";
 import { createJupiterServiceFromEnv } from "./jupiter.ts";
 import { LiveDelivery } from "./live-delivery.ts";
@@ -19,8 +19,13 @@ async function main() {
   const database = createApiDatabase(env.DATABASE_URL);
   const delivery = env.DELIVERY_DATABASE_URL ? createDeliveryDatabase(env.DELIVERY_DATABASE_URL) : undefined;
   try {
-    await database.assertRestrictedLogin();
-    await delivery?.assertRestrictedLogin();
+    await waitForDatabase(
+      async () => {
+        await database.assertRestrictedLogin();
+        await delivery?.assertRestrictedLogin();
+      },
+      { onRetry: (status) => logger.warn("api.database.waiting", status) },
+    );
   } catch (error) {
     await delivery?.close();
     await database.close();
@@ -91,6 +96,9 @@ async function main() {
 }
 
 main().catch((error: unknown) => {
-  logger.error("api.startup.failed", { error });
+  logger.error("api.startup.failed", {
+    ...(error instanceof ApiConfigurationError ? { reason: `Invalid configuration: ${error.fields.join(", ")}` } : {}),
+    error,
+  });
   process.exitCode = 1;
 });

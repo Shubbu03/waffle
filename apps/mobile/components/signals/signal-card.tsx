@@ -19,13 +19,14 @@ export function SignalCard({
 }) {
   const border = useThemeColor({}, 'border')
   const surface = useThemeColor({}, 'surface')
+  const accent = useThemeColor({}, 'accentSoft')
   return (
     <Link href={{ pathname: '/signals/[id]', params: { id: signal.id } }} asChild>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View signal for ${ellipsify(signal.mintAddress, 6)}, score ${signal.score}`}
         style={{
-          borderWidth: 1.5,
+          borderWidth: 1,
           borderColor: border,
           backgroundColor: surface,
           borderRadius: 20,
@@ -38,11 +39,12 @@ export function SignalCard({
             <AppText type="defaultSemiBold" numberOfLines={1}>
               {label ?? ellipsify(signal.walletAddress, 6)}
             </AppText>
-            <AppText style={{ opacity: 0.7, fontSize: 13 }}>{ageLabel(signal.observedAt, now)} · observed</AppText>
+            <AppText style={{ opacity: 0.7, fontSize: 13 }}>
+              {ageLabel(signal.observedAt, now)} ·{' '}
+              {signal.sourceProgramId === PUMP_SWAP_PROGRAM_ID ? 'PumpSwap' : 'Unknown source'}
+            </AppText>
           </View>
-          <View
-            style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 }}
-          >
+          <View style={{ backgroundColor: accent, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 }}>
             <AppText type="subtitle" style={{ fontVariant: ['tabular-nums'] }}>
               {signal.score}
               <AppText style={{ fontSize: 12 }}>/100</AppText>
@@ -63,10 +65,6 @@ export function SignalCard({
                 : 'Suppressed'}
           </AppText>
         </View>
-        <AppText style={{ fontSize: 12, opacity: 0.7 }}>
-          {signal.sourceProgramId === PUMP_SWAP_PROGRAM_ID ? 'PumpSwap' : 'Unknown source'} · slot {signal.slot} · score
-          v{signal.scoreVersion}
-        </AppText>
       </Pressable>
     </Link>
   )

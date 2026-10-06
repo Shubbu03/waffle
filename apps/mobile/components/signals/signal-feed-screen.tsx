@@ -1,4 +1,4 @@
-import { Link } from 'expo-router'
+import { router } from 'expo-router'
 import { useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -7,8 +7,12 @@ import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
 import { SignalCard } from '@/components/signals/signal-card'
 import { useSignalClock, useSignalFeed } from '@/components/signals/use-signals'
+import { AppButton } from '@/components/ui/app-button'
+import { AppCard } from '@/components/ui/app-card'
+import { ConnectionState } from '@/components/ui/connection-state'
+import { ScreenHeading } from '@/components/ui/screen-heading'
 import { useThemeColor } from '@/hooks/use-theme-color'
-import { ageLabel, type SignalView } from '@/lib/signal-state'
+import type { SignalView } from '@/lib/signal-state'
 
 export function SignalFeedScreen() {
   const [view, setView] = useState<SignalView>('all')
@@ -16,7 +20,10 @@ export function SignalFeedScreen() {
   const feed = useSignalFeed(view)
   const now = useSignalClock()
   const ink = useThemeColor({}, 'text')
-  const background = useThemeColor({}, 'background')
+  const surface = useThemeColor({}, 'surfaceMuted')
+  const accent = useThemeColor({}, 'accent')
+  const accentText = useThemeColor({}, 'accentText')
+  const muted = useThemeColor({}, 'muted')
   const offline =
     feed.status === 'cached' || feed.connection === 'paused' || !feed.fetchedAt || now - feed.fetchedAt > 45_000
   const labels = new Map(feed.catalog.map((wallet) => [wallet.id, wallet.label]))
@@ -24,133 +31,135 @@ export function SignalFeedScreen() {
   return (
     <AppView style={{ flex: 1, gap: 0 }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <View style={{ padding: 20, gap: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <AppText type="title">Signals</AppText>
-            {!session ? (
-              <Link href="/sign-in">
-                <AppText type="link">Sign in</AppText>
-              </Link>
-            ) : null}
-          </View>
-          <AppText style={{ opacity: 0.7 }}>Watch the moves. Read the reasons.</AppText>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(['all', 'following'] as const).map((item) => (
-              <Pressable
-                key={item}
-                accessibilityRole="button"
-                accessibilityState={{ selected: view === item }}
-                onPress={() => setView(item)}
-                style={{
-                  flex: 1,
-                  borderWidth: 1.5,
-                  borderColor: ink,
-                  borderRadius: 14,
-                  padding: 12,
-                  backgroundColor: view === item ? ink : background,
-                  alignItems: 'center',
-                }}
-              >
-                <AppText
-                  lightColor={view === item ? background : ink}
-                  darkColor={view === item ? background : ink}
-                  type="defaultSemiBold"
-                >
-                  {item === 'all' ? 'All signals' : 'Following'}
-                </AppText>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-        {needsSignIn ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 }}>
-            <AppText type="subtitle">Your follows, in one feed.</AppText>
-            <AppText style={{ textAlign: 'center' }}>
-              {status === 'loading' ? 'Restoring your session…' : 'Sign in to see signals from wallets you follow.'}
-            </AppText>
-            <Link href="/sign-in">
-              <AppText type="link">Connect wallet</AppText>
-            </Link>
-          </View>
-        ) : (
-          <FlatList
-            data={feed.items}
-            keyExtractor={(item) => item.id}
-            contentInsetAdjustmentBehavior="automatic"
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, gap: 12, flexGrow: 1 }}
-            refreshing={feed.refreshing}
-            onRefresh={() => void feed.refresh()}
-            renderItem={({ item }) => (
+        <FlatList
+          data={needsSignIn ? [] : feed.items}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: 28, gap: 12, flexGrow: 1 }}
+          refreshing={feed.refreshing}
+          onRefresh={() => void feed.refresh()}
+          renderItem={({ item }) => (
+            <View style={{ paddingHorizontal: 20 }}>
               <SignalCard signal={item} label={labels.get(item.walletId)} offline={offline} now={now} />
-            )}
-            ListHeaderComponent={
-              <View style={{ gap: 8, paddingBottom: 8 }}>
-                <AppText style={{ fontSize: 13, opacity: 0.7 }} accessibilityLiveRegion="polite">
-                  {offline
-                    ? 'Cached browsing · copying unavailable'
-                    : feed.connection === 'live'
-                      ? 'Live updates connected'
-                      : 'Live updates reconnecting · periodic refresh active'}
-                  {feed.fetchedAt ? ` · checked ${ageLabel(new Date(feed.fetchedAt).toISOString(), now)}` : ''}
-                </AppText>
-                {feed.waitingForSession ? (
-                  <AppText>API session offline. Cached Following remains available.</AppText>
+            </View>
+          )}
+          ListHeaderComponent={
+            <View style={{ gap: 12, paddingBottom: 4 }}>
+              <ScreenHeading title="Signals" />
+              <View style={{ paddingHorizontal: 20, gap: 14 }}>
+                <View style={{ flexDirection: 'row', padding: 4, gap: 4, borderRadius: 17, backgroundColor: surface }}>
+                  {(['all', 'following'] as const).map((item) => (
+                    <Pressable
+                      key={item}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: view === item }}
+                      onPress={() => setView(item)}
+                      style={{
+                        flex: 1,
+                        minHeight: 44,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderRadius: 13,
+                        padding: 10,
+                        backgroundColor: view === item ? accent : 'transparent',
+                      }}
+                    >
+                      <AppText type="defaultSemiBold" style={{ color: view === item ? accentText : ink, fontSize: 14 }}>
+                        {item === 'all' ? 'All signals' : 'Following'}
+                      </AppText>
+                    </Pressable>
+                  ))}
+                </View>
+                {!needsSignIn && feed.items.length > 0 && offline ? (
+                  <AppText style={{ color: muted, fontSize: 12 }}>Offline · showing saved signals</AppText>
+                ) : null}
+                {feed.waitingForSession && session ? (
+                  <AppCard>
+                    <AppText style={{ color: muted, fontSize: 13 }}>
+                      Session offline. Reconnect to load your Following feed.
+                    </AppText>
+                    <AppButton title="Verify account" variant="secondary" onPress={() => router.push('/sign-in')} />
+                  </AppCard>
                 ) : null}
                 {feed.historyGap ? (
-                  <AppText>Some older events are no longer available. Recent history has been reloaded.</AppText>
+                  <AppCard>
+                    <AppText style={{ color: muted, fontSize: 13 }}>
+                      Some older events are no longer available. Recent history has been reloaded.
+                    </AppText>
+                  </AppCard>
                 ) : null}
-                {feed.error || feed.followingError ? (
-                  <AppText selectable>{feed.error ?? feed.followingError}</AppText>
+                {!needsSignIn && feed.items.length && (feed.error || feed.followingError) ? (
+                  <ConnectionState
+                    message={feed.error ?? feed.followingError ?? undefined}
+                    retry={() => void feed.refresh()}
+                    busy={feed.refreshing}
+                  />
                 ) : null}
               </View>
-            }
-            ListEmptyComponent={
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 32, gap: 12 }}>
-                {feed.status === 'loading' ? (
-                  <>
-                    <ActivityIndicator />
-                    <AppText>Loading signals…</AppText>
-                  </>
-                ) : (
-                  <>
-                    <AppText type="subtitle">
-                      {feed.status === 'error' ? 'Signals unavailable' : 'No signals yet'}
-                    </AppText>
-                    <AppText style={{ textAlign: 'center' }}>
-                      {view === 'following'
-                        ? 'Follow an active wallet to see its supported buys here.'
-                        : 'Supported wallet buys will appear here with their checks.'}
-                    </AppText>
-                    {view === 'following' ? (
-                      <Link href="/(tabs)/wallets">
-                        <AppText type="link">Browse wallets</AppText>
-                      </Link>
-                    ) : null}
-                    <Pressable accessibilityRole="button" onPress={() => void feed.refresh()}>
-                      <AppText type="link">Retry</AppText>
-                    </Pressable>
-                  </>
-                )}
-              </View>
-            }
-            ListFooterComponent={
-              feed.hasMore ? (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={feed.loadingMore || offline}
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={{ paddingHorizontal: 20, gap: 12 }}>
+              {needsSignIn ? (
+                <AppCard>
+                  <AppText type="subtitle">Your wallets. Your feed.</AppText>
+                  <AppText style={{ color: muted }}>
+                    {status === 'loading'
+                      ? 'Restoring your session…'
+                      : 'Sign in and follow catalog wallets to see their buys together.'}
+                  </AppText>
+                  <AppButton
+                    title="Sign in with wallet"
+                    onPress={() => router.push('/sign-in')}
+                    disabled={status === 'loading'}
+                  />
+                </AppCard>
+              ) : feed.status === 'loading' ? (
+                <AppCard>
+                  <ActivityIndicator color={ink} />
+                  <AppText style={{ color: muted, textAlign: 'center' }}>Loading signals…</AppText>
+                </AppCard>
+              ) : feed.status === 'error' ? (
+                <ConnectionState
+                  title="Signals are out of reach"
+                  message={feed.error ?? undefined}
+                  retry={() => void feed.refresh()}
+                  busy={feed.refreshing}
+                />
+              ) : (
+                <AppCard>
+                  <AppText type="subtitle">
+                    {view === 'following' ? 'Build your watchlist' : 'Waiting for the next move'}
+                  </AppText>
+                  <AppText style={{ color: muted }}>
+                    {view === 'following'
+                      ? 'Choose wallets from the catalog. Their supported buys will appear here.'
+                      : 'The watcher publishes supported wallet buys here with their scores and checks.'}
+                  </AppText>
+                  <AppButton title="Explore wallets" onPress={() => router.push('/wallets')} />
+                  <AppButton
+                    title="Refresh signals"
+                    variant="secondary"
+                    onPress={() => void feed.refresh()}
+                    busy={feed.refreshing}
+                  />
+                </AppCard>
+              )}
+            </View>
+          }
+          ListFooterComponent={
+            feed.hasMore && !needsSignIn ? (
+              <View style={{ paddingHorizontal: 20 }}>
+                <AppButton
+                  title={offline ? 'Reconnect to load older signals' : 'Load older signals'}
+                  busy={feed.loadingMore}
+                  disabled={offline}
+                  variant="secondary"
                   onPress={() => void feed.loadMore()}
-                  style={{ padding: 16, alignItems: 'center' }}
-                >
-                  {feed.loadingMore ? (
-                    <ActivityIndicator />
-                  ) : (
-                    <AppText type="link">{offline ? 'Reconnect to load older signals' : 'Load older signals'}</AppText>
-                  )}
-                </Pressable>
-              ) : null
-            }
-          />
-        )}
+                />
+              </View>
+            ) : null
+          }
+        />
       </SafeAreaView>
     </AppView>
   )

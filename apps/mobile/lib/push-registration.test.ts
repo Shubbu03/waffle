@@ -58,6 +58,22 @@ function setup() {
 }
 
 describe('device registration lifecycle', () => {
+  test('registration recovers after an API outage without rotating the same owner token again', async () => {
+    const env = setup()
+    const register = env.dependencies.register
+    const tokens: string[] = []
+    env.dependencies.register = async (session, token, permission) => {
+      tokens.push(token)
+      if (tokens.length === 1) throw new Error('API offline')
+      return register(session, token, permission)
+    }
+    await expect(env.controller.synchronize(owner, true)).rejects.toThrow('API offline')
+    expect(env.disk()).toBeNull()
+    expect(await env.controller.synchronize(owner)).toBe('granted')
+    expect(tokens[0]).toBe(tokens[1])
+    expect(env.events.filter((event) => event === 'rotate')).toHaveLength(1)
+    expect(env.disk()?.userId).toBe(owner.userId)
+  })
   test('unknown previous ownership rotates before registration; refresh uses actual denied permission', async () => {
     const env = setup()
     await env.controller.synchronize(owner)
@@ -68,6 +84,21 @@ describe('device registration lifecycle', () => {
     expect(await env.controller.synchronize(owner)).toBe('denied')
     expect(env.permissions).toEqual(['granted', 'denied'])
     expect(env.events.slice(-2)).toEqual([`remove:${oldId}`, 'register'])
+  })
+  test('an owner change after failed registration still rotates before the new owner registers', async () => {
+    const env = setup()
+    const register = env.dependencies.register
+    env.dependencies.register = async () => {
+      throw new Error('API offline')
+    }
+    await expect(env.controller.synchronize(owner)).rejects.toThrow('API offline')
+    env.dependencies.register = register
+    const next = { ...owner, userId: crypto.randomUUID(), accessToken: 'b'.repeat(43) }
+    env.controller.activate(next)
+    expect(await env.controller.synchronize(next)).toBe('granted')
+    expect(env.events).toEqual(['rotate', 'rotate', 'register'])
+    expect(env.disk()?.userId).toBe(next.userId)
+    expect(await env.controller.synchronize(owner)).toBeNull()
   })
   test('logout during a registration waits for its reply then removes it before rotating', async () => {
     const env = setup()

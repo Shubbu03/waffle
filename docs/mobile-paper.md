@@ -1,6 +1,6 @@
 # Mobile paper trading (#25)
 
-The signal detail opens **Review paper copy** when persisted signal, mint, pool and stream checks are fresh. Sign in with a verified Mainnet account before trading. Account → **Paper positions** opens the owner-only list; a successful fill also links to its position detail.
+The signal detail opens **Review paper copy** when persisted signal, mint, pool and stream checks are fresh. Sign in with a verified Mainnet account before trading. Home or Settings → **Paper positions** opens the owner-only list; it is also available from the wallet account screen; a successful fill also links to its position detail.
 
 ## Review and fill
 
@@ -42,6 +42,6 @@ The Android static export checks bundling only. Automated checks do not verify l
 1. Sign in, open a newly eligible signal and enter 0.1 SOL. Check the quote's fees, minimum output and expiry, then confirm. Repeat on a second fresh signal; both positions must show **simulated**, the size and timestamp.
 2. Edit the size after quoting; confirmation must disappear. Let a quote expire, background the app, or navigate away and return; request a new quote before confirming. Old pool evidence must still block copying.
 3. Tap confirm repeatedly; only one position should be created for that quote. Interrupt the response after submission or restart during a fill; check that the exact saved fill is recovered without another POST. If no saved fill is found, check that the review stays uncertain and locked.
-4. Open Account → Paper positions, refresh and page through disposable seeded positions. Open a detail; compare exact entry amounts/fees and refresh its SOL exit valuation. Wait past expiry; the value must become unavailable. Exercise an unsupported route/API failure and check the visible error state.
+4. Open Home or Settings → Paper positions, refresh and page through disposable seeded positions. Open a detail; compare exact entry amounts/fees and refresh its SOL exit valuation. Wait past expiry; the value must become unavailable. Exercise an unsupported route/API failure and check the visible error state.
 5. Sign out and switch accounts; the previous owner's positions and valuations must disappear. Directly opening a foreign position ID must fail without revealing its holding or accessing Jupiter.
 6. Disconnect networking; no quote/fill should proceed. Recover connectivity, verify the session and refresh the signal. Review keyboard layout, scrolling, accessibility labels and readable amounts on your Android device.

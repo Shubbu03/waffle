@@ -43,7 +43,8 @@
       "expo-web-browser",
       "expo-secure-store",
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "./plugins/with-notifee-maven.cjs"
     ],
     "experiments": {
       "typedRoutes": true

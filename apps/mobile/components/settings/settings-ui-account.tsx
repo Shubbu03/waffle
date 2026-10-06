@@ -1,48 +1,49 @@
-import { Link } from 'expo-router'
-import { Alert, Pressable } from 'react-native'
+import { router } from 'expo-router'
+import { Alert, View } from 'react-native'
 import { AppText } from '@/components/app-text'
-import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
+import { AppButton } from '@/components/ui/app-button'
+import { useThemeColor } from '@/hooks/use-theme-color'
 import { ellipsify } from '@/utils/ellipsify'
 
 export function SettingsUiAccount() {
   const { session, serverLinked, signOut } = useAuth()
+  const muted = useThemeColor({}, 'muted')
   return (
-    <AppView>
+    <View style={{ gap: 12 }}>
       <AppText type="subtitle">Account</AppText>
       {session ? (
         <>
-          <AppText selectable>{ellipsify(session.walletAddress, 8)}</AppText>
-          <AppText>{serverLinked ? 'Signed in to waffle' : 'Session offline · cached browsing available'}</AppText>
+          <AppText selectable type="defaultSemiBold">
+            {ellipsify(session.walletAddress, 8)}
+          </AppText>
+          <AppText style={{ color: muted, fontSize: 14 }}>
+            {serverLinked ? 'Signed in to waffle' : 'Session offline · saved browsing available'}
+          </AppText>
           {!serverLinked ? (
-            <Link href="/sign-in">
-              <AppText type="link">Retry sign-in</AppText>
-            </Link>
+            <AppButton title="Verify account" variant="secondary" onPress={() => router.push('/sign-in')} />
           ) : null}
-          <Pressable
-            accessibilityRole="button"
-            onPress={async () => {
-              try {
-                await signOut()
-              } catch {
+          <AppButton
+            title="Sign out"
+            variant="secondary"
+            onPress={() => {
+              void signOut().catch(() =>
                 Alert.alert(
                   'Signed out',
                   'Wallet disconnection or secure storage could not be completed. Try again before sharing this device.',
-                )
-              }
+                ),
+              )
             }}
-          >
-            <AppText type="link">Sign out</AppText>
-          </Pressable>
+          />
         </>
       ) : (
         <>
-          <AppText>Public signals and the wallet catalog are available without signing in.</AppText>
-          <Link href="/sign-in">
-            <AppText type="link">Sign in with your wallet</AppText>
-          </Link>
+          <AppText style={{ color: muted, fontSize: 14 }}>
+            Sign in to save your follows, alerts, and simulated positions.
+          </AppText>
+          <AppButton title="Sign in with wallet" onPress={() => router.push('/sign-in')} />
         </>
       )}
-    </AppView>
+    </View>
   )
 }

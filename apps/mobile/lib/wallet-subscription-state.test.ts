@@ -46,11 +46,11 @@ describe('mergeCatalog', () => {
     expect(merged?.followed).toBe(false)
   })
 
-  test('paused wallets stay listed but disabled', () => {
+  test('paused followed wallets remain removable', () => {
     const [merged] = mergeCatalog([wallet({ active: false })], [sub()])
     expect(merged?.followed).toBe(true)
-    expect(merged?.followDisabled).toBe(true)
-    expect(followLabel(merged as WalletRow)).toBe('Paused')
+    expect(merged?.followDisabled).toBe(false)
+    expect(followLabel(merged as WalletRow)).toBe('Following')
   })
 
   test('unknown subscription ids never invent rows', () => {
@@ -64,9 +64,10 @@ describe('nextAlertsValue', () => {
     expect(nextAlertsValue(row({ followed: true, active: true, alertsEnabled: true }))).toBe(false)
   })
 
-  test('unfollowed and paused rows never toggle', () => {
+  test('unfollowed wallets cannot enable alerts, paused follows can only mute', () => {
     expect(nextAlertsValue(row({ followed: false, active: true }))).toBeNull()
-    expect(nextAlertsValue(row({ followed: true, active: false, alertsEnabled: true }))).toBeNull()
+    expect(nextAlertsValue(row({ followed: true, active: false, alertsEnabled: true }))).toBe(false)
+    expect(nextAlertsValue(row({ followed: true, active: false, alertsEnabled: false }))).toBeNull()
   })
 })
 
@@ -74,6 +75,7 @@ describe('followLabel', () => {
   test('Follow / Following / Paused', () => {
     expect(followLabel(row({ followed: false, active: true }))).toBe('Follow')
     expect(followLabel(row({ followed: true, active: true }))).toBe('Following')
-    expect(followLabel(row({ followed: true, active: false }))).toBe('Paused')
+    expect(followLabel(row({ followed: true, active: false }))).toBe('Following')
+    expect(followLabel(row({ followed: false, active: false }))).toBe('Paused')
   })
 })

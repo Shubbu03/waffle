@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { AppConfig } from '../constants/app-config'
-import { ApiError, apiRequest, getSession, onUnauthorized, postLogout, postVerify } from './api-client'
+import {
+  ApiError,
+  apiRequest,
+  checkApiConnection,
+  getSession,
+  onUnauthorized,
+  postLogout,
+  postVerify,
+} from './api-client'
+import { listWallets } from './wallets-api'
 
 const originalApi = AppConfig.apiUrl
 const originalDevelopment = typeof __DEV__ === 'undefined' ? undefined : __DEV__
@@ -31,6 +40,56 @@ const input = {
 }
 
 describe('mobile API wire integration', () => {
+  test('catalog retries can recover from a server failure and cancelled reads do not send another request', async () => {
+    const wallet = {
+      id: session.userId,
+      address: session.walletAddress,
+      label: 'Tracked wallet',
+      active: true,
+      inclusionReason: 'Reviewed supported buys',
+      recentSupportedActivityAt: null,
+    }
+    let requests = 0
+    api((request) => {
+      expect(new URL(request.url).pathname).toBe('/wallets')
+      expect(request.headers.get('authorization')).toBeNull()
+      requests++
+      return requests === 1
+        ? Response.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, { status: 500 })
+        : Response.json({ items: [wallet] })
+    })
+    await expect(listWallets()).rejects.toMatchObject({ status: 500, code: 'INTERNAL_ERROR' })
+    expect(await listWallets()).toEqual([wallet])
+    const controller = new AbortController()
+    const reason = new Error('Catalog screen left')
+    controller.abort(reason)
+    await expect(listWallets(controller.signal)).rejects.toBe(reason)
+    expect(requests).toBe(2)
+  })
+  test('sign-in readiness checks the public health endpoint without wallet credentials', async () => {
+    const requests: { path: string; authorization: string | null }[] = []
+    api((request) => {
+      requests.push({ path: new URL(request.url).pathname, authorization: request.headers.get('authorization') })
+      return Response.json({ status: 'ok' })
+    })
+    await checkApiConnection()
+    expect(requests).toEqual([{ path: '/health', authorization: null }])
+  })
+  test('a reachable but unready service cannot pass the sign-in readiness check', async () => {
+    let payload: unknown = { status: 'starting' }
+    api(() => Response.json(payload))
+    await expect(checkApiConnection()).rejects.toMatchObject({ code: 'BAD_RESPONSE' })
+    payload = null
+    await expect(checkApiConnection()).rejects.toMatchObject({ code: 'BAD_RESPONSE' })
+  })
+  test('sign-in readiness retains API failures and unreachable connection errors', async () => {
+    api(() =>
+      Response.json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Service is restarting' } }, { status: 503 }),
+    )
+    await expect(checkApiConnection()).rejects.toMatchObject({ status: 503, code: 'SERVICE_UNAVAILABLE' })
+    server?.stop(true)
+    await expect(checkApiConnection()).rejects.toMatchObject({ status: 0, code: 'NETWORK_UNAVAILABLE' })
+  })
   test('reads the shared nested error envelope rather than replacing its useful message', async () => {
     api(() => Response.json({ error: { code: 'STALE_SIGNAL', message: 'Signal evidence is stale' } }, { status: 409 }))
     await expect(apiRequest('/signals')).rejects.toMatchObject({
@@ -86,6 +145,15 @@ describe('mobile API wire integration', () => {
     await postLogout('a'.repeat(43))
     expect(await apiRequest('/wallets')).toEqual({ items: [] })
     expect(authorizations).toEqual([`Bearer ${'a'.repeat(43)}`, null])
+  })
+  test('unreachable transport is actionable and cancelled reads retain their cancellation reason', async () => {
+    api(() => Response.json({ items: [] }))
+    server?.stop(true)
+    await expect(apiRequest('/wallets')).rejects.toMatchObject({ status: 0, code: 'NETWORK_UNAVAILABLE' })
+    const controller = new AbortController()
+    const reason = new Error('Screen left')
+    controller.abort(reason)
+    await expect(apiRequest('/wallets', { signal: controller.signal })).rejects.toBe(reason)
   })
   test('malformed JSON remains an API error', async () => {
     api(() => new Response('{broken', { headers: { 'content-type': 'application/json' } }))

@@ -1,72 +1,77 @@
+import 'react-native-reanimated'
 import { PortalHost } from '@rn-primitives/portal'
+import Constants from 'expo-constants'
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
-import { StatusBar } from 'expo-status-bar'
-import 'react-native-reanimated'
 import * as SplashScreen from 'expo-splash-screen'
+import { StatusBar } from 'expo-status-bar'
 import { useCallback } from 'react'
-import { View } from 'react-native'
+import { ActivityIndicator, Platform, View } from 'react-native'
 import { AppProviders } from '@/components/app-providers'
-import { AppSplashController } from '@/components/app-splash-controller'
+import { AppText } from '@/components/app-text'
+import { useAppTheme } from '@/components/app-theme'
+import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
-import { useTrackLocations } from '@/hooks/use-track-locations'
+import { AppConfig } from '@/constants/app-config'
+import { useThemeColor } from '@/hooks/use-theme-color'
+import { resolveDevelopmentApiUrl } from '@/lib/development-api-url'
 
+AppConfig.apiUrl = resolveDevelopmentApiUrl(AppConfig.apiUrl, Constants.expoConfig?.hostUri, __DEV__, Platform.OS)
 SplashScreen.preventAutoHideAsync()
 
 export default function RootLayout() {
-  // Use this hook to track the locations for analytics or debugging.
-  // Delete if you don't need it.
-  useTrackLocations((pathname, params) => {
-    console.log(`Track ${pathname}`, { params })
-  })
-  const [loaded] = useFonts({
+  const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     PlaywriteZA: require('../assets/fonts/Playwrite_ZA/static/PlaywriteZA-Regular.ttf'),
     Poppins: require('../assets/fonts/Poppins/Poppins-Regular.ttf'),
     'Poppins-Medium': require('../assets/fonts/Poppins/Poppins-Medium.ttf'),
     'Poppins-Light': require('../assets/fonts/Poppins/Poppins-Light.ttf'),
   })
-
-  const onLayoutRootView = useCallback(async () => {
-    console.log('onLayoutRootView')
-    if (loaded) {
-      console.log('loaded')
-      // This tells the splash screen to hide immediately! If we call this after
-      // `setAppIsReady`, then we may see a blank screen while the app is
-      // loading its initial state and rendering its first pixels. So instead,
-      // we hide the splash screen once we know the root view has already
-      // performed layout.
-      await SplashScreen.hideAsync()
-    }
-  }, [loaded])
-
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null
-  }
-
+  const onLayout = useCallback(() => {
+    void SplashScreen.hideAsync()
+  }, [])
+  if (!loaded && !error) return null
   return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+    <View style={{ flex: 1 }} onLayout={onLayout}>
       <AppProviders>
-        <AppSplashController />
         <RootNavigator />
-        <StatusBar style="auto" />
+        <AppStatusBar />
+        <PortalHost />
       </AppProviders>
-      <PortalHost />
     </View>
   )
 }
 
+function AppStatusBar() {
+  const { isDark } = useAppTheme()
+  return <StatusBar style={isDark ? 'light' : 'dark'} />
+}
+
 function RootNavigator() {
-  const { isAuthenticated, serverLinked } = useAuth()
+  const { status, isAuthenticated, serverLinked } = useAuth()
+  const ink = useThemeColor({}, 'text')
+  if (status === 'loading')
+    return (
+      <AppView style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={ink} />
+        <AppText>Opening waffle…</AppText>
+      </AppView>
+    )
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack initialRouteName="index" screenOptions={{ headerShown: false, headerShadowVisible: false }}>
+      <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="wallets" />
+      <Stack.Screen name="account" />
       <Stack.Screen name="signals/[id]" />
       <Stack.Screen name="paper/[id]" />
       <Stack.Screen name="paper/positions/index" />
       <Stack.Screen name="paper/positions/[id]" />
+      <Stack.Screen name="trade/[id]" />
       <Stack.Screen name="+not-found" />
+      <Stack.Protected guard={!isAuthenticated}>
+        <Stack.Screen name="welcome" />
+      </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated || !serverLinked}>
         <Stack.Screen name="sign-in" />
       </Stack.Protected>

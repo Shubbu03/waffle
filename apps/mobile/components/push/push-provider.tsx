@@ -21,6 +21,9 @@ import type { PushPermission, SignalPush } from '@/lib/push-tap'
 
 export interface PushState {
   permission: PushPermission | 'checking'
+  registrationUnavailable: boolean
+  isRegistering: boolean
+  retryRegistration: () => void
   foregroundSignalId: string | null
   dismissForeground: () => void
 }
@@ -41,6 +44,8 @@ export function PushProvider({ children }: PropsWithChildren) {
   const client = useQueryClient()
   const [permission, setPermission] = useState<PushState['permission']>('checking')
   const [registrationUnavailable, setRegistrationUnavailable] = useState(false)
+  const [isRegistering, setIsRegistering] = useState(false)
+  const retryRegistrationRef = useRef<(() => void) | null>(null)
   const [foreground, setForeground] = useState<SignalPush | null>(null)
   const [pendingTap, setPendingTap] = useState<PushTap | null>(null)
   const lastTap = useRef({ id: '', at: 0 })
@@ -50,12 +55,24 @@ export function PushProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     setForeground(null)
     setRegistrationUnavailable(false)
+    setIsRegistering(false)
     if (Platform.OS !== 'android' || !accessToken) return
     const owner = sessionRef.current
     if (!owner) return
     pushDevice.activate(owner)
     let cancelled = false
+    let pending = false
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    const clearRetry = () => {
+      clearTimeout(retryTimer)
+      retryTimer = undefined
+    }
     const synchronize = (request = false) => {
+      if (cancelled || pending) return
+      clearRetry()
+      pending = true
+      setIsRegistering(true)
+      let failed = false
       void pushDevice
         .synchronize(owner, request)
         .then((value) => {
@@ -66,27 +83,37 @@ export function PushProvider({ children }: PropsWithChildren) {
           }
         })
         .catch(() => {
+          failed = true
           if (!cancelled) {
             setRegistrationUnavailable(true)
-            void readPushPermission()
+            return readPushPermission()
               .then((value) => {
                 if (!cancelled) setPermission(value)
               })
-              .catch(() => {
-                if (!cancelled) setPermission('denied')
-              })
+              .catch(() => console.warn('[push] permission unavailable'))
           }
-          console.warn('[push] registration unavailable')
+        })
+        .finally(() => {
+          pending = false
+          if (cancelled) return
+          setIsRegistering(false)
+          if (failed && AppState.currentState === 'active') {
+            retryTimer = setTimeout(() => synchronize(), 30_000)
+          }
         })
     }
+    retryRegistrationRef.current = synchronize
     setPermission('checking')
     synchronize(true)
     const unsubscribeRefresh = onTokenRefresh(getMessaging(), () => synchronize())
     const listener = AppState.addEventListener('change', (next) => {
       if (next === 'active') synchronize()
+      else clearRetry()
     })
     return () => {
       cancelled = true
+      clearRetry()
+      retryRegistrationRef.current = null
       unsubscribeRefresh()
       listener.remove()
     }
@@ -161,32 +188,24 @@ export function PushProvider({ children }: PropsWithChildren) {
   }, [foreground])
 
   const dismissForeground = useCallback(() => setForeground(null), [])
+  const retryRegistration = useCallback(() => retryRegistrationRef.current?.(), [])
   const value = useMemo<PushState>(
     () => ({
       permission,
+      registrationUnavailable,
+      isRegistering,
+      retryRegistration,
       foregroundSignalId: foreground?.id ?? null,
       dismissForeground,
     }),
-    [permission, foreground, dismissForeground],
+    [permission, registrationUnavailable, isRegistering, retryRegistration, foreground, dismissForeground],
   )
 
   return (
     <Context value={value}>
       {children}
-      {session && Platform.OS === 'android' && (foreground || permission === 'denied' || registrationUnavailable) ? (
+      {session && Platform.OS === 'android' && foreground ? (
         <View style={{ position: 'absolute', top: 60, left: 16, right: 16, gap: 8 }}>
-          {permission === 'denied' || registrationUnavailable ? (
-            <View
-              accessibilityRole="alert"
-              style={{ backgroundColor: background, borderColor: text, borderWidth: 1, borderRadius: 16, padding: 16 }}
-            >
-              <AppText>
-                {permission === 'denied'
-                  ? 'Alerts are off. Enable notifications in Android Settings and reopen the app.'
-                  : 'Alerts are unavailable. Check your connection and reopen the app to retry.'}
-              </AppText>
-            </View>
-          ) : null}
           {foreground ? (
             <View
               style={{
