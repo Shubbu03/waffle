@@ -100,18 +100,23 @@ export async function trackWallet(
   token: string,
   address: string,
   label?: string,
-): Promise<{ wallet: CatalogWallet; created: boolean; followed: boolean }> {
+): Promise<{ wallet: CatalogWallet; created: boolean; followed: boolean; veryActive: boolean }> {
   console.log('[wallets-api] trackWallet: submitting address')
   const payload = (await apiRequest(
     '/wallets',
     { method: 'POST', data: label ? { address, label } : { address } },
     token,
-  )) as { wallet?: unknown; created?: unknown; followed?: unknown }
+  )) as { wallet?: unknown; created?: unknown; followed?: unknown; warning?: unknown }
   if (!isRecord(payload) || payload.wallet === undefined) {
     throw new ApiError(0, 'BAD_RESPONSE', 'Malformed track response')
   }
   console.log(`[wallets-api] trackWallet: ok created=${payload.created === true}`)
-  return { wallet: parseWallet(payload.wallet), created: payload.created === true, followed: payload.followed === true }
+  return {
+    wallet: parseWallet(payload.wallet),
+    created: payload.created === true,
+    followed: payload.followed === true,
+    veryActive: payload.warning === 'very-active',
+  }
 }
 
 /** Stop tracking a wallet you added (bearer). `paused` = watcher subscription stopped. */

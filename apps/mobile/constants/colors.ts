@@ -20,6 +20,7 @@ export const Colors = {
     accentSoft: Brand.limeSoft,
     accentText: Brand.ink,
     danger: '#B33B32',
+    warning: '#8A6100',
   },
   dark: {
     background: '#11140F',
@@ -36,5 +37,6 @@ export const Colors = {
     accentSoft: '#29351D',
     accentText: Brand.ink,
     danger: '#FF9B90',
+    warning: '#E8C766',
   },
 } as const

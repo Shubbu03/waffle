@@ -10,6 +10,7 @@ import {
   MAX_ACTIVE_WALLETS,
 } from "@waffle/db";
 import { sessions, users, watchedWallets } from "@waffle/db/schema";
+import type { HttpTransport } from "@waffle/http";
 import {
   apiErrorSchema,
   PUMP_SWAP_PROGRAM_ID,
@@ -28,6 +29,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.ts";
 import { hashSecret } from "../src/auth.ts";
+import { createWalletActivityValidator } from "../src/wallet-activity.ts";
 import { isOnCurveAddress } from "../src/wallet-address.ts";
 
 let pg: PGlite;
@@ -398,6 +400,7 @@ describe("curated All feed", () => {
     const all = await livePage(null);
     expect(all.events.map((event) => event.signalId)).toEqual([catalogSignal]);
     const following = await auth.withSession(hashSecret(tokenA), (tx) => createLiveReadStore(tx).page(null, ownerA));
+    if (!following) throw new Error("Expected an owner live page");
     expect(new Set(following.events.map((event) => event.signalId))).toEqual(new Set([catalogSignal, userSignal]));
   });
 
@@ -406,5 +409,89 @@ describe("curated All feed", () => {
     const catalog = walletCatalogResponseSchema.parse(await (await app.request("/wallets")).json());
     expect(catalog.items.filter((item) => item.source === "user")).toHaveLength(1);
     expect(catalog.items.filter((item) => item.source === "catalog")).toHaveLength(2);
+  });
+});
+
+describe("track-time activity validation", () => {
+  const NOW = Date.now();
+  function history(count: number, ageMinutes = 1) {
+    return Array.from({ length: count }, (_, i) => ({
+      signature: `sig${i}`,
+      err: null,
+      blockTime: Math.floor(NOW / 1_000) - ageMinutes * 60 - i,
+    }));
+  }
+  function validatingApp(entries: unknown, pumpSwap = true) {
+    const transport = (async (_url: string | URL | Request, init: RequestInit = {}) => {
+      const body = JSON.parse(String(init.body)) as { method: string };
+      if (body.method === "getSignaturesForAddress") {
+        return Response.json({ jsonrpc: "2.0", id: 1, result: entries });
+      }
+      const result = pumpSwap
+        ? {
+            transaction: { message: { accountKeys: [{ pubkey: PUMP_SWAP_PROGRAM_ID }], instructions: [] } },
+            meta: { innerInstructions: [] },
+          }
+        : { transaction: { message: { accountKeys: [], instructions: [] } }, meta: { innerInstructions: [] } };
+      return Response.json({ jsonrpc: "2.0", id: 1, result });
+    }) as HttpTransport;
+    const activity = createWalletActivityValidator({
+      url: "https://rpc.example",
+      transport,
+      now: () => NOW,
+      sleep: async () => {},
+    });
+    return createApp({ reads, async ping() {} }, { store: auth, uri: "https://waffle.example", activity });
+  }
+  function post(application: ReturnType<typeof createApp>, address: string, remoteAddress?: string) {
+    return application.request(
+      "/wallets",
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${tokenA}`, "content-type": "application/json" },
+        body: JSON.stringify({ address }),
+      },
+      remoteAddress ? { remoteAddress } : undefined,
+    );
+  }
+
+  test("rejects a wallet with no history", async () => {
+    const response = await post(validatingApp([]), walletAddress());
+    expect((await assertError(response, 422)).error.code).toBe("NO_HISTORY");
+  });
+
+  test("rejects a wallet without recent PumpSwap activity", async () => {
+    const response = await post(validatingApp(history(5), false), walletAddress());
+    expect((await assertError(response, 422)).error.code).toBe("UNSUPPORTED_WALLET");
+  });
+
+  test("accepts a PumpSwap trader without a warning", async () => {
+    const response = await post(validatingApp(history(3)), walletAddress());
+    expect(response.status).toBe(201);
+    expect(trackWalletResponseSchema.parse(await response.json()).warning).toBeUndefined();
+  });
+
+  test("warns between 31 and 100 transactions per hour", async () => {
+    const response = await post(validatingApp(history(40)), walletAddress());
+    expect(response.status).toBe(201);
+    expect(trackWalletResponseSchema.parse(await response.json()).warning).toBe("very-active");
+  });
+
+  test("rejects a wallet above 100 transactions per hour", async () => {
+    const response = await post(validatingApp(history(120)), walletAddress());
+    expect((await assertError(response, 422)).error.code).toBe("TOO_ACTIVE");
+  });
+
+  test("rate limits track attempts before spending RPC", async () => {
+    const application = validatingApp(history(3));
+    let status = 0;
+    for (let attempt = 0; attempt < 11; attempt++) {
+      status = (await post(application, walletAddress(), "192.0.2.77")).status;
+    }
+    expect(status).toBe(429);
+  });
+
+  test("skips validation when no validator is configured", async () => {
+    expect((await post(app, walletAddress())).status).toBe(201);
   });
 });

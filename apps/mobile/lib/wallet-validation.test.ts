@@ -29,4 +29,11 @@ describe('trackErrorMessage', () => {
     expect(trackErrorMessage(401, 'UNAUTHORIZED')).toContain('Sign in')
     expect(trackErrorMessage(500, 'INTERNAL_ERROR')).toContain('Try again')
   })
+
+  test('maps validation rejections and rate limits', () => {
+    expect(trackErrorMessage(422, 'NO_HISTORY')).toContain('history')
+    expect(trackErrorMessage(422, 'UNSUPPORTED_WALLET')).toContain('PumpSwap')
+    expect(trackErrorMessage(422, 'TOO_ACTIVE')).toContain('too often')
+    expect(trackErrorMessage(429, 'RATE_LIMITED')).toContain('Too many')
+  })
 })

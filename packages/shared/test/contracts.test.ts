@@ -21,6 +21,7 @@ import {
   signInInputSchema,
   solanaAddressSchema,
   trackWalletRequestSchema,
+  trackWalletResponseSchema,
   tradeAttemptSchema,
   WRAPPED_SOL_MINT,
   walletSchema,
@@ -106,6 +107,11 @@ describe("on-chain primitives and catalog", () => {
     expect(trackWalletRequestSchema.safeParse({ address, label: "My whale" }).success).toBe(true);
     expect(trackWalletRequestSchema.safeParse({ address, label: "x".repeat(81) }).success).toBe(false);
     expect(trackWalletRequestSchema.safeParse({ address, ownerId: otherId }).success).toBe(false);
+    const tracked = { wallet, created: true, followed: true };
+    expect(trackWalletResponseSchema.safeParse(tracked).success).toBe(true);
+    expect(trackWalletResponseSchema.safeParse({ ...tracked, warning: "very-active" }).success).toBe(true);
+    expect(trackWalletResponseSchema.safeParse({ ...tracked, warning: "other" }).success).toBe(false);
+    expect(trackWalletResponseSchema.safeParse({ ...tracked, extra: true }).success).toBe(false);
     expect(putWalletSubscriptionRequestSchema.safeParse({}).success).toBe(true);
     expect(putWalletSubscriptionRequestSchema.safeParse({ alertsEnabled: true, userId: id }).success).toBe(false);
     expect(

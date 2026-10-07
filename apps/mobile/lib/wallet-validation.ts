@@ -17,6 +17,12 @@ export function checkWalletAddress(input: string): AddressCheck {
 
 /** Map a server/network failure from tracking into a short, human message. */
 export function trackErrorMessage(status: number, code: string): string {
+  if (status === 422) {
+    if (code === 'NO_HISTORY') return 'No transaction history found for this wallet.'
+    if (code === 'UNSUPPORTED_WALLET') return 'No recent PumpSwap activity — waffle tracks PumpSwap buys only for now.'
+    if (code === 'TOO_ACTIVE') return 'This wallet trades too often to track reliably.'
+  }
+  if (status === 429) return 'Too many attempts — wait a minute and try again.'
   if (status === 409)
     return code === 'CONFLICT' ? 'You can track up to 3 wallets.' : 'Tracking is at capacity right now.'
   if (status === 400) return 'Enter a valid on-curve Solana wallet address.'
