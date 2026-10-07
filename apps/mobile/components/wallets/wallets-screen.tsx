@@ -1,103 +1,25 @@
 import Clipboard from '@react-native-clipboard/clipboard'
 import { router, Stack } from 'expo-router'
 import { useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, Switch, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, Switch, View } from 'react-native'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
 import { AppButton } from '@/components/ui/app-button'
 import { AppCard } from '@/components/ui/app-card'
 import { ConnectionState } from '@/components/ui/connection-state'
+import { TrackWalletButton } from '@/components/wallets/track-wallet-button'
 import {
   useAlertToggle,
   useFollowWallet,
-  useTrackWallet,
   useUnfollowWallet,
   useUntrackWallet,
   useWalletRows,
 } from '@/components/wallets/use-wallets'
 import { useThemeColor } from '@/hooks/use-theme-color'
-import { ApiError } from '@/lib/api-error'
 import { ageLabel } from '@/lib/signal-state'
 import { followLabel, nextAlertsValue, type WalletRow } from '@/lib/wallet-subscription-state'
-import { checkWalletAddress, trackErrorMessage } from '@/lib/wallet-validation'
 import { ellipsify } from '@/utils/ellipsify'
-
-/** Paste-a-wallet input. Validates locally, then tracks (auto-follow, alerts off). */
-function TrackWalletCard() {
-  const track = useTrackWallet()
-  const muted = useThemeColor({}, 'muted')
-  const danger = useThemeColor({}, 'danger')
-  const warningColor = useThemeColor({}, 'warning')
-  const [address, setAddress] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [warning, setWarning] = useState<string | null>(null)
-  const onSubmit = () => {
-    const check = checkWalletAddress(address)
-    if (!check.ok) {
-      setError(check.message)
-      return
-    }
-    setError(null)
-    setWarning(null)
-    track.mutate(
-      { address: check.address },
-      {
-        onSuccess: (result) => {
-          setAddress('')
-          setError(null)
-          setWarning(result.veryActive ? 'Tracked. This wallet is very active, so signals may lag behind.' : null)
-        },
-        onError: (mutationError) => {
-          setError(
-            mutationError instanceof ApiError
-              ? trackErrorMessage(mutationError.status, mutationError.code)
-              : 'Could not track that wallet. Try again.',
-          )
-        },
-      },
-    )
-  }
-  return (
-    <AppCard>
-      <AppText type="defaultSemiBold">Track a wallet</AppText>
-      <AppText style={{ color: muted, fontSize: 13 }}>
-        Paste a Solana wallet to watch its PumpSwap buys. Up to 3 of your own; its signals stay in your Following feed.
-      </AppText>
-      <TextInput
-        value={address}
-        onChangeText={(value) => {
-          setAddress(value)
-          if (error) setError(null)
-          if (warning) setWarning(null)
-        }}
-        placeholder="Paste wallet address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={!track.isPending}
-        accessibilityLabel="Wallet address to track"
-        style={{
-          borderWidth: 1.5,
-          borderColor: muted,
-          borderRadius: 12,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          fontSize: 15,
-        }}
-      />
-      {error ? (
-        <AppText selectable accessibilityLiveRegion="polite" style={{ color: danger, fontSize: 13 }}>
-          {error}
-        </AppText>
-      ) : warning ? (
-        <AppText selectable accessibilityLiveRegion="polite" style={{ color: warningColor, fontSize: 13 }}>
-          {warning}
-        </AppText>
-      ) : null}
-      <AppButton title="Track wallet" busy={track.isPending} disabled={track.isPending} onPress={onSubmit} />
-    </AppCard>
-  )
-}
 
 function WalletCard({ row }: { row: WalletRow }) {
   const { session, serverLinked } = useAuth()
@@ -267,10 +189,12 @@ export function WalletsScreen() {
         renderItem={({ item }) => <WalletCard row={item} />}
         ListHeaderComponent={
           <View style={{ gap: 14, paddingBottom: 8 }}>
-            <AppText type="title">Choose your watchlist.</AppText>
-            <AppText style={{ color: muted, fontSize: 14 }}>
-              Curated wallets. Public activity. Follow the ones you want to keep an eye on.
-            </AppText>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <AppText type="subtitle" style={{ flex: 1, fontSize: 18 }}>
+                Discover wallets
+              </AppText>
+              <TrackWalletButton />
+            </View>
             {!session ? (
               <AppCard>
                 <AppText style={{ color: muted, fontSize: 13 }}>
@@ -283,9 +207,7 @@ export function WalletsScreen() {
                 <AppText style={{ color: muted }}>Your account is offline. Reconnect before changing follows.</AppText>
                 <AppButton title="Verify account" variant="secondary" onPress={() => router.push('/sign-in')} />
               </AppCard>
-            ) : (
-              <TrackWalletCard />
-            )}
+            ) : null}
             {subscriptions.isError ? (
               <ConnectionState
                 title="Follows could not be loaded"

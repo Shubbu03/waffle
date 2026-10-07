@@ -14,6 +14,7 @@ Select wallets with recent buys on the supported swap family (initially PumpSwap
 
 * Public users can browse the catalog and recent All signals feed without wallet sign-in.
 * Wallet sign-in is required to save follows and alert preferences.
+* Track wallet is directly available above both Signals wallet lists. It opens a dedicated address form; the Wallets catalog also links there. Successful tracking offers the wallet’s signal history and preserves activity warnings.
 * The Wallets screen shows label, public address, tracking status, and recent supported activity.
 * Following shows signals from followed wallets; All signals shows the shared catalog's signals.
 * An empty Following feed invites users to select catalog wallets.

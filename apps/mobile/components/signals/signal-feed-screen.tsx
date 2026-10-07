@@ -1,5 +1,4 @@
-import { router } from 'expo-router'
-import { useState } from 'react'
+import { router, useLocalSearchParams } from 'expo-router'
 import { ActivityIndicator, FlatList, Pressable, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
@@ -11,12 +10,14 @@ import { AppButton } from '@/components/ui/app-button'
 import { AppCard } from '@/components/ui/app-card'
 import { ConnectionState } from '@/components/ui/connection-state'
 import { ScreenHeading } from '@/components/ui/screen-heading'
+import { TrackWalletButton } from '@/components/wallets/track-wallet-button'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import type { SignalView } from '@/lib/signal-state'
 import { signalWallets } from '@/lib/signal-wallets'
 
 export function SignalFeedScreen() {
-  const [view, setView] = useState<SignalView>('all')
+  const params = useLocalSearchParams<{ view?: string }>()
+  const view: SignalView = params.view === 'following' ? 'following' : 'all'
   const { session, status } = useAuth()
   const feed = useSignalFeed(view)
   const now = useSignalClock()
@@ -53,7 +54,7 @@ export function SignalFeedScreen() {
                       key={item}
                       accessibilityRole="tab"
                       accessibilityState={{ selected: view === item }}
-                      onPress={() => setView(item)}
+                      onPress={() => router.setParams({ view: item })}
                       style={{
                         flex: 1,
                         minHeight: 44,
@@ -69,6 +70,12 @@ export function SignalFeedScreen() {
                       </AppText>
                     </Pressable>
                   ))}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <AppText type="defaultSemiBold" style={{ flex: 1 }}>
+                    Wallets
+                  </AppText>
+                  <TrackWalletButton />
                 </View>
                 {!needsSignIn && feed.items.length > 0 && offline ? (
                   <AppText style={{ color: muted, fontSize: 12 }}>Offline · activity may be out of date</AppText>
