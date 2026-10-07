@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SPL_TOKEN_PROGRAM_ID, WRAPPED_SOL_MINT } from "../program-ids.ts";
+import { SPL_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, WRAPPED_SOL_MINT } from "../program-ids.ts";
 import { scorePolicyV1 } from "../scoring/config.ts";
 import { SCORE_REASON_CODES, SCORE_REASON_GROUPS } from "../scoring/score.ts";
 import {
@@ -161,7 +161,8 @@ function validateScore(signal: z.infer<typeof scoredSignalBaseSchema>, context: 
     codes.has("mint_safe") &&
     (snapshot.mint === null ||
       snapshot.mint.address !== signal.mintAddress ||
-      snapshot.mint.tokenProgramId !== SPL_TOKEN_PROGRAM_ID ||
+      (snapshot.mint.tokenProgramId !== SPL_TOKEN_PROGRAM_ID &&
+        snapshot.mint.tokenProgramId !== TOKEN_2022_PROGRAM_ID) ||
       snapshot.mint.mintAuthority !== null ||
       snapshot.mint.freezeAuthority !== null)
   ) {

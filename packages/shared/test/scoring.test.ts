@@ -5,6 +5,7 @@ import {
   SPL_TOKEN_PROGRAM_ID,
   scorePolicyV1,
   scoreSignal,
+  TOKEN_2022_PROGRAM_ID,
   WRAPPED_SOL_MINT,
 } from "../src/index.ts";
 
@@ -102,6 +103,23 @@ describe("versioned score policy", () => {
       expect(result.status).toBe("suppressed");
       expect(result.canAlert).toBe(false);
     }
+  });
+
+  test("Token-2022 mints pass the mint safety gate like SPL mints", () => {
+    const ready = readyInput();
+    if (!ready.mint) throw new Error("Expected mint evidence");
+    const result = scoreSignal({
+      ...ready,
+      mint: { ...ready.mint, tokenProgramId: TOKEN_2022_PROGRAM_ID },
+      holders: null,
+      creator: null,
+      oracle: null,
+    });
+    expect(result.reasons.find((reason) => reason.code === "mint_safe")?.points).toBe(scorePolicyV1.weights.mint);
+    expect(result.canAlert).toBe(true);
+    // A foreign token program still fails the gate.
+    const foreign = scoreSignal({ ...ready, mint: { ...ready.mint, tokenProgramId: WRAPPED_SOL_MINT } });
+    expect(foreign.status).toBe("suppressed");
   });
 
   test("stale transaction is history-only even with a high score", () => {

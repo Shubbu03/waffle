@@ -8,7 +8,7 @@ Accepted for issue #2 on 24 September 2026. The executable source of truth is [`
 | --- | ---: | --- |
 | Successful supported-family buy | 20 | Confirmed transaction, no `meta.err`, classified as the supported buy. |
 | Fresh signal | 15 | At most 150 slots and 90 seconds old. Both checks must pass. |
-| Mint state | 20 | Exact mint, original SPL Token Program, fetched within 60 seconds, no mint or freeze authority. Token-2022 is unsupported in v1. |
+| Mint state | 20 | Exact mint, SPL Token **or Token-2022** base layout, fetched within 60 seconds, no mint or freeze authority. Token-2022 extensions (transfer fees/hooks) are not evaluated in v1. |
 | Pool | 15 | Exact token paired with wrapped SOL, fresh within 15 seconds, verified liquidity at least $25,000. |
 | Probe quote | 10 | Fresh within 10 seconds, SOL-to-exact-mint, positive output for at least 0.05 SOL input. This is an availability check; the user action needs a new quote. |
 | Top ten holders | 8 | Optional, fresh within five minutes, combined share at most 30%. |
@@ -18,7 +18,7 @@ Accepted for issue #2 on 24 September 2026. The executable source of truth is [`
 
 Critical failure suppresses alerts even if the numeric score exceeds 70. An old signal is history-only. A fresh, same-asset oracle deviation above 1,000 basis points suppresses alerts; no oracle and stale oracle data simply earn zero. A deviation from 301 through 1,000 basis points earns zero without suppression. Each result includes reason codes and points, so missing optional data remains visible as missing and cannot inflate the score. The feed can still show suppressed/history-only signals with their status; no alert or copy action should be offered from stale evidence.
 
-The mint checks follow [Solana's mint and freeze authority model](https://solana.com/docs/tokens/basics). Restricting v1 to the original token program avoids silently accepting [Token-2022 extensions](https://solana.com/docs/tokens/extensions) that need separate handling. The $25,000/$75,000 liquidity floors, percentage cutoffs, and freshness windows are product policy choices, not values asserted by those sources. Validate the liquidity source and these cutoffs against saved mainnet fixtures and observed reject distributions before expanding the catalog.
+The mint checks follow [Solana's mint and freeze authority model](https://solana.com/docs/tokens/basics). V1 accepts both the original SPL Token program and Token-2022, because PumpSwap now launches Token-2022 mints; both share the same 82-byte base layout, and the no-authority requirement is unchanged. [Token-2022 extensions](https://solana.com/docs/tokens/extensions) (transfer fees, transfer hooks) are **not** evaluated, so a Token-2022 mint with a transfer fee still earns mint points — a documented v1 limitation to revisit in v2. The $25,000/$75,000 liquidity floors, percentage cutoffs, and freshness windows are product policy choices, not values asserted by those sources. Validate the liquidity source and these cutoffs against saved mainnet fixtures and observed reject distributions before expanding the catalog.
 
 ## Trade gate
 

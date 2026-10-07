@@ -1,4 +1,4 @@
-import { SPL_TOKEN_PROGRAM_ID, scorePolicyV1, WRAPPED_SOL_MINT } from "./config.ts";
+import { SPL_TOKEN_PROGRAM_ID, scorePolicyV1, TOKEN_2022_PROGRAM_ID, WRAPPED_SOL_MINT } from "./config.ts";
 
 export type ScoreInput = {
   readonly mintAddress: string;
@@ -141,7 +141,7 @@ export function scoreSignal(input: ScoreInput): ScoreResult {
   const mintOkay = award(
     input.mint !== null &&
       input.mint.address === input.mintAddress &&
-      input.mint.tokenProgramId === SPL_TOKEN_PROGRAM_ID &&
+      (input.mint.tokenProgramId === SPL_TOKEN_PROGRAM_ID || input.mint.tokenProgramId === TOKEN_2022_PROGRAM_ID) &&
       input.mint.mintAuthority === null &&
       input.mint.freezeAuthority === null &&
       isFresh(input.nowMs, input.mint.fetchedAtMs, freshness.mintMs),

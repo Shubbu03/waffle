@@ -79,4 +79,4 @@ export const scorePolicyV1 = {
   },
 } as const satisfies ScorePolicy;
 
-export { SPL_TOKEN_PROGRAM_ID, WRAPPED_SOL_MINT } from "../program-ids.ts";
+export { SPL_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, WRAPPED_SOL_MINT } from "../program-ids.ts";

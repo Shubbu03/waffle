@@ -270,39 +270,52 @@ describe("token and pool evidence", () => {
     ).toBe(false);
   });
 
-  test("rejects Token-2022, malformed mint options and uninitialized mints", async () => {
-    const variants = [account(mintBytes(), TOKEN_2022_PROGRAM_ID), account(Buffer.alloc(82))];
+  test("accepts Token-2022 mints and rejects malformed options and uninitialized mints", async () => {
+    // PumpSwap now launches Token-2022 mints; the shared 82-byte base layout is accepted.
+    const token2022 = harness();
+    token2022.accounts.set(mint, account(mintBytes(), TOKEN_2022_PROGRAM_ID));
+    const accepted = await token2022.collect();
+    expect(accepted.mint.status).toBe("fresh");
+    if (accepted.mint.status === "fresh") expect(accepted.mint.value.tokenProgramId).toBe(TOKEN_2022_PROGRAM_ID);
+
     const malformed = mintBytes();
     malformed.writeUInt32LE(2, 0);
-    variants.push(account(malformed));
-    for (const value of variants) {
+    for (const value of [account(Buffer.alloc(82)), account(malformed)]) {
       const h = harness();
       h.accounts.set(mint, value);
       expect((await h.collect()).mint.status).toBe("unknown");
     }
   });
 
-  test("rejects wrong pool mint, owner, discriminator, PDA and virtual reserves", async () => {
+  test("rejects wrong pool mint, owner, discriminator, PDA and non-standard pool mode", async () => {
     const wrongMint = poolBytes();
     bytesKey(address(12)).copy(wrongMint, 43);
     const wrongDiscriminator = poolBytes();
     wrongDiscriminator[0] = 0;
     const wrongPda = poolBytes();
     wrongPda[9] = 1;
-    const virtual = poolBytes();
-    virtual[245] = 1;
+    const boostMode = poolBytes();
+    boostMode[243] = 1;
     for (const value of [
       account(wrongMint, PUMP_SWAP_PROGRAM_ID),
       account(poolBytes()),
       account(wrongDiscriminator, PUMP_SWAP_PROGRAM_ID),
       account(wrongPda, PUMP_SWAP_PROGRAM_ID),
-      account(virtual, PUMP_SWAP_PROGRAM_ID),
+      account(boostMode, PUMP_SWAP_PROGRAM_ID),
     ]) {
       const h = harness();
       h.accounts.set(pool, value);
       expect((await h.collect()).pool.status).toBe("unknown");
       expect(h.calls.prices).toBe(0);
     }
+  });
+
+  test("accepts the extended pool layout when the mode byte is standard", async () => {
+    // Current PumpSwap pools carry trailing extension data after the 243-byte base layout.
+    const extended = Buffer.concat([poolBytes(), Buffer.alloc(30, 7)]);
+    const h = harness();
+    h.accounts.set(pool, account(extended, PUMP_SWAP_PROGRAM_ID));
+    expect((await h.collect()).pool.status).toBe("fresh");
   });
 
   test("rejects wrong-mint, wrong-authority, frozen, delegated, and empty vaults", async () => {
