@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, exists, gt, inArray, isNull, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "./database.ts";
-import { signalEvents, signals, userWalletSubscriptions } from "./schema/index.ts";
+import { signalEvents, signals, userWalletSubscriptions, watchedWallets } from "./schema/index.ts";
 
 /** Read through the API role, and through an authenticated transaction for Following. */
 export function createLiveReadStore(db: DatabaseExecutor) {
@@ -22,6 +22,7 @@ export function createLiveReadStore(db: DatabaseExecutor) {
         })
         .from(signalEvents)
         .innerJoin(signals, eq(signals.id, signalEvents.signalId))
+        .innerJoin(watchedWallets, eq(watchedWallets.id, signals.walletId))
         .where(
           and(
             cursor ? gt(signalEvents.id, BigInt(cursor)) : undefined,
@@ -37,7 +38,8 @@ export function createLiveReadStore(db: DatabaseExecutor) {
                       ),
                     ),
                 )
-              : undefined,
+              : // Public All stream stays curated: user-added wallets never broadcast here.
+                eq(watchedWallets.source, "catalog"),
           ),
         )
         .orderBy(cursor ? asc(signalEvents.id) : desc(signalEvents.id))

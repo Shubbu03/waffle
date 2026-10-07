@@ -21,8 +21,8 @@ The environment file is ignored by Git. Keep the connection URL on the server; n
 
 | Route | Access | Result |
 | --- | --- | --- |
-| `GET /wallets` | Public | `{ items }` with catalog ID, address, label, inclusion reason, tracking status, and recent supported activity. Paused wallets remain visible. |
-| `GET /signals` | Public for `view=all` (default); bearer session for `view=following` | `{ view, direction, items, nextCursor, hasMore }` with signal summaries. |
+| `GET /wallets` | Public | `{ items }` with catalog ID, address, label, source (`catalog`/`user`), inclusion reason, tracking status, and recent supported activity. Paused wallets remain visible. |
+| `GET /signals` | Public for `view=all` (default); bearer session for `view=following` | `{ view, direction, items, nextCursor, hasMore }` with signal summaries. `view=all` is curated: it returns only catalog-sourced wallets. |
 | `GET /signals/:id` | Public | Signal summary plus all persisted score reasons and the complete evidence snapshot. Invalid UUIDs return 400; unavailable signals return 404. |
 
 List queries accept only `view=all|following`, `direction=before|after`, `cursor`, `limit=1..50` (default 50), and `walletId` (catalog UUID). Duplicate or unknown parameters, including supplied owner IDs, return 400. Following derives ownership from the bearer session and queries subscriptions inside its transaction with RLS. Wallet filtering narrows that set; it cannot include another user's follows. Following works independently of alerts, and its responses use `Cache-Control: no-store`.
@@ -66,6 +66,22 @@ Paused wallets reject new follows and off-to-on alert changes with 409 `CONFLICT
 Unfollowing deletes only the session owner's subscription. It does not delete catalog wallets, shared signals, outbox events, or another user's follow, and it does not stop catalog monitoring. The Following feed immediately reflects the current subscription set. Refollowing starts with alerts off unless explicitly enabled again. A preference is not proof of notification permission or push delivery; device registration and delivery remain separate work.
 
 `bun run test:api` verifies these routes using the actual SQL under a restricted `waffle_api` member role in migrated PGlite. Coverage includes default/explicit opt-in, timestamp transitions and retries, overlapping follows, paused and unknown wallets, anonymous/expired/revoked sessions, owner injection, RLS isolation, rollback, and preservation of shared history and other users' subscriptions. PGlite serializes transactions; live multi-connection PostgreSQL concurrency remains a manual check.
+
+## Tracking a pasted wallet
+
+These owner-only routes let a signed-in user paste a wallet address to track. Each requires `Authorization: Bearer <accessToken>`. Responses use `Cache-Control: no-store`; bodies are capped at 4 KiB.
+
+| Route | Request | Result |
+| --- | --- | --- |
+| `POST /wallets` | JSON `{ "address": "<base58>", "label"?: string }` | 201 when a new wallet row is created, 200 when the address already exists. Returns `{ wallet, created, followed }`. |
+| `DELETE /wallets/:id` | No body | 200 `{ paused }` when the caller stops tracking a wallet they added; 404 when they are not tracking it. |
+| `GET /wallets/mine` | No query parameters | `{ items }` of catalog-wallet IDs the caller personally added to tracking. |
+
+The address must be a valid **on-curve** ed25519 wallet (real keypair, not a PDA or arbitrary base58), checked for free without an RPC call; off-curve and malformed inputs return 400. Tracking appends a row to the shared `watched_wallets` catalog with `source = "user"`, auto-follows the caller with alerts off, and the watcher subscribes within ~15 seconds (it polls active catalog wallets). Caps protect the shared RPC budget and the watcher's hard 100-wallet limit: **3 wallets per user** and **40 active wallets system-wide**, both returning 409 `CONFLICT` when reached.
+
+Visibility is shared but curated: a tracked wallet's signals are stored once and appear to followers, but the public `view=all` feed and the public live socket **exclude** user-sourced wallets, so only the curated catalog is broadcast. Untracking removes the caller's follow and, when the last tracker leaves, pauses a user-sourced wallet (`active = false`) so the watcher drops it; signal history is preserved. Catalog wallets can be followed via this route but never paused or removed by it. RLS scopes tracking-row writes to the owner; reads are open to the API role so the pause decision can count trackers across users, and the API only ever exposes the caller's own IDs.
+
+`bun run test:api` covers creation, label derivation, idempotent re-add, per-user and global caps, catalog-address follow without a tracking row, paused-catalog rejection, reactivation, pause-on-last-tracker, cross-user denial under RLS, on-curve rejection, and the curated `view=all` / live-socket filters (REST and WebSocket read paths).
 
 Manual acceptance with two wallet sessions: follow the same active catalog wallet, enable and mute alerts for one user, repeat the PUTs and compare timestamps, then unfollow twice. Confirm the other user's follow and public signal detail remain unchanged. Pause the catalog wallet using the administrative workflow and confirm that new follows/opt-ins fail while an existing follow can still be muted or removed.
 

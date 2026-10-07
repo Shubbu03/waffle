@@ -8,6 +8,7 @@ const wallet = (override: Partial<CatalogWallet> = {}): CatalogWallet => ({
   address: '11111111111111111111111111111111',
   label: 'Trader',
   active: true,
+  source: 'catalog',
   inclusionReason: 'evidence',
   recentSupportedActivityAt: null,
   ...override,

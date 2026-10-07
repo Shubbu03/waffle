@@ -13,12 +13,15 @@ Issue #3 establishes the JSON boundary in [`@waffle/shared`](../packages/shared/
 
 | Operation | Shared schema | Notes |
 | --- | --- | --- |
-| `GET /wallets` | `walletCatalogResponseSchema` | Public curated catalog; `active` is explicit. |
+| `GET /wallets` | `walletCatalogResponseSchema` | Public catalog; `active` and `source` (`catalog`/`user`) are explicit. |
+| `POST /wallets` | `trackWalletRequestSchema` → `trackWalletResponseSchema` | Session owner only; on-curve address, 3/user + 40 global caps, auto-follow with alerts off. |
+| `DELETE /wallets/:id` | `untrackWalletResponseSchema` | Session owner only; pauses a user-sourced wallet when the last tracker leaves. |
+| `GET /wallets/mine` | `trackedWalletsResponseSchema` | Session owner only; IDs the caller personally tracks. |
 | `GET /wallet-subscriptions` | `walletSubscriptionsResponseSchema` | Session owner only. |
 | `PUT /wallet-subscriptions/:walletId` | `putWalletSubscriptionRequestSchema` → `walletSubscriptionSchema` | Empty body follows with alerts off; `alertsEnabled` can update the preference. URL wallet ID uses `idSchema`. |
 | `POST /push-tokens` | `pushTokenRegistrationSchema` | Session owner only; Android permission state travels with the registration. |
 | `POST /auth/verify` | `authVerifyRequestSchema` → `authVerifyResponseSchema` | App builds the SIWS input locally; API checks domain/URI/freshness/signature. No challenge round-trip. |
-| `GET /signals` | `getSignalsQuerySchema` → `signalPageSchema` | Public `all`, authenticated `following`; optional wallet filter; maximum page size 50. |
+| `GET /signals` | `getSignalsQuerySchema` → `signalPageSchema` | Public `all` (catalog-sourced only), authenticated `following`; optional wallet filter; maximum page size 50. |
 | `GET /signals/:id` | `signalDetailSchema` | Summary plus ordered score reasons and evidence snapshot. |
 | `POST /paper-positions/quote` | `createPaperQuoteRequestSchema` → `paperQuoteSchema` | Owner only; output mint comes from the server signal. |
 | `POST /paper-positions` | `createPaperPositionRequestSchema` → `paperPositionWithFillSchema` | Owner only; server checks quote ID, current freshness, signal, and size. |
