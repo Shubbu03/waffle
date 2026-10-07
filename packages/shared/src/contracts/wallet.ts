@@ -6,12 +6,35 @@ export const walletSchema = z.strictObject({
   address: solanaAddressSchema,
   label: z.string().trim().min(1).max(80),
   active: z.boolean(),
+  source: z.enum(["catalog", "user"]),
   inclusionReason: z.string().trim().min(1).max(500),
   recentSupportedActivityAt: timestampSchema.nullable(),
 });
 
 export const walletCatalogResponseSchema = z.strictObject({
   items: z.array(walletSchema).max(100),
+});
+
+/** Paste-a-wallet tracking request. Label is optional; the server derives one otherwise. */
+export const trackWalletRequestSchema = z.strictObject({
+  address: solanaAddressSchema,
+  label: z.string().trim().min(1).max(80).optional(),
+});
+
+/** IDs of catalog wallets the caller personally added to tracking. */
+export const trackedWalletsResponseSchema = z.strictObject({
+  items: z.array(idSchema).max(100),
+});
+
+export const trackWalletResponseSchema = z.strictObject({
+  wallet: walletSchema,
+  created: z.boolean(),
+  followed: z.boolean(),
+});
+
+/** `paused` is true when this untrack stopped the last tracker and paused the watcher subscription. */
+export const untrackWalletResponseSchema = z.strictObject({
+  paused: z.boolean(),
 });
 
 export const walletSubscriptionSchema = z
@@ -48,6 +71,7 @@ export const pushTokenRegistrationSchema = z.strictObject({
 export type Wallet = z.infer<typeof walletSchema>;
 export type WalletSubscription = z.infer<typeof walletSubscriptionSchema>;
 export type PutWalletSubscriptionRequest = z.infer<typeof putWalletSubscriptionRequestSchema>;
+export type TrackWalletRequest = z.infer<typeof trackWalletRequestSchema>;
 
 export const pushTokenResponseSchema = z.strictObject({
   id: idSchema,

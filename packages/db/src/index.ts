@@ -23,4 +23,12 @@ export type { SignalWriteResult } from "./signal-store.ts";
 export { waitForDatabase } from "./startup.ts";
 export { createSubscriptionStore } from "./subscription-store.ts";
 export { createTradeAttemptStore } from "./trade-attempt-store.ts";
+export {
+  type AddTrackedWalletResult,
+  createWalletTrackingStore,
+  MAX_ACTIVE_WALLETS,
+  MAX_TRACKED_PER_USER,
+  type RemoveTrackedWalletResult,
+  type WalletTrackingStore,
+} from "./wallet-tracking-store.ts";
 export { createWatcherDatabase, isRestrictedWatcherLogin } from "./watcher.ts";

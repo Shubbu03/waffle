@@ -9,6 +9,7 @@ const busy: CatalogWallet = {
   address: first.walletAddress,
   label: 'Busy wallet',
   active: true,
+  source: 'catalog',
   inclusionReason: 'Reviewed',
   recentSupportedActivityAt: null,
 }

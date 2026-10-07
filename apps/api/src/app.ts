@@ -18,6 +18,7 @@ import { createSubscriptionRoutes } from "./subscription-routes.ts";
 import { createTradeAttemptRoutes } from "./trade-attempt-routes.ts";
 import type { AppEnv } from "./types.ts";
 import { validateQuery } from "./validation.ts";
+import { createWalletTrackingRoutes } from "./wallet-tracking-routes.ts";
 
 export function createApp(
   database: { ping(): Promise<void>; reads?: ReadStore },
@@ -75,6 +76,7 @@ export function createApp(
     app.route("/auth", createAuthRoutes(auth.store, auth.uri));
     app.route("/push-tokens", createPushTokenRoutes(auth.store));
     app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
+    app.route("/wallets", createWalletTrackingRoutes(auth.store));
     app.route("/paper-positions", createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now));
     app.route("/trade-attempts", createTradeAttemptRoutes(auth.store, trade?.jupiter, trade?.now, logger));
   }
