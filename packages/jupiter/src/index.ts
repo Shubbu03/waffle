@@ -41,7 +41,8 @@ const orderResponseSchema = z.object({
   feeMint: solanaAddressSchema.nullish(),
   platformFee: z
     .object({
-      amount: rawAmountSchema,
+      /** Jupiter dropped this field from /order responses; derive from bps when absent. */
+      amount: rawAmountSchema.optional(),
       feeBps: z.number().int().min(0).max(10_000),
       feeMint: solanaAddressSchema,
     })
@@ -383,7 +384,11 @@ export class JupiterService {
         mint: response.feeMint ?? null,
         platform: response.platformFee
           ? {
-              amountRaw: response.platformFee.amount,
+              amountRaw:
+                response.platformFee.amount ??
+                (response.platformFee.feeMint === response.inputMint
+                  ? ((BigInt(response.inAmount) * BigInt(response.platformFee.feeBps)) / 10_000n).toString()
+                  : "0"),
               bps: response.platformFee.feeBps,
               mint: response.platformFee.feeMint,
             }
