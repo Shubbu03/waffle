@@ -20,6 +20,8 @@ import {
   signalPageSchema,
   signInInputSchema,
   solanaAddressSchema,
+  trackWalletRequestSchema,
+  trackWalletResponseSchema,
   tradeAttemptSchema,
   WRAPPED_SOL_MINT,
   walletSchema,
@@ -93,11 +95,23 @@ describe("on-chain primitives and catalog", () => {
       address,
       label: "Catalog whale",
       active: true,
+      source: "catalog",
       inclusionReason: "Recent supported activity",
       recentSupportedActivityAt: null,
     };
     expect(walletSchema.safeParse(wallet).success).toBe(true);
+    expect(walletSchema.safeParse({ ...wallet, source: "user" }).success).toBe(true);
+    expect(walletSchema.safeParse({ ...wallet, source: "random" }).success).toBe(false);
     expect(walletSchema.safeParse({ ...wallet, userId: otherId }).success).toBe(false);
+    expect(trackWalletRequestSchema.safeParse({ address }).success).toBe(true);
+    expect(trackWalletRequestSchema.safeParse({ address, label: "My whale" }).success).toBe(true);
+    expect(trackWalletRequestSchema.safeParse({ address, label: "x".repeat(81) }).success).toBe(false);
+    expect(trackWalletRequestSchema.safeParse({ address, ownerId: otherId }).success).toBe(false);
+    const tracked = { wallet, created: true, followed: true };
+    expect(trackWalletResponseSchema.safeParse(tracked).success).toBe(true);
+    expect(trackWalletResponseSchema.safeParse({ ...tracked, warning: "very-active" }).success).toBe(true);
+    expect(trackWalletResponseSchema.safeParse({ ...tracked, warning: "other" }).success).toBe(false);
+    expect(trackWalletResponseSchema.safeParse({ ...tracked, extra: true }).success).toBe(false);
     expect(putWalletSubscriptionRequestSchema.safeParse({}).success).toBe(true);
     expect(putWalletSubscriptionRequestSchema.safeParse({ alertsEnabled: true, userId: id }).success).toBe(false);
     expect(

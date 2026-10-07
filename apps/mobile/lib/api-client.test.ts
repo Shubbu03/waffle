@@ -90,6 +90,7 @@ describe('mobile API wire integration', () => {
       address: session.walletAddress,
       label: 'Tracked wallet',
       active: true,
+      source: 'catalog' as const,
       inclusionReason: 'Reviewed supported buys',
       recentSupportedActivityAt: null,
     }

@@ -20,6 +20,7 @@ describe("API environment", () => {
       DATABASE_URL: validUrl,
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
+      RPC_REQUESTS_PER_SECOND: 10,
     });
   });
 

@@ -12,12 +12,19 @@ export type WalletRow = CatalogWallet & {
   alertsEnabled: boolean
   alertsEnabledAt: string | null
   followDisabled: boolean
+  /** True when this user personally added the wallet to tracking (shows Untrack). */
+  trackedByMe: boolean
 }
 
 /** Join catalog with the owner's follows, retaining controls for removing paused follows. */
-export function mergeCatalog(wallets: CatalogWallet[], subscriptions: WalletSubscription[]): WalletRow[] {
+export function mergeCatalog(
+  wallets: CatalogWallet[],
+  subscriptions: WalletSubscription[],
+  trackedIds: string[] = [],
+): WalletRow[] {
   console.log(`[wallets-state] mergeCatalog: ${wallets.length} wallets, ${subscriptions.length} follows`)
   const byId = new Map(subscriptions.map((s) => [s.walletId, s]))
+  const tracked = new Set(trackedIds)
   return wallets.map((wallet) => {
     const sub = byId.get(wallet.id)
     return {
@@ -26,6 +33,7 @@ export function mergeCatalog(wallets: CatalogWallet[], subscriptions: WalletSubs
       alertsEnabled: sub?.alertsEnabled ?? false,
       alertsEnabledAt: sub?.alertsEnabledAt ?? null,
       followDisabled: !wallet.active && !sub,
+      trackedByMe: tracked.has(wallet.id),
     }
   })
 }

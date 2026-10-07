@@ -8,6 +8,7 @@ export type CatalogWallet = {
   address: string
   label: string
   active: boolean
+  source: 'catalog' | 'user'
   inclusionReason: string
   recentSupportedActivityAt: string | null
 }
@@ -32,6 +33,7 @@ function parseWallet(value: unknown): CatalogWallet {
     address: value.address,
     label: typeof value.label === 'string' ? value.label : '',
     active: value.active === true,
+    source: value.source === 'user' ? 'user' : 'catalog',
     inclusionReason: typeof value.inclusionReason === 'string' ? value.inclusionReason : '',
     recentSupportedActivityAt:
       typeof value.recentSupportedActivityAt === 'string' ? value.recentSupportedActivityAt : null,
@@ -91,4 +93,45 @@ export async function unfollowWallet(token: string, walletId: string): Promise<v
   console.log(`[wallets-api] unfollowWallet: ${walletId.slice(0, 8)}...`)
   await apiRequest(`/wallet-subscriptions/${walletId}`, { method: 'DELETE' }, token)
   console.log('[wallets-api] unfollowWallet: ok')
+}
+
+/** Paste-to-track a wallet address (bearer). Returns the tracked wallet + whether it was newly added. */
+export async function trackWallet(
+  token: string,
+  address: string,
+  label?: string,
+): Promise<{ wallet: CatalogWallet; created: boolean; followed: boolean; veryActive: boolean }> {
+  console.log('[wallets-api] trackWallet: submitting address')
+  const payload = (await apiRequest(
+    '/wallets',
+    { method: 'POST', data: label ? { address, label } : { address } },
+    token,
+  )) as { wallet?: unknown; created?: unknown; followed?: unknown; warning?: unknown }
+  if (!isRecord(payload) || payload.wallet === undefined) {
+    throw new ApiError(0, 'BAD_RESPONSE', 'Malformed track response')
+  }
+  console.log(`[wallets-api] trackWallet: ok created=${payload.created === true}`)
+  return {
+    wallet: parseWallet(payload.wallet),
+    created: payload.created === true,
+    followed: payload.followed === true,
+    veryActive: payload.warning === 'very-active',
+  }
+}
+
+/** Stop tracking a wallet you added (bearer). `paused` = watcher subscription stopped. */
+export async function untrackWallet(token: string, walletId: string): Promise<{ paused: boolean }> {
+  console.log(`[wallets-api] untrackWallet: ${walletId.slice(0, 8)}...`)
+  const payload = (await apiRequest(`/wallets/${walletId}`, { method: 'DELETE' }, token)) as { paused?: unknown }
+  console.log('[wallets-api] untrackWallet: ok')
+  return { paused: isRecord(payload) && payload.paused === true }
+}
+
+/** Wallet IDs the caller personally tracks (bearer). */
+export async function listMyTrackedWallets(token: string, signal?: AbortSignal): Promise<string[]> {
+  console.log('[wallets-api] listMyTrackedWallets: fetching')
+  const payload = (await apiRequest('/wallets/mine', { method: 'GET', signal }, token)) as { items?: unknown }
+  if (!Array.isArray(payload?.items)) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed tracked response')
+  console.log(`[wallets-api] listMyTrackedWallets: ${payload.items.length} tracked`)
+  return payload.items.filter((item): item is string => typeof item === 'string')
 }

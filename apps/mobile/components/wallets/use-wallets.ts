@@ -10,9 +10,12 @@ import { ApiError } from '@/lib/api-error'
 import { mergeCatalog } from '@/lib/wallet-subscription-state'
 import {
   followWallet,
+  listMyTrackedWallets,
   listSubscriptions,
   listWallets,
+  trackWallet,
   unfollowWallet,
+  untrackWallet,
   type WalletSubscription,
 } from '@/lib/wallets-api'
 
@@ -103,10 +106,69 @@ export function useAlertToggle() {
   })
 }
 
-/** Rows for the screen: public catalog joined with the owner's follows. */
+/** Wallet IDs this user personally tracks — drives the Custom badge and Untrack. */
+export function useMyTrackedWallets() {
+  const { session, serverLinked } = useAuth()
+  const token = session?.accessToken ?? ''
+  console.log(`[wallets-hooks] useMyTrackedWallets: ${token ? 'enabled' : 'disabled (signed out)'}`)
+  return useQuery({
+    queryKey: ['wallets-mine', session?.userId],
+    queryFn: ({ signal }): Promise<string[]> => listMyTrackedWallets(token, signal),
+    enabled: token !== '' && serverLinked,
+    staleTime: 30_000,
+  })
+}
+
+function useInvalidateTracking() {
+  const queryClient = useQueryClient()
+  return () => {
+    console.log('[wallets-hooks] invalidating tracking + catalog')
+    void queryClient.invalidateQueries({ queryKey: ['wallets-mine'] })
+    void queryClient.invalidateQueries({ queryKey: ['wallet-subscriptions'] })
+    void queryClient.invalidateQueries({ queryKey: ['wallets'] })
+  }
+}
+
+export function useTrackWallet() {
+  const { session, serverLinked } = useAuth()
+  const invalidate = useInvalidateTracking()
+  return useMutation({
+    mutationFn: async ({ address, label }: { address: string; label?: string }) => {
+      if (!session?.accessToken || !serverLinked) throw new Error('Sign in with the API reachable to track wallets.')
+      return trackWallet(session.accessToken, address, label)
+    },
+    onSuccess: (result) => {
+      console.log(`[wallets-hooks] track ok: ${result.wallet.id.slice(0, 8)}... created=${result.created}`)
+      invalidate()
+    },
+    onError: (error) => {
+      console.log(
+        `[wallets-hooks] track failed: ${error instanceof ApiError ? `${error.status}/${error.code}` : 'network'}`,
+      )
+    },
+  })
+}
+
+export function useUntrackWallet() {
+  const { session, serverLinked } = useAuth()
+  const invalidate = useInvalidateTracking()
+  return useMutation({
+    mutationFn: async (walletId: string) => {
+      if (!session?.accessToken || !serverLinked) throw new Error('Sign in with the API reachable to untrack wallets.')
+      return untrackWallet(session.accessToken, walletId)
+    },
+    onSuccess: (result, walletId) => {
+      console.log(`[wallets-hooks] untrack ok: ${walletId.slice(0, 8)}... paused=${result.paused}`)
+      invalidate()
+    },
+  })
+}
+
+/** Rows for the screen: public catalog joined with the owner's follows and tracked wallets. */
 export function useWalletRows() {
   const catalog = useCatalogWallets()
   const subscriptions = useWalletSubscriptions()
-  const rows = catalog.data ? mergeCatalog(catalog.data, subscriptions.data ?? []) : []
-  return { rows, catalog, subscriptions }
+  const mine = useMyTrackedWallets()
+  const rows = catalog.data ? mergeCatalog(catalog.data, subscriptions.data ?? [], mine.data ?? []) : []
+  return { rows, catalog, subscriptions, mine }
 }

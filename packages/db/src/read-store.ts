@@ -45,6 +45,7 @@ export function createReadStore(db: DatabaseExecutor) {
           address: watchedWallets.address,
           label: watchedWallets.label,
           active: watchedWallets.active,
+          source: watchedWallets.source,
           inclusionReason: watchedWallets.inclusionReason,
           recentSupportedActivityAt: watchedWallets.recentSupportedActivityAt,
         })
@@ -71,6 +72,8 @@ export function createReadStore(db: DatabaseExecutor) {
           and(
             input.cursor ? compare(signalEvents.id, BigInt(input.cursor)) : undefined,
             input.walletId ? eq(signals.walletId, input.walletId) : undefined,
+            // The public All feed stays curated: user-added wallets surface only via Following.
+            input.view === "all" ? eq(watchedWallets.source, "catalog") : undefined,
             input.view === "following" && ownerId
               ? exists(
                   db

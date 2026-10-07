@@ -20,11 +20,16 @@ export const watchedWallets = pgTable(
     address: varchar("address", { length: 44 }).notNull(),
     label: varchar("label", { length: 80 }).notNull(),
     active: boolean("active").default(true).notNull(),
+    /** 'catalog' = curated seed; 'user' = added by a user for personal tracking. */
+    source: varchar("source", { length: 16 }).default("catalog").notNull(),
     inclusionReason: text("inclusion_reason").notNull(),
     recentSupportedActivityAt: timestamp("recent_supported_activity_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (table) => [uniqueIndex("watched_wallets_address_unique").on(table.address)],
+  (table) => [
+    uniqueIndex("watched_wallets_address_unique").on(table.address),
+    check("watched_wallets_source_check", sql`${table.source} IN ('catalog', 'user')`),
+  ],
 );
 
 export const users = pgTable(
@@ -35,6 +40,24 @@ export const users = pgTable(
     createdAt: createdAt(),
   },
   (table) => [uniqueIndex("users_wallet_address_unique").on(table.walletAddress)],
+);
+
+/** Which users added a wallet to tracking. Caps per user and decides when to pause an unused wallet. */
+export const userTrackedWallets = pgTable(
+  "user_tracked_wallets",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    watchedWalletId: uuid("watched_wallet_id")
+      .notNull()
+      .references(() => watchedWallets.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.watchedWalletId] }),
+    index("user_tracked_wallets_wallet_idx").on(table.watchedWalletId),
+  ],
 );
 
 export const userWalletSubscriptions = pgTable(

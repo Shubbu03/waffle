@@ -8,6 +8,7 @@ import { createFcm } from "./fcm.ts";
 import { createJupiterServiceFromEnv } from "./jupiter.ts";
 import { LiveDelivery } from "./live-delivery.ts";
 import { PushDelivery } from "./push-delivery.ts";
+import { createWalletActivityValidator } from "./wallet-activity.ts";
 
 config({ path: new URL("../.env", import.meta.url), quiet: true });
 const logger = createLogger({ service: "api", level: process.env.LOG_LEVEL });
@@ -40,9 +41,12 @@ async function main() {
     ? new LiveDelivery({ auth: database.auth, reads: database.live, dispatch: delivery.live, logger })
     : undefined;
   const push = delivery && fcm ? new PushDelivery(delivery.push, fcm, logger) : undefined;
+  const activity = env.HELIUS_RPC_URL
+    ? createWalletActivityValidator({ url: env.HELIUS_RPC_URL, requestsPerSecond: env.RPC_REQUESTS_PER_SECOND })
+    : undefined;
   const app = createApp(
     database,
-    { store: database.auth, uri: env.AUTH_URI },
+    { store: database.auth, uri: env.AUTH_URI, ...(activity ? { activity } : {}) },
     jupiter ? { jupiter } : undefined,
     live,
     push,
@@ -73,6 +77,7 @@ async function main() {
   push?.start();
   if (!push) logger.info("api.push.disabled", { reason: "missing-fcm-or-delivery-configuration" });
   if (!live) logger.info("api.live.disabled", { reason: "missing-delivery-configuration" });
+  if (!activity) logger.info("api.wallet-activity.disabled", { reason: "missing-helius-rpc-url" });
   logger.info("api.started", { port: env.API_PORT });
 
   let closing = false;
