@@ -28,6 +28,7 @@ const row = (override: Partial<WalletRow> = {}): WalletRow => ({
   alertsEnabled: false,
   alertsEnabledAt: null,
   followDisabled: false,
+  trackedByMe: false,
   ...override,
 })
 
@@ -37,6 +38,17 @@ describe('mergeCatalog', () => {
     expect(merged?.followed).toBe(false)
     expect(merged?.alertsEnabled).toBe(false)
     expect(merged?.followDisabled).toBe(false)
+    expect(merged?.trackedByMe).toBe(false)
+  })
+
+  test('marks only wallets the user personally tracks', () => {
+    const [a, b] = mergeCatalog(
+      [wallet({ id: 'wallet-1' }), wallet({ id: 'wallet-2', source: 'user' })],
+      [],
+      ['wallet-2'],
+    )
+    expect(a?.trackedByMe).toBe(false)
+    expect(b?.trackedByMe).toBe(true)
   })
 
   test('joins follows by wallet id', () => {
