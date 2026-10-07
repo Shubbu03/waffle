@@ -30,6 +30,7 @@ export type LiveSocket = {
 }
 type Dependencies = {
   view: SignalView
+  walletId?: string
   token?: string
   subscriptionKey: string | null
   networkEnabled: boolean
@@ -104,6 +105,7 @@ export class SignalFeed {
       if (!this.active || generation !== this.generation) return
       if (
         cached &&
+        (!this.dependencies.walletId || cached.items.every((item) => item.walletId === this.dependencies.walletId)) &&
         (this.dependencies.subscriptionKey === null || cached.subscriptionKey === this.dependencies.subscriptionKey)
       ) {
         this.appliedCursor = cached.appliedCursor
@@ -155,12 +157,15 @@ export class SignalFeed {
     try {
       const page = await this.dependencies.list(undefined, this.abort.signal)
       if (!this.active || generation !== this.generation) return
-      this.nextCursor = page.nextCursor
+      // Refreshing the newest page must not undo progress through older history.
+      const preserveHistory =
+        this.nextCursor !== null && page.nextCursor !== null && BigInt(this.nextCursor) <= BigInt(page.nextCursor)
+      if (!preserveHistory) this.nextCursor = page.nextCursor
       this.set({
         items: mergeSignals(this.state.items, page.items),
         status: 'ready',
         error: null,
-        hasMore: page.hasMore,
+        hasMore: preserveHistory ? this.state.hasMore : page.hasMore,
         fetchedAt: Date.now(),
       })
       await this.persist()
@@ -288,6 +293,13 @@ export class SignalFeed {
             return
           }
           if (this.appliedCursor && BigInt(event.eventId) <= BigInt(this.appliedCursor)) return
+          // The live stream is scoped by view, while REST history is scoped by wallet.
+          // Save unrelated events' cursors too, so reconnect does not replay them forever.
+          if (this.dependencies.walletId && event.walletId !== this.dependencies.walletId) {
+            await this.persist(event.eventId)
+            if (version === this.socketGeneration && this.active) this.appliedCursor = event.eventId
+            return
+          }
           const detail = await this.dependencies.detail(event.signalId, this.abort.signal)
           if (version !== this.socketGeneration || !this.active) return
           if (detail.id !== event.signalId || detail.eventId !== event.eventId || detail.walletId !== event.walletId) {

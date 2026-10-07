@@ -66,7 +66,7 @@ export function parseCachedDetail(raw: string | null): CachedDetail | null {
     return null
   }
 }
-export function feedCacheKey(api: string, view: 'all' | 'following', owner: string | null): string {
+export function feedCacheKey(api: string, view: 'all' | 'following', owner: string | null, walletId?: string): string {
   if (view === 'following' && !owner) throw new Error('Following cache requires an owner.')
-  return `waffle.signals.v1:${encodeURIComponent(api)}:${view}:${view === 'all' ? 'public' : owner}`
+  return `waffle.signals.v1:${encodeURIComponent(api)}:${view}:${view === 'all' ? 'public' : owner}${walletId ? `:wallet:${encodeURIComponent(walletId)}` : ''}`
 }

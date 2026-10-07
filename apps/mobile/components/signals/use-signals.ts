@@ -12,7 +12,7 @@ import type { SignalView } from '@/lib/signal-state'
 import { loadDetail, loadFeed, saveDetail, saveFeed } from '@/lib/signal-storage'
 import { getSignal, listSignals } from '@/lib/signals-api'
 
-export function useSignalFeed(view: SignalView) {
+export function useSignalFeed(view: SignalView, walletId?: string) {
   const { session, serverLinked } = useAuth()
   const subscriptions = useWalletSubscriptions()
   const catalog = useCatalogWallets()
@@ -25,15 +25,23 @@ export function useSignalFeed(view: SignalView) {
       : null
   const networkEnabled = view === 'all' || (serverLinked && subscriptions.isSuccess)
   const controller = useMemo(() => {
-    const key = view === 'following' && !owner ? null : feedCacheKey(AppConfig.apiUrl, view, owner)
+    const key = view === 'following' && !owner ? null : feedCacheKey(AppConfig.apiUrl, view, owner, walletId)
     return new SignalFeed({
       view,
+      walletId,
       token,
       subscriptionKey,
       networkEnabled: networkEnabled && key !== null,
-      load: () => (key ? loadFeed(key) : Promise.resolve(null)),
+      load: async () => {
+        if (!key) return null
+        const cached = await loadFeed(key)
+        if (cached || !walletId) return cached
+        // Preserve already-saved browsing when opening a wallet offline for the first time.
+        const shared = await loadFeed(feedCacheKey(AppConfig.apiUrl, view, owner))
+        return shared ? { ...shared, items: shared.items.filter((item) => item.walletId === walletId) } : null
+      },
       save: (cache) => (key ? saveFeed(key, cache) : Promise.resolve()),
-      list: (cursor, signal) => listSignals({ view, cursor }, token, signal),
+      list: (cursor, signal) => listSignals({ view, walletId, cursor }, token, signal),
       detail: async (id, signal) => {
         const detail = await getSignal(id, signal)
         await saveDetail({ signal: detail, fetchedAt: Date.now() }).catch(() => {})
@@ -61,7 +69,7 @@ export function useSignalFeed(view: SignalView) {
         if (token) reportUnauthorized(token)
       },
     })
-  }, [view, token, owner, subscriptionKey, networkEnabled])
+  }, [view, walletId, token, owner, subscriptionKey, networkEnabled])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   useEffect(() => {
     if (!focused) return
@@ -82,12 +90,20 @@ export function useSignalFeed(view: SignalView) {
   return {
     ...state,
     catalog: catalog.data ?? [],
-    refresh: () => controller.refresh(),
+    catalogLoading: catalog.isPending,
+    catalogError: catalog.isError,
+    subscribedWalletIds: subscriptions.data?.map((item) => item.walletId) ?? null,
+    subscriptionsLoading: serverLinked && subscriptions.isPending,
+    refresh: async () => {
+      await Promise.allSettled([
+        controller.refresh(),
+        catalog.refetch(),
+        ...(view === 'following' && serverLinked ? [subscriptions.refetch()] : []),
+      ])
+    },
     loadMore: () => controller.loadMore(),
     followingError:
-      view === 'following' && subscriptions.isError
-        ? 'Following preferences could not be loaded. Retry from Wallets.'
-        : null,
+      view === 'following' && subscriptions.isError ? 'Unable to load followed wallets. Pull down to retry.' : null,
     waitingForSession: view === 'following' && !serverLinked,
   }
 }

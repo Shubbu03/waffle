@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
-import { SignalCard } from '@/components/signals/signal-card'
+import { SignalWalletCard } from '@/components/signals/signal-wallet-card'
 import { useSignalClock, useSignalFeed } from '@/components/signals/use-signals'
 import { AppButton } from '@/components/ui/app-button'
 import { AppCard } from '@/components/ui/app-card'
@@ -13,6 +13,7 @@ import { ConnectionState } from '@/components/ui/connection-state'
 import { ScreenHeading } from '@/components/ui/screen-heading'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import type { SignalView } from '@/lib/signal-state'
+import { signalWallets } from '@/lib/signal-wallets'
 
 export function SignalFeedScreen() {
   const [view, setView] = useState<SignalView>('all')
@@ -26,20 +27,20 @@ export function SignalFeedScreen() {
   const muted = useThemeColor({}, 'muted')
   const offline =
     feed.status === 'cached' || feed.connection === 'paused' || !feed.fetchedAt || now - feed.fetchedAt > 45_000
-  const labels = new Map(feed.catalog.map((wallet) => [wallet.id, wallet.label]))
+  const wallets = signalWallets(feed.catalog, feed.items, view, feed.subscribedWalletIds)
   const needsSignIn = view === 'following' && !session
   return (
     <AppView style={{ flex: 1, gap: 0 }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <FlatList
-          data={needsSignIn ? [] : feed.items}
+          data={needsSignIn ? [] : wallets}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 28, gap: 12, flexGrow: 1 }}
           refreshing={feed.refreshing}
           onRefresh={() => void feed.refresh()}
           renderItem={({ item }) => (
             <View style={{ paddingHorizontal: 20 }}>
-              <SignalCard signal={item} label={labels.get(item.walletId)} offline={offline} now={now} />
+              <SignalWalletCard wallet={item} view={view} now={now} />
             </View>
           )}
           ListHeaderComponent={
@@ -70,7 +71,7 @@ export function SignalFeedScreen() {
                   ))}
                 </View>
                 {!needsSignIn && feed.items.length > 0 && offline ? (
-                  <AppText style={{ color: muted, fontSize: 12 }}>Offline · showing saved signals</AppText>
+                  <AppText style={{ color: muted, fontSize: 12 }}>Offline · activity may be out of date</AppText>
                 ) : null}
                 {feed.waitingForSession && session ? (
                   <AppCard>
@@ -87,9 +88,9 @@ export function SignalFeedScreen() {
                     </AppText>
                   </AppCard>
                 ) : null}
-                {!needsSignIn && feed.items.length && (feed.error || feed.followingError) ? (
+                {!needsSignIn && wallets.length > 0 && (feed.error || feed.followingError || feed.catalogError) ? (
                   <ConnectionState
-                    message={feed.error ?? feed.followingError ?? undefined}
+                    message={feed.followingError ?? feed.error ?? 'Unable to refresh wallets.'}
                     retry={() => void feed.refresh()}
                     busy={feed.refreshing}
                   />
@@ -101,11 +102,9 @@ export function SignalFeedScreen() {
             <View style={{ paddingHorizontal: 20, gap: 12 }}>
               {needsSignIn ? (
                 <AppCard>
-                  <AppText type="subtitle">Your wallets. Your feed.</AppText>
+                  <AppText type="subtitle">Followed wallets</AppText>
                   <AppText style={{ color: muted }}>
-                    {status === 'loading'
-                      ? 'Restoring your session…'
-                      : 'Sign in and follow catalog wallets to see their buys together.'}
+                    {status === 'loading' ? 'Restoring your session…' : 'Sign in to see the wallets you follow.'}
                   </AppText>
                   <AppButton
                     title="Sign in with wallet"
@@ -113,31 +112,33 @@ export function SignalFeedScreen() {
                     disabled={status === 'loading'}
                   />
                 </AppCard>
-              ) : feed.status === 'loading' ? (
+              ) : feed.catalogLoading ||
+                feed.status === 'loading' ||
+                (view === 'following' && feed.subscriptionsLoading) ? (
                 <AppCard>
                   <ActivityIndicator color={ink} />
-                  <AppText style={{ color: muted, textAlign: 'center' }}>Loading signals…</AppText>
+                  <AppText style={{ color: muted, textAlign: 'center' }}>Loading wallets…</AppText>
                 </AppCard>
-              ) : feed.status === 'error' ? (
+              ) : feed.catalogError || feed.status === 'error' || feed.followingError ? (
                 <ConnectionState
-                  title="Signals are out of reach"
-                  message={feed.error ?? undefined}
+                  title="Unable to load wallets"
+                  message={feed.followingError ?? feed.error ?? 'Unable to load wallets.'}
                   retry={() => void feed.refresh()}
                   busy={feed.refreshing}
                 />
               ) : (
                 <AppCard>
                   <AppText type="subtitle">
-                    {view === 'following' ? 'Build your watchlist' : 'Waiting for the next move'}
+                    {view === 'following' ? 'No followed wallets' : 'No tracked wallets yet'}
                   </AppText>
                   <AppText style={{ color: muted }}>
                     {view === 'following'
-                      ? 'Choose wallets from the catalog. Their supported buys will appear here.'
-                      : 'The watcher publishes supported wallet buys here with their scores and checks.'}
+                      ? 'Follow a wallet to see its signals here.'
+                      : 'Tracked wallets will appear here when added to the catalog.'}
                   </AppText>
                   <AppButton title="Explore wallets" onPress={() => router.push('/wallets')} />
                   <AppButton
-                    title="Refresh signals"
+                    title="Refresh"
                     variant="secondary"
                     onPress={() => void feed.refresh()}
                     busy={feed.refreshing}
@@ -145,19 +146,6 @@ export function SignalFeedScreen() {
                 </AppCard>
               )}
             </View>
-          }
-          ListFooterComponent={
-            feed.hasMore && !needsSignIn ? (
-              <View style={{ paddingHorizontal: 20 }}>
-                <AppButton
-                  title={offline ? 'Reconnect to load older signals' : 'Load older signals'}
-                  busy={feed.loadingMore}
-                  disabled={offline}
-                  variant="secondary"
-                  onPress={() => void feed.loadMore()}
-                />
-              </View>
-            ) : null
           }
         />
       </SafeAreaView>

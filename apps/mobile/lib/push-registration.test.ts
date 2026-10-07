@@ -14,11 +14,16 @@ function setup() {
   let disk: PushRegistration | null = null
   let token = 'native-token-1'
   let permission: PushPermission = 'granted'
+  let enabled = true
   const events: string[] = []
   const permissions: PushPermission[] = []
   const dependencies = {
     apiUrl: 'https://api.example.com',
     load: async () => disk,
+    loadEnabled: async () => enabled,
+    saveEnabled: async (value: boolean) => {
+      enabled = value
+    },
     save: async (record: PushRegistration) => {
       disk = record
     },
@@ -44,6 +49,7 @@ function setup() {
   controller.activate(owner)
   return {
     controller,
+    enabled: () => enabled,
     dependencies,
     events,
     permissions,
@@ -153,5 +159,101 @@ describe('device registration lifecycle', () => {
     await expect(env.controller.synchronize(owner)).rejects.toThrow('secure storage failed')
     expect(env.events.at(-2)).toMatch(/^remove:/)
     expect(env.events.at(-1)).toBe('rotate')
+  })
+})
+
+describe('device notification preference', () => {
+  test('disabling persists across restart, removes registration, and never registers while off', async () => {
+    const env = setup()
+    await env.controller.synchronize(owner)
+    const id = env.disk()?.id
+    await env.controller.setEnabled(false)
+    expect(env.enabled()).toBe(false)
+    expect(env.controller.canDeliver(owner.userId)).toBe(false)
+    expect(await env.controller.synchronize(owner, true)).toBe('granted')
+    expect(env.events.slice(-2)).toEqual([`remove:${id}`, 'rotate'])
+    expect(env.disk()).toBeNull()
+    const before = [...env.events]
+    const restarted = new PushRegistrationController(env.dependencies)
+    restarted.activate(owner)
+    expect(await restarted.synchronize(owner, true)).toBe('granted')
+    expect(restarted.canDeliver(owner.userId)).toBe(false)
+    expect(env.events).toEqual(before)
+    await restarted.setEnabled(true)
+    expect(await restarted.synchronize(owner)).toBe('granted')
+    expect(env.disk()?.userId).toBe(owner.userId)
+    expect(restarted.canDeliver(owner.userId)).toBe(true)
+    expect(env.events.filter((event) => event === 'register')).toHaveLength(2)
+  })
+
+  test('off stops delivery immediately and cleans a registration reply that was already in flight', async () => {
+    const env = setup()
+    const pending = deferred<{ id: string }>()
+    const started = deferred<void>()
+    env.dependencies.register = async () => {
+      started.resolve()
+      return pending.promise
+    }
+    const registration = env.controller.synchronize(owner)
+    await started.promise
+    const disable = env.controller.setEnabled(false)
+    expect(env.controller.canDeliver(owner.userId)).toBe(false)
+    pending.resolve({ id: 'late-id' })
+    expect(await registration).toBeNull()
+    await disable
+    await env.controller.synchronize(owner)
+    expect(env.events.slice(-2)).toEqual(['remove:late-id', 'rotate'])
+    expect(env.disk()).toBeNull()
+  })
+
+  test('offline disabling still rotates the native token, and enabling reports actual OS denial', async () => {
+    const env = setup()
+    await env.controller.synchronize(owner)
+    env.dependencies.remove = async () => {
+      throw new Error('API offline')
+    }
+    await env.controller.setEnabled(false)
+    await env.controller.synchronize(owner)
+    expect(env.disk()).toBeNull()
+    env.deny()
+    await env.controller.setEnabled(true)
+    expect(await env.controller.synchronize(owner, true)).toBe('denied')
+    expect(env.permissions.at(-1)).toBe('denied')
+  })
+
+  test('failed native cleanup remains blocked and is retried before alerts can resume', async () => {
+    const env = setup()
+    await env.controller.synchronize(owner)
+    await env.controller.setEnabled(false)
+    const rotate = env.dependencies.rotate
+    env.dependencies.rotate = async () => {
+      throw new Error('Native unavailable')
+    }
+    await expect(env.controller.synchronize(owner)).rejects.toThrow('Native unavailable')
+    expect(env.controller.canDeliver(owner.userId)).toBe(false)
+    expect(env.disk()?.rotationRequired).toBe(true)
+    const attempts = env.permissions.length
+    await env.controller.setEnabled(true)
+    await expect(env.controller.synchronize(owner)).rejects.toThrow('Native unavailable')
+    expect(env.permissions).toHaveLength(attempts)
+    env.dependencies.rotate = rotate
+    await env.controller.synchronize(owner)
+    expect(env.disk()?.rotationRequired).toBeUndefined()
+  })
+
+  test('disabled startup never prompts for permission or obtains a token', async () => {
+    const env = setup()
+    const prompts: boolean[] = []
+    env.dependencies.permission = async (request = false) => {
+      prompts.push(request)
+      return 'granted'
+    }
+    env.dependencies.getToken = async () => {
+      throw new Error('Unexpected token request')
+    }
+    await env.controller.setEnabled(false)
+    expect(await env.controller.synchronize(owner, true)).toBe('granted')
+    expect(prompts).toEqual([false])
+    expect(env.events).toEqual([])
   })
 })

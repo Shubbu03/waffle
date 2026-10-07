@@ -64,6 +64,7 @@ function RootNavigator() {
       <Stack.Screen name="wallets" />
       <Stack.Screen name="account" />
       <Stack.Screen name="signals/[id]" />
+      <Stack.Screen name="signals/wallet/[walletId]" />
       <Stack.Screen name="paper/[id]" />
       <Stack.Screen name="paper/positions/index" />
       <Stack.Screen name="paper/positions/[id]" />

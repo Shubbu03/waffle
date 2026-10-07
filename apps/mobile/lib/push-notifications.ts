@@ -2,7 +2,7 @@ import notifee, { AndroidImportance } from '@notifee/react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { idSchema, type SignalDetail } from '@waffle/shared'
 import { AppConfig } from '@/constants/app-config'
-import { pushDevice, readPushPermission, readPushRegistration, SIGNAL_CHANNEL } from './push-device'
+import { pushDevice, readPushEnabled, readPushPermission, readPushRegistration, SIGNAL_CHANNEL } from './push-device'
 import { receiveSignalPush, type SeenPush } from './push-receiver'
 import { parseSignalTap, type SignalPush } from './push-tap'
 import { isSessionExpired } from './session'
@@ -94,6 +94,7 @@ export async function receivePush(
       session.userId,
       async () =>
         pushDevice.canDeliver(session.userId) &&
+        (await readPushEnabled()) &&
         !isSessionExpired(session.expiresAt) &&
         (await readPushPermission()) === 'granted',
       async (signal, push) => {

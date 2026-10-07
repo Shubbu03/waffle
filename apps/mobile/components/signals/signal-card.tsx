@@ -11,11 +11,13 @@ export function SignalCard({
   label,
   offline,
   now,
+  showWallet = true,
 }: {
   signal: SignalSummary
   label?: string
   offline: boolean
   now: number
+  showWallet?: boolean
 }) {
   const border = useThemeColor({}, 'border')
   const surface = useThemeColor({}, 'surface')
@@ -36,9 +38,11 @@ export function SignalCard({
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <View style={{ flex: 1, gap: 2 }}>
-            <AppText type="defaultSemiBold" numberOfLines={1}>
-              {label ?? ellipsify(signal.walletAddress, 6)}
-            </AppText>
+            {showWallet ? (
+              <AppText type="defaultSemiBold" numberOfLines={1}>
+                {label ?? ellipsify(signal.walletAddress, 6)}
+              </AppText>
+            ) : null}
             <AppText style={{ opacity: 0.7, fontSize: 13 }}>
               {ageLabel(signal.observedAt, now)} ·{' '}
               {signal.sourceProgramId === PUMP_SWAP_PROGRAM_ID ? 'PumpSwap' : 'Unknown source'}

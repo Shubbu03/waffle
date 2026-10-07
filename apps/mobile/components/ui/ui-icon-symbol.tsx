@@ -16,6 +16,8 @@ const MAPPING = {
   'waveform.path': 'show-chart',
   'person.2.fill': 'group',
   'chevron.down': 'expand-more',
+  'chevron.right': 'chevron-right',
+  checkmark: 'check',
   'doc.on.doc': 'content-copy',
   'person.crop.circle': 'account-circle',
   'chart.bar': 'bar-chart',

@@ -33,3 +33,15 @@ test('detail cache validates the complete score snapshot', () => {
   expect(parseCachedDetail(JSON.stringify(cache))).toEqual(cache)
   expect(parseCachedDetail(JSON.stringify({ ...cache, signal: { ...cache.signal, score: 100 } }))).toBeNull()
 })
+
+test('wallet history caches are isolated by wallet, view, account, and API', () => {
+  const keys = [
+    feedCacheKey('https://api.example', 'all', null),
+    feedCacheKey('https://api.example', 'all', null, 'wallet-one'),
+    feedCacheKey('https://api.example', 'all', null, 'wallet-two'),
+    feedCacheKey('https://api.example', 'following', 'owner-one', 'wallet-one'),
+    feedCacheKey('https://api.example', 'following', 'owner-two', 'wallet-one'),
+    feedCacheKey('https://other.example', 'following', 'owner-one', 'wallet-one'),
+  ]
+  expect(new Set(keys).size).toBe(keys.length)
+})

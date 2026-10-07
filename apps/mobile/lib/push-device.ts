@@ -9,7 +9,12 @@ import { deletePushToken, PUSH_ID_KEY, registerPushToken } from './push-tokens-a
 import { loadSession } from './session-store'
 
 const REGISTRATION_KEY = 'waffle.push-registration.v2'
+const ENABLED_KEY = 'waffle.notifications-enabled.v1'
 export const SIGNAL_CHANNEL = 'waffle-signals'
+
+export async function readPushEnabled(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(ENABLED_KEY)) !== 'false'
+}
 
 export async function readPushRegistration(): Promise<PushRegistration | null> {
   const raw = await SecureStore.getItemAsync(REGISTRATION_KEY)
@@ -44,6 +49,8 @@ export async function readPushPermission(request = false): Promise<PushPermissio
 export const pushDevice = new PushRegistrationController({
   apiUrl: AppConfig.apiUrl,
   load: readPushRegistration,
+  loadEnabled: readPushEnabled,
+  saveEnabled: (enabled) => SecureStore.setItemAsync(ENABLED_KEY, String(enabled)),
   save: async (record) => SecureStore.setItemAsync(REGISTRATION_KEY, JSON.stringify(record)),
   clear: async () => {
     await SecureStore.deleteItemAsync(REGISTRATION_KEY)

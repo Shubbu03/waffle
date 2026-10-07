@@ -100,6 +100,8 @@ describe('push receipt', () => {
       return env.signal
     }
     const queue = new PushRegistrationController({
+      loadEnabled: async () => true,
+      saveEnabled: async () => {},
       apiUrl: '',
       load: async () => null,
       save: async () => {},

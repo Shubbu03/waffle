@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { AppConfig } from '../constants/app-config'
+import { summaryFixture } from '../test-support/signal-fixture'
 import {
   ApiError,
   apiRequest,
@@ -9,6 +10,7 @@ import {
   postLogout,
   postVerify,
 } from './api-client'
+import { listSignals } from './signals-api'
 import { listWallets } from './wallets-api'
 
 const originalApi = AppConfig.apiUrl
@@ -40,6 +42,48 @@ const input = {
 }
 
 describe('mobile API wire integration', () => {
+  test('wallet history sends wallet and cursor filters in both views, with bearer only for Following', async () => {
+    const signal = summaryFixture('12')
+    const requests: { view: string | null; wallet: string | null; cursor: string | null; auth: string | null }[] = []
+    api((request) => {
+      const url = new URL(request.url)
+      requests.push({
+        view: url.searchParams.get('view'),
+        wallet: url.searchParams.get('walletId'),
+        cursor: url.searchParams.get('cursor'),
+        auth: request.headers.get('authorization'),
+      })
+      return Response.json({
+        view: url.searchParams.get('view'),
+        direction: 'before',
+        items: [signal],
+        nextCursor: '12',
+        hasMore: false,
+      })
+    })
+    for (const view of ['all', 'following'] as const)
+      expect((await listSignals({ view, walletId: signal.walletId, cursor: '13' }, 'a'.repeat(43))).items).toEqual([
+        signal,
+      ])
+    expect(requests).toEqual([
+      { view: 'all', wallet: signal.walletId, cursor: '13', auth: null },
+      { view: 'following', wallet: signal.walletId, cursor: '13', auth: `Bearer ${'a'.repeat(43)}` },
+    ])
+  })
+  test('wallet history rejects mixed-wallet responses and invalid wallet IDs before any request', async () => {
+    const signal = summaryFixture()
+    let requests = 0
+    api(() => {
+      requests++
+      return Response.json({ view: 'all', direction: 'before', items: [signal], nextCursor: null, hasMore: false })
+    })
+    await expect(listSignals({ view: 'all', walletId: 'bad' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' })
+    expect(requests).toBe(0)
+    await expect(listSignals({ view: 'all', walletId: crypto.randomUUID() })).rejects.toMatchObject({
+      code: 'BAD_RESPONSE',
+    })
+    expect(requests).toBe(1)
+  })
   test('catalog retries can recover from a server failure and cancelled reads do not send another request', async () => {
     const wallet = {
       id: session.userId,

@@ -363,3 +363,91 @@ describe('signal REST/live/cache integration', () => {
     expect(env.controller.getSnapshot().historyGap).toBe(true)
   })
 })
+
+describe('wallet signal history', () => {
+  test.each(['all', 'following'] as const)(
+    '%s: unrelated live events advance saved cursors without loading details or leaking into wallet history',
+    async (view) => {
+      const own = signalFixture('2')
+      const other = { ...signalFixture('1'), walletId: crypto.randomUUID() }
+      const env = setup({ view, token: 'a'.repeat(43), walletId: own.walletId, detail: async () => own })
+      env.page.view = view
+      env.dependencies.detail = async (id) => {
+        env.details.push(id)
+        return own
+      }
+      await env.controller.start()
+      env.current().open()
+      env.current().emit({ ...event(other), view })
+      await eventually(() => env.cache()?.appliedCursor === '1')
+      expect(env.details).toEqual([])
+      expect(env.controller.getSnapshot().items).toEqual([])
+      env.current().emit({ ...event(own), view })
+      await eventually(() => env.cache()?.appliedCursor === '2')
+      expect(env.details).toEqual([own.id])
+      expect(env.controller.getSnapshot().items.map((item) => item.id)).toEqual([own.id])
+      env.current().onclose?.()
+      await eventually(() => env.sockets.length === 2)
+      env.current().open()
+      expect(env.current().sent[0]).toMatchObject({ cursor: '2' })
+    },
+  )
+
+  test('unrelated events cannot acknowledge past a failed cache write', async () => {
+    const env = setup({ walletId: summaryFixture().walletId })
+    const other = { ...signalFixture('1'), walletId: crypto.randomUUID() }
+    await env.controller.start()
+    env.dependencies.save = async () => {
+      throw new Error('Storage unavailable')
+    }
+    env.current().emit(event(other))
+    await eventually(() => env.sockets.length === 2)
+    env.current().open()
+    expect(env.current().sent[0]).toMatchObject({ cursor: null })
+    expect(env.details).toEqual([])
+  })
+
+  test('wallet history pagination keeps every loaded transaction past the first page', async () => {
+    const items = Array.from({ length: 60 }, (_, index) => summaryFixture(String(60 - index)))
+    const requests: (string | undefined)[] = []
+    const env = setup({
+      walletId: items[0]?.walletId,
+      list: async (cursor) => {
+        requests.push(cursor)
+        return {
+          view: 'all',
+          direction: 'before',
+          items: cursor ? items.slice(50) : items.slice(0, 50),
+          nextCursor: cursor ? '1' : '11',
+          hasMore: !cursor,
+        }
+      },
+    })
+    await env.controller.start()
+    await env.controller.loadMore()
+    expect(requests).toEqual([undefined, '11'])
+    expect(env.controller.getSnapshot().items).toEqual(items)
+    expect(env.controller.getSnapshot().hasMore).toBe(false)
+    await env.controller.refresh()
+    expect(env.controller.getSnapshot().items).toEqual(items)
+    expect(env.controller.getSnapshot().hasMore).toBe(false)
+    expect(env.cache()?.nextCursor).toBe('1')
+  })
+
+  test('a cache containing another wallet is discarded before offline restoration', async () => {
+    const env = setup(
+      { walletId: crypto.randomUUID(), networkEnabled: false },
+      {
+        version: 1,
+        items: [summaryFixture()],
+        appliedCursor: '1',
+        nextCursor: null,
+        hasMore: false,
+        fetchedAt: Date.now(),
+        subscriptionKey: null,
+      },
+    )
+    await env.controller.start()
+    expect(env.controller.getSnapshot().items).toEqual([])
+  })
+})

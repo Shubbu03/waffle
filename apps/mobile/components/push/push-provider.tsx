@@ -8,7 +8,7 @@ import { AppText } from '@/components/app-text'
 import { useAuth } from '@/components/auth/auth-provider'
 import { AppConfig } from '@/constants/app-config'
 import { useThemeColor } from '@/hooks/use-theme-color'
-import { pushDevice, readPushPermission } from '@/lib/push-device'
+import { pushDevice, readPushEnabled, readPushPermission } from '@/lib/push-device'
 import {
   clearPendingPushTap,
   onPushTap,
@@ -20,10 +20,11 @@ import {
 import type { PushPermission, SignalPush } from '@/lib/push-tap'
 
 export interface PushState {
+  enabled: boolean | null
+  setEnabled: (enabled: boolean) => Promise<void>
   permission: PushPermission | 'checking'
   registrationUnavailable: boolean
   isRegistering: boolean
-  retryRegistration: () => void
   foregroundSignalId: string | null
   dismissForeground: () => void
 }
@@ -43,9 +44,10 @@ export function PushProvider({ children }: PropsWithChildren) {
   const navigation = useRootNavigationState()
   const client = useQueryClient()
   const [permission, setPermission] = useState<PushState['permission']>('checking')
+  const [enabled, setEnabledState] = useState<boolean | null>(null)
   const [registrationUnavailable, setRegistrationUnavailable] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
-  const retryRegistrationRef = useRef<(() => void) | null>(null)
+  const retryRegistrationRef = useRef<((request?: boolean) => void) | null>(null)
   const [foreground, setForeground] = useState<SignalPush | null>(null)
   const [pendingTap, setPendingTap] = useState<PushTap | null>(null)
   const lastTap = useRef({ id: '', at: 0 })
@@ -62,33 +64,43 @@ export function PushProvider({ children }: PropsWithChildren) {
     pushDevice.activate(owner)
     let cancelled = false
     let pending = false
+    let queuedRequest: boolean | null = null
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     const clearRetry = () => {
       clearTimeout(retryTimer)
       retryTimer = undefined
     }
     const synchronize = (request = false) => {
-      if (cancelled || pending) return
+      if (cancelled) return
+      if (pending) {
+        queuedRequest = queuedRequest === true || request
+        return
+      }
       clearRetry()
       pending = true
       setIsRegistering(true)
       let failed = false
       void pushDevice
         .synchronize(owner, request)
-        .then((value) => {
+        .then(async (value) => {
+          const preference = await readPushEnabled()
           if (!cancelled && value) {
+            setEnabledState(preference)
             setPermission(value)
             setRegistrationUnavailable(false)
-            if (value === 'denied') setForeground(null)
+            if (value === 'denied' || !preference) setForeground(null)
           }
         })
         .catch(() => {
           failed = true
           if (!cancelled) {
             setRegistrationUnavailable(true)
-            return readPushPermission()
-              .then((value) => {
-                if (!cancelled) setPermission(value)
+            return Promise.all([readPushPermission(), readPushEnabled()])
+              .then(([value, preference]) => {
+                if (!cancelled) {
+                  setPermission(value)
+                  setEnabledState(preference)
+                }
               })
               .catch(() => console.warn('[push] permission unavailable'))
           }
@@ -97,7 +109,11 @@ export function PushProvider({ children }: PropsWithChildren) {
           pending = false
           if (cancelled) return
           setIsRegistering(false)
-          if (failed && AppState.currentState === 'active') {
+          if (queuedRequest !== null) {
+            const request = queuedRequest
+            queuedRequest = null
+            synchronize(request)
+          } else if (failed && AppState.currentState === 'active') {
             retryTimer = setTimeout(() => synchronize(), 30_000)
           }
         })
@@ -188,17 +204,33 @@ export function PushProvider({ children }: PropsWithChildren) {
   }, [foreground])
 
   const dismissForeground = useCallback(() => setForeground(null), [])
-  const retryRegistration = useCallback(() => retryRegistrationRef.current?.(), [])
+  const setEnabled = useCallback(
+    async (next: boolean) => {
+      const previous = enabled
+      setEnabledState(next)
+      if (!next) setForeground(null)
+      try {
+        await pushDevice.setEnabled(next)
+      } catch (error) {
+        setEnabledState(previous)
+        throw error
+      } finally {
+        retryRegistrationRef.current?.(next && permission !== 'denied')
+      }
+    },
+    [enabled, permission],
+  )
   const value = useMemo<PushState>(
     () => ({
+      enabled,
+      setEnabled,
       permission,
       registrationUnavailable,
       isRegistering,
-      retryRegistration,
       foregroundSignalId: foreground?.id ?? null,
       dismissForeground,
     }),
-    [permission, registrationUnavailable, isRegistering, retryRegistration, foreground, dismissForeground],
+    [enabled, setEnabled, permission, registrationUnavailable, isRegistering, foreground, dismissForeground],
   )
 
   return (

@@ -9,6 +9,8 @@ export type UiIconSymbolName =
   | 'wallet.pass.fill'
   | 'person.2.fill'
   | 'chevron.down'
+  | 'chevron.right'
+  | 'checkmark'
   | 'doc.on.doc'
   | 'person.crop.circle'
   | 'chart.bar'

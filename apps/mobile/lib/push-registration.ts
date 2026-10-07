@@ -7,6 +7,8 @@ type Dependencies = {
   load: () => Promise<PushRegistration | null>
   save: (record: PushRegistration) => Promise<void>
   clear: () => Promise<void>
+  loadEnabled: () => Promise<boolean>
+  saveEnabled: (enabled: boolean) => Promise<void>
   permission: (request: boolean) => Promise<PushPermission>
   getToken: () => Promise<string>
   rotate: () => Promise<void>
@@ -21,6 +23,7 @@ export class PushRegistrationController {
   private generation = 0
   private rotationRequired = false
   private nativeOwnerReady = false
+  private enabled = true
   constructor(private readonly dependencies: Dependencies) {}
 
   run<T>(operation: () => Promise<T>): Promise<T> {
@@ -30,7 +33,13 @@ export class PushRegistrationController {
   }
 
   canDeliver(userId: string): boolean {
-    return this.owner === undefined || this.owner?.userId === userId
+    return this.enabled && (this.owner === undefined || this.owner?.userId === userId)
+  }
+
+  setEnabled(enabled: boolean): Promise<void> {
+    ++this.generation
+    this.enabled = enabled
+    return this.run(() => this.dependencies.saveEnabled(enabled))
   }
 
   activate(session: StoredSession): void {
@@ -47,9 +56,25 @@ export class PushRegistrationController {
     const current = () => generation === this.generation
     return this.run(async () => {
       if (!current()) return null
-      const permission = await this.dependencies.permission(requestPermission)
+      const enabled = await this.dependencies.loadEnabled()
+      if (!current()) return null
+      this.enabled = enabled
+      const permission = await this.dependencies.permission(requestPermission && enabled)
       if (!current()) return null
       let record = await this.dependencies.load()
+      if (!enabled) {
+        if (record || this.rotationRequired) {
+          this.rotationRequired = true
+          this.nativeOwnerReady = false
+          if (record) await this.dependencies.save({ ...record, rotationRequired: true })
+          if (record?.userId === session.userId && record.apiUrl === this.dependencies.apiUrl)
+            await this.dependencies.remove(session, record.id).catch(() => {})
+          await this.dependencies.rotate()
+          await this.dependencies.clear()
+          this.rotationRequired = false
+        }
+        return current() ? permission : null
+      }
       if (
         this.rotationRequired ||
         record?.rotationRequired ||

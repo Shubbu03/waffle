@@ -1,4 +1,3 @@
-import { router } from 'expo-router'
 import { View } from 'react-native'
 import { AppText } from '@/components/app-text'
 import { AppButton } from '@/components/ui/app-button'
@@ -25,7 +24,6 @@ export function ConnectionState({
       </AppText>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <AppButton title="Retry" onPress={retry} busy={busy} />
-        <AppButton title="Settings" variant="secondary" onPress={() => router.push('/(tabs)/settings')} />
       </View>
     </AppCard>
   )
