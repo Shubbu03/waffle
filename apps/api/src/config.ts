@@ -33,6 +33,18 @@ const envSchema = z.strictObject({
   }, "Expected a public HTTPS sign-in URI without credentials or fragment"),
   API_HOST: z.string().min(1).default("127.0.0.1"),
   API_PORT: portSchema,
+  // Optional: enables pasted-wallet validation (recent PumpSwap activity + volume guard).
+  // Server-side only; never expose to the mobile app. Without it, tracking skips validation.
+  HELIUS_RPC_URL: z
+    .url()
+    .refine((value) => new URL(value).protocol === "https:", "Expected an HTTPS RPC URL")
+    .optional(),
+  RPC_REQUESTS_PER_SECOND: z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .default("10")
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(10)),
 });
 
 export class ApiConfigurationError extends Error {
@@ -48,6 +60,8 @@ export function parseApiEnv(env: Record<string, string | undefined>) {
     AUTH_URI: env.AUTH_URI,
     API_HOST: env.API_HOST,
     API_PORT: env.API_PORT,
+    HELIUS_RPC_URL: env.HELIUS_RPC_URL,
+    RPC_REQUESTS_PER_SECOND: env.RPC_REQUESTS_PER_SECOND,
   });
   if (!result.success) {
     const fields = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];

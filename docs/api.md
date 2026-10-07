@@ -77,7 +77,13 @@ These owner-only routes let a signed-in user paste a wallet address to track. Ea
 | `DELETE /wallets/:id` | No body | 200 `{ paused }` when the caller stops tracking a wallet they added; 404 when they are not tracking it. |
 | `GET /wallets/mine` | No query parameters | `{ items }` of catalog-wallet IDs the caller personally added to tracking. |
 
-The address must be a valid **on-curve** ed25519 wallet (real keypair, not a PDA or arbitrary base58), checked for free without an RPC call; off-curve and malformed inputs return 400. Tracking appends a row to the shared `watched_wallets` catalog with `source = "user"`, auto-follows the caller with alerts off, and the watcher subscribes within ~15 seconds (it polls active catalog wallets). Caps protect the shared RPC budget and the watcher's hard 100-wallet limit: **3 wallets per user** and **40 active wallets system-wide**, both returning 409 `CONFLICT` when reached.
+The address must be a valid **on-curve** ed25519 wallet (real keypair, not a PDA or arbitrary base58), checked for free without an RPC call; off-curve and malformed inputs return 400. When `HELIUS_RPC_URL` is configured (server-side only), the API also validates the wallet before tracking, spending at most one history page plus five body fetches:
+* no transaction history → 422 `NO_HISTORY`;
+* history without a recent PumpSwap transaction → 422 `UNSUPPORTED_WALLET` (tracking is PumpSwap-only);
+* more than 100 transactions/hour → 422 `TOO_ACTIVE` (a wallet that active cannot stay caught up on the free tier); 31–100/hour still tracks but returns `warning: "very-active"`.
+Validation is advisory infrastructure: an RPC outage does not block tracking. Track attempts are rate-limited per peer (10/min → 429 `RATE_LIMITED`). Without `HELIUS_RPC_URL`, the checks are skipped and the API logs `api.wallet-activity.disabled`.
+
+Tracking appends a row to the shared `watched_wallets` catalog with `source = "user"`, auto-follows the caller with alerts off, and the watcher subscribes within ~15 seconds (it polls active catalog wallets). Caps protect the shared RPC budget and the watcher's hard 100-wallet limit: **3 wallets per user** and **40 active wallets system-wide**, both returning 409 `CONFLICT` when reached.
 
 Visibility is shared but curated: a tracked wallet's signals are stored once and appear to followers, but the public `view=all` feed and the public live socket **exclude** user-sourced wallets, so only the curated catalog is broadcast. Untracking removes the caller's follow and, when the last tracker leaves, pauses a user-sourced wallet (`active = false`) so the watcher drops it; signal history is preserved. Catalog wallets can be followed via this route but never paused or removed by it. RLS scopes tracking-row writes to the owner; reads are open to the API role so the pause decision can count trackers across users, and the API only ever exposes the caller's own IDs.
 

@@ -30,6 +30,8 @@ export const trackWalletResponseSchema = z.strictObject({
   wallet: walletSchema,
   created: z.boolean(),
   followed: z.boolean(),
+  /** Present when the wallet is very active; signals may lag behind. */
+  warning: z.literal("very-active").optional(),
 });
 
 /** `paused` is true when this untrack stopped the last tracker and paused the watcher subscription. */

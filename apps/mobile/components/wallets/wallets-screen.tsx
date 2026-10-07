@@ -28,8 +28,10 @@ function TrackWalletCard() {
   const track = useTrackWallet()
   const muted = useThemeColor({}, 'muted')
   const danger = useThemeColor({}, 'danger')
+  const warningColor = useThemeColor({}, 'warning')
   const [address, setAddress] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const onSubmit = () => {
     const check = checkWalletAddress(address)
     if (!check.ok) {
@@ -37,12 +39,14 @@ function TrackWalletCard() {
       return
     }
     setError(null)
+    setWarning(null)
     track.mutate(
       { address: check.address },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setAddress('')
           setError(null)
+          setWarning(result.veryActive ? 'Tracked. This wallet is very active, so signals may lag behind.' : null)
         },
         onError: (mutationError) => {
           setError(
@@ -58,13 +62,14 @@ function TrackWalletCard() {
     <AppCard>
       <AppText type="defaultSemiBold">Track a wallet</AppText>
       <AppText style={{ color: muted, fontSize: 13 }}>
-        Paste a Solana wallet address to watch it. Up to 3 of your own; its signals stay in your Following feed.
+        Paste a Solana wallet to watch its PumpSwap buys. Up to 3 of your own; its signals stay in your Following feed.
       </AppText>
       <TextInput
         value={address}
         onChangeText={(value) => {
           setAddress(value)
           if (error) setError(null)
+          if (warning) setWarning(null)
         }}
         placeholder="Paste wallet address"
         autoCapitalize="none"
@@ -83,6 +88,10 @@ function TrackWalletCard() {
       {error ? (
         <AppText selectable accessibilityLiveRegion="polite" style={{ color: danger, fontSize: 13 }}>
           {error}
+        </AppText>
+      ) : warning ? (
+        <AppText selectable accessibilityLiveRegion="polite" style={{ color: warningColor, fontSize: 13 }}>
+          {warning}
         </AppText>
       ) : null}
       <AppButton title="Track wallet" busy={track.isPending} disabled={track.isPending} onPress={onSubmit} />
@@ -155,7 +164,7 @@ function WalletCard({ row }: { row: WalletRow }) {
       <AppText style={{ color: muted, fontSize: 12 }}>
         {row.recentSupportedActivityAt
           ? `Last supported buy ${ageLabel(row.recentSupportedActivityAt, Date.now())}`
-          : 'No supported buy recorded yet'}
+          : "Waiting for this wallet's next PumpSwap buy"}
       </AppText>
       <View
         style={{
