@@ -4,7 +4,7 @@
     "slug": "waffle",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/waffle.png",
     "scheme": "waffle",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/waffle.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.waffle.app",
@@ -22,7 +22,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/waffle.png"
     },
     "plugins": [
       "expo-font",
