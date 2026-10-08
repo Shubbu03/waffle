@@ -9,7 +9,6 @@ import {
   type DatabaseTransaction,
   MAX_ACTIVE_WALLETS,
 } from "@waffle/db";
-import { sessions, users, watchedWallets } from "@waffle/db/schema";
 import type { HttpTransport } from "@waffle/http";
 import {
   apiErrorSchema,
@@ -20,11 +19,10 @@ import {
   trackedWalletsResponseSchema,
   trackWalletResponseSchema,
   untrackWalletResponseSchema,
-  WRAPPED_SOL_MINT,
   walletCatalogResponseSchema,
 } from "@waffle/shared";
 import bs58 from "bs58";
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.ts";

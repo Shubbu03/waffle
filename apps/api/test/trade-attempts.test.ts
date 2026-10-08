@@ -572,21 +572,19 @@ test("read-only status recovers a submitted Devnet signature without another bro
   const id = crypto.randomUUID(),
     quoteId = crypto.randomUUID();
   await drizzle(pg).update(watchedWallets).set({ network: "devnet" }).where(eq(watchedWallets.id, walletId));
-  await drizzle(pg)
-    .insert(tradeAttempts)
-    .values({
-      id,
-      network: "devnet",
-      userId: ownerA,
-      signalId,
-      quoteId,
-      requestId: "recover-devnet",
-      taker: wallet.publicKey.toBase58(),
-      router: "pumpswap",
-      inputAmountLamports: 10_000_000n,
-      status: "submitted",
-      signature: signedSignature,
-    });
+  await drizzle(pg).insert(tradeAttempts).values({
+    id,
+    network: "devnet",
+    userId: ownerA,
+    signalId,
+    quoteId,
+    requestId: "recover-devnet",
+    taker: wallet.publicKey.toBase58(),
+    router: "pumpswap",
+    inputAmountLamports: 10_000_000n,
+    status: "submitted",
+    signature: signedSignature,
+  });
   let checks = 0;
   const provider = {
     async getRealOrder(): Promise<never> {
