@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { AppState } from 'react-native'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
 import { ApiError } from '@/lib/api-error'
 import { mergeCatalog } from '@/lib/wallet-subscription-state'
@@ -20,6 +21,7 @@ import {
 } from '@/lib/wallets-api'
 
 export function useCatalogWallets() {
+  useCluster()
   const focused = useIsFocused()
   const [foreground, setForeground] = useState(AppState.currentState === 'active')
   useEffect(() => {
@@ -36,11 +38,12 @@ export function useCatalogWallets() {
 }
 
 export function useWalletSubscriptions() {
+  useCluster()
   const { session, serverLinked } = useAuth()
   const token = session?.accessToken ?? ''
   console.log(`[wallets-hooks] useWalletSubscriptions: ${token ? 'enabled' : 'disabled (signed out)'}`)
   return useQuery({
-    queryKey: ['wallet-subscriptions', session?.userId],
+    queryKey: ['wallet-subscriptions', session?.userId, AppConfig.apiUrl],
     queryFn: ({ signal }): Promise<WalletSubscription[]> => listSubscriptions(token, signal),
     enabled: token !== '' && serverLinked,
     staleTime: 30_000,
@@ -108,11 +111,12 @@ export function useAlertToggle() {
 
 /** Wallet IDs this user personally tracks — drives the Custom badge and Untrack. */
 export function useMyTrackedWallets() {
+  useCluster()
   const { session, serverLinked } = useAuth()
   const token = session?.accessToken ?? ''
   console.log(`[wallets-hooks] useMyTrackedWallets: ${token ? 'enabled' : 'disabled (signed out)'}`)
   return useQuery({
-    queryKey: ['wallets-mine', session?.userId],
+    queryKey: ['wallets-mine', session?.userId, AppConfig.apiUrl],
     queryFn: ({ signal }): Promise<string[]> => listMyTrackedWallets(token, signal),
     enabled: token !== '' && serverLinked,
     staleTime: 30_000,

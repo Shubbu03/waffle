@@ -16,7 +16,7 @@ const updateSchema = z.object({
           price: z.string().regex(/^\d{1,30}$/),
           conf: z.string().regex(/^\d{1,30}$/),
           expo: z.number().int().min(-18).max(18),
-          publish_time: z.number().int().nonnegative().safe(),
+          publish_time: z.number().int().nonnegative(),
         }),
       }),
     )

@@ -126,7 +126,7 @@ describe("on-chain primitives and catalog", () => {
 });
 
 describe("auth and JSON-safe cursors", () => {
-  test("SIWS input has a bounded lifetime and mainnet domain", () => {
+  test("SIWS input has a bounded lifetime and a supported Solana chain", () => {
     const signInInput = {
       domain: "waffle.example",
       uri: "https://waffle.example",
@@ -138,7 +138,9 @@ describe("auth and JSON-safe cursors", () => {
       statement: "Sign in to waffle",
     };
     expect(signInInputSchema.safeParse(signInInput).success).toBe(true);
-    expect(signInInputSchema.safeParse({ ...signInInput, chainId: "devnet" }).success).toBe(false);
+    for (const chainId of ["devnet", "solana:devnet", "testnet", "solana:testnet"])
+      expect(signInInputSchema.safeParse({ ...signInInput, chainId }).success).toBe(true);
+    expect(signInInputSchema.safeParse({ ...signInInput, chainId: "ethereum:1" }).success).toBe(false);
     expect(signInInputSchema.safeParse({ ...signInInput, domain: "other.example" }).success).toBe(false);
     expect(signInInputSchema.safeParse({ ...signInInput, expirationTime: "2026-09-24T08:06:00.000Z" }).success).toBe(
       false,

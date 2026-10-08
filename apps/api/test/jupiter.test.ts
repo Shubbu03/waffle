@@ -103,6 +103,29 @@ const realRequest = {
 };
 
 describe("Jupiter quote and order service", () => {
+  test("reports an unbuildable order's balance or gas error instead of an unsupported route", async () => {
+    for (const [errorCode, code] of [
+      [1, "INSUFFICIENT_FUNDS"],
+      [2, "INSUFFICIENT_GAS"],
+      [3, "ORDER_BUILD_FAILED"],
+    ] as const) {
+      const service = mockService(upstreamOrder({ transaction: "", lastValidBlockHeight: null, errorCode }));
+      await expect(service.getRealOrder(realRequest, wallet.publicKey.toBase58())).rejects.toMatchObject({ code });
+    }
+    await expect(
+      mockService(upstreamOrder({ transaction: "", errorCode: 99 })).getRealOrder(
+        realRequest,
+        wallet.publicKey.toBase58(),
+      ),
+    ).rejects.toMatchObject({ code: "ORDER_BUILD_FAILED" });
+    // Balance diagnostics must never admit a sponsored, multi-signer RFQ order.
+    await expect(
+      mockService(upstreamOrder({ router: "jupiterz", transaction: "", errorCode: 2 })).getRealOrder(
+        realRequest,
+        wallet.publicKey.toBase58(),
+      ),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_ORDER" });
+  });
   test("paper quote omits taker and transaction, retains fee and route evidence, and expires locally", async () => {
     let clock = now;
     const requests: Array<{ url: URL; init: RequestInit }> = [];

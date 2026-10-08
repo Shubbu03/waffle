@@ -59,13 +59,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [state.session?.userId, queryClient])
   useEffect(() => {
     if (!state.session || state.isSigningIn) return
-    if (
-      (connectedAddress && connectedAddress !== state.session.walletAddress) ||
-      selectedCluster.id !== 'solana:mainnet'
-    ) {
+    if (connectedAddress && connectedAddress !== state.session.walletAddress) {
       void controller.signOut().catch(() => {})
     }
-  }, [connectedAddress, selectedCluster.id, state.session, state.isSigningIn, controller])
+  }, [connectedAddress, state.session, state.isSigningIn, controller])
   useEffect(() => {
     if (!state.session) return
     const expire = () => {
@@ -90,9 +87,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (Platform.OS !== 'android')
           throw new Error('Wallet sign-in requires an Android build with a compatible Solana wallet.')
         if (!AppConfig.uri) throw new Error('Configure the public HTTPS app URL before signing in.')
-        if (selectedCluster.id !== 'solana:mainnet') throw new Error('Switch to Mainnet in Settings to sign in.')
+        if (!['solana:mainnet', 'solana:devnet', 'solana:testnet'].includes(selectedCluster.id))
+          throw new Error('Select Mainnet, Devnet or Testnet to sign in.')
         await checkApiConnection()
-        const askWallet = () => walletSignIn(buildSignInInput(AppConfig.uri))
+        const askWallet = () =>
+          walletSignIn(
+            buildSignInInput(
+              AppConfig.uri,
+              Date.now(),
+              selectedCluster.id as 'solana:mainnet' | 'solana:devnet' | 'solana:testnet',
+            ),
+          )
         let output: Awaited<ReturnType<typeof walletSignIn>>
         try {
           output = await withTransactTimeout('wallet-sign', WALLET_SIGN_TIMEOUT_MS, askWallet)

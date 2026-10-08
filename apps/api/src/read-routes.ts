@@ -8,7 +8,11 @@ import { apiError, validationError } from "./errors.ts";
 import type { AppEnv } from "./types.ts";
 import { validateQuery } from "./validation.ts";
 
-export function createReadRoutes(reads: ReadStore, auth?: AuthStore) {
+export function createReadRoutes(
+  reads: ReadStore,
+  auth?: AuthStore,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   const app = new Hono<AppEnv>();
   app.get("/wallets", validateQuery(z.strictObject({})), async (c) =>
     c.json(await readWithDnsRetry(() => reads.wallets(), c.req.raw.signal)),
@@ -20,7 +24,7 @@ export function createReadRoutes(reads: ReadStore, auth?: AuthStore) {
       c.header("Cache-Control", "no-store");
       if (!auth) return apiError(c, 401, "UNAUTHORIZED", "Valid session required");
       return await withOwner(c, auth, async (tx, session) =>
-        c.json(await createReadStore(tx).signals(input, session.userId)),
+        c.json(await createReadStore(tx, network).signals(input, session.userId)),
       );
     } catch (error) {
       if (error instanceof CursorExpiredError) {

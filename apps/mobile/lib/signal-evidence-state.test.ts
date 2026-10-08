@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { SPL_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@waffle/shared'
 import { signalFixture } from '../test-support/signal-fixture'
-import { signalEvidenceLabel } from './signal-evidence-state'
+import { signalEvidenceLabel, tokenProgramLabel } from './signal-evidence-state'
 
 describe('detail evidence freshness', () => {
   const now = 1_800_000_000_000
@@ -33,4 +34,11 @@ describe('detail evidence freshness', () => {
     evidence.status = 'stale'
     expect(signalEvidenceLabel(signal, 'mint', false, now)).toBe('Expired')
   })
+})
+
+test('detail labels both supported token programs correctly', () => {
+  expect(tokenProgramLabel(SPL_TOKEN_PROGRAM_ID)).toBe('SPL Token')
+  expect(tokenProgramLabel(TOKEN_2022_PROGRAM_ID)).toBe('Token-2022')
+  expect(tokenProgramLabel('11111111111111111111111111111111')).toBe('Unsupported')
+  expect(tokenProgramLabel(undefined)).toBe('Unknown')
 })

@@ -1,6 +1,6 @@
 # Token and pool evidence
 
-Issue #13 adds `TokenEvidenceCollector` in `apps/watcher/src/evidence.ts`. The executable watcher calls it for confirmed PumpSwap buys. Each result has separate mint, pool, quote, holder, creator, and oracle evidence; the [signal pipeline](watcher-signals.md) scores and persists these observations. `toScoreEvidence(checks, nowMs)` converts only usable observations into the existing score v1 input shape.
+Issue #13 adds `TokenEvidenceCollector` in `packages/market-data/src/evidence.ts`. The executable watcher calls it for confirmed PumpSwap buys. Each result has separate mint, pool, quote, holder, creator, and oracle evidence; the [signal pipeline](watcher-signals.md) scores and persists these observations. `toScoreEvidence(checks, nowMs)` converts only usable observations into the existing score v1 input shape.
 
 ## Configuration
 

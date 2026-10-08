@@ -3,6 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import { buildSignInInput, SIGN_IN_STATEMENT } from './sign-in-input'
 
 describe('buildSignInInput', () => {
+  test('signs the selected network on Mainnet, Devnet and Testnet', () => {
+    for (const chain of ['solana:mainnet', 'solana:devnet', 'solana:testnet'] as const) {
+      const input = buildSignInInput('https://waffle.local', Date.now(), chain)
+      expect(input.chainId).toBe(chain)
+    }
+  })
   test('derives domain, fixes chain and statement', () => {
     const input = buildSignInInput('https://waffle.local', Date.parse('2026-09-30T10:00:00.000Z'))
     expect(input.domain).toBe('waffle.local')

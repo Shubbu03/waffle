@@ -1,7 +1,7 @@
 import notifee, { AndroidImportance } from '@notifee/react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { idSchema, type SignalDetail } from '@waffle/shared'
-import { AppConfig } from '@/constants/app-config'
+import { AppConfig, apiRootUrl } from '@/constants/app-config'
 import { pushDevice, readPushEnabled, readPushPermission, readPushRegistration, SIGNAL_CHANNEL } from './push-device'
 import { receiveSignalPush, type SeenPush } from './push-receiver'
 import { parseSignalTap, type SignalPush } from './push-tap'
@@ -56,6 +56,9 @@ export async function receivePush(
   data: unknown,
   foreground?: (signal: SignalDetail, push: SignalPush) => void,
 ): Promise<void> {
+  const network = data && typeof data === 'object' && 'network' in data ? data.network : 'mainnet'
+  if (network !== AppConfig.network) return
+  const origin = AppConfig.apiUrl
   await pushDevice.run(async () => {
     const session = await loadSession()
     const registration = await readPushRegistration()
@@ -64,7 +67,7 @@ export async function receivePush(
       isSessionExpired(session.expiresAt) ||
       registration?.rotationRequired ||
       registration?.userId !== session.userId ||
-      registration.apiUrl !== AppConfig.apiUrl
+      registration.apiUrl !== apiRootUrl()
     )
       return
     await receiveSignalPush(
@@ -93,6 +96,7 @@ export async function receivePush(
       data,
       session.userId,
       async () =>
+        AppConfig.apiUrl === origin &&
         pushDevice.canDeliver(session.userId) &&
         (await readPushEnabled()) &&
         !isSessionExpired(session.expiresAt) &&

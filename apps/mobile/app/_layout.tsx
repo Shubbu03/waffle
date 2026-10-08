@@ -50,6 +50,7 @@ function AppStatusBar() {
 function RootNavigator() {
   const { status, isAuthenticated, serverLinked } = useAuth()
   const ink = useThemeColor({}, 'text')
+  const surface = useThemeColor({}, 'surface')
   if (status === 'loading')
     return (
       <AppView style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -62,7 +63,17 @@ function RootNavigator() {
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="wallets" />
-      <Stack.Screen name="track-wallet" />
+      <Stack.Screen
+        name="track-wallet"
+        options={{
+          presentation: 'formSheet',
+          headerShown: false,
+          sheetAllowedDetents: 'fitToContents',
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 24,
+          contentStyle: { backgroundColor: surface },
+        }}
+      />
       <Stack.Screen name="account" />
       <Stack.Screen name="signals/[id]" />
       <Stack.Screen name="signals/wallet/[walletId]" />

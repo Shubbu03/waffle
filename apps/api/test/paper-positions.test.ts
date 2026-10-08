@@ -20,9 +20,12 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.ts";
 import { hashSecret } from "../src/auth.ts";
 import { JupiterService } from "../src/jupiter.ts";
+import type { TradeAssessor } from "../src/trade-assessment.ts";
+import { assessmentFixture } from "./trade-assessment-fixture.ts";
 
 let pg: PGlite;
 let clock: number;
+let assess: TradeAssessor["assess"];
 let calls: URL[];
 let upstream: Record<string, unknown>;
 let afterFetch: () => Promise<void>;
@@ -56,6 +59,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   clock = Date.now();
+  assess = async (signal, mode, size) => assessmentFixture(signal, mode, size, clock);
   calls = [];
   afterFetch = async () => {};
   await pg.exec("TRUNCATE users, signals CASCADE");
@@ -173,6 +177,7 @@ beforeEach(async () => {
     {
       jupiter: new JupiterService("test-secret", fakeTransport, () => clock),
       now: () => clock,
+      assessor: { assess: (...args) => assess(...args) },
     },
   );
 });
@@ -272,20 +277,15 @@ test("rejects stale or missing quotes, size/signal mismatches, and duplicate con
   expect(await count()).toBe(1);
 });
 
-test("rejects stale signals/liquidity before quoting and rechecks after provider latency", async () => {
-  clock += 90_001;
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "STALE_SIGNAL");
-  expect(calls).toHaveLength(0);
-  clock -= 90_001;
-  clock += 15_001;
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "STALE_SIGNAL");
-  clock -= 15_001;
-  clock += 9_000;
-  afterFetch = async () => {
-    clock += 7_000;
-  };
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "STALE_SIGNAL");
-  expect(await count()).toBe(0);
+test("a historical signal can obtain a current quote without changing its saved snapshot", async () => {
+  const [before] = await drizzle(pg).select().from(signals);
+  clock += 30_000;
+  const q = await quote();
+  expect(q.assessment?.mint.address).toBe(PUMP_SWAP_PROGRAM_ID);
+  expect((await fill(q.id)).status).toBe(201);
+  const [after] = await drizzle(pg).select().from(signals);
+  expect(after?.snapshot).toEqual(before?.snapshot);
+  expect(after?.score).toBe(before?.score);
 });
 
 test("logout during quote acquisition prevents issuance and revoked/expired sessions cannot fill", async () => {
@@ -394,20 +394,46 @@ test("database failure rolls back and makes an unexpired quote retryable", async
   expect((await fill(q.id)).status).toBe(201);
 });
 
-test("fill rechecks liquidity freshness and rejects signals without trusted transaction timing", async () => {
-  clock += 9_000;
+test("fill checks the new assessment deadline, independent of the historical snapshot", async () => {
+  assess = async (signal, mode, size) => ({
+    ...assessmentFixture(signal, mode, size, clock),
+    expiresAt: new Date(clock + 2000).toISOString(),
+  });
   const q = await quote();
-  clock += 7_000;
-  await error(await fill(q.id), 409, "STALE_SIGNAL");
+  clock += 2000;
+  await error(await fill(q.id), 409, "QUOTE_UNAVAILABLE");
   expect(await count()).toBe(0);
-  clock -= 16_000;
   const [row] = await drizzle(pg).select().from(signals).where(eq(signals.id, signalId));
   if (!row) throw new Error("Expected signal");
   const snapshot = structuredClone(row.snapshot);
   delete snapshot.assessment;
   await drizzle(pg).update(signals).set({ snapshot }).where(eq(signals.id, signalId));
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "STALE_SIGNAL");
+  expect((await request("POST", "/quote", { signalId, sizeLamports })).status).toBe(200);
   await error(await request("POST", "/quote", { signalId: crypto.randomUUID(), sizeLamports }), 404, "NOT_FOUND");
+});
+
+test("current low liquidity, mismatched token, and expiry during quote I/O prevent issuance", async () => {
+  assess = async (signal, mode, size) => {
+    const a = assessmentFixture(signal, mode, size, clock);
+    a.pool.liquidityUsd = 24999;
+    return a;
+  };
+  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "LIMIT_EXCEEDED");
+  expect(calls).toHaveLength(0);
+  assess = async (signal, mode, size) => ({
+    ...assessmentFixture(signal, mode, size, clock),
+    signalId: crypto.randomUUID(),
+  });
+  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "CONFLICT");
+  expect(calls).toHaveLength(0);
+  assess = async (signal, mode, size) => ({
+    ...assessmentFixture(signal, mode, size, clock),
+    expiresAt: new Date(clock + 2000).toISOString(),
+  });
+  afterFetch = async () => {
+    clock += 2000;
+  };
+  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "QUOTE_UNAVAILABLE");
   expect(await count()).toBe(0);
 });
 
@@ -498,12 +524,12 @@ test("logout during valuation prevents a late response from disclosing the value
   };
   await error(await request("GET", `/${position.id}/valuation`), 401, "UNAUTHORIZED");
 });
-test("paper quotes retain verified mint decimals without imposing defaults on old signals", async () => {
-  expect((await quote()).outputDecimals).toBeUndefined();
+test("paper quotes use newly verified mint decimals, ignoring old snapshot decimals", async () => {
+  expect((await quote()).outputDecimals).toBe(6);
   const [row] = await drizzle(pg).select().from(signals).where(eq(signals.id, signalId));
   if (!row?.snapshot.mint) throw new Error("Expected mint evidence");
   const snapshot = structuredClone(row.snapshot);
-  if (snapshot.mint) snapshot.mint.decimals = 6;
+  if (snapshot.mint) snapshot.mint.decimals = 9;
   await drizzle(pg).update(signals).set({ snapshot }).where(eq(signals.id, signalId));
   const q = await quote();
   expect(q.outputDecimals).toBe(6);

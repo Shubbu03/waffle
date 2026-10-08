@@ -13,6 +13,7 @@ export async function storeSignal(
   transaction: DatabaseTransaction,
   walletAddress: string,
   prepare: () => ScoredSignal,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
 ): Promise<SignalWriteResult> {
   return transaction(async (tx): Promise<SignalWriteResult> => {
     // Shared by all watcher writers, before sequence allocation, so outbox IDs follow commit order.
@@ -20,7 +21,13 @@ export async function storeSignal(
     const [wallet] = await tx
       .select({ id: watchedWallets.id })
       .from(watchedWallets)
-      .where(and(eq(watchedWallets.address, walletAddress), eq(watchedWallets.active, true)))
+      .where(
+        and(
+          eq(watchedWallets.address, walletAddress),
+          eq(watchedWallets.active, true),
+          eq(watchedWallets.network, network),
+        ),
+      )
       .for("share");
     if (!wallet) return { status: "inactive-wallet" };
     const signal = scoredSignalSchema.parse(prepare());

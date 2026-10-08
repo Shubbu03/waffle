@@ -1,5 +1,5 @@
 import type { ScoredSignal } from "@waffle/shared";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema/index.ts";
@@ -30,7 +30,10 @@ export function isRestrictedWatcherLogin(role: WatcherLoginFacts): boolean {
 }
 
 /** Catalog reads and signal writes use the existing waffle_watcher privilege group. */
-export function createWatcherDatabase(databaseUrl: string) {
+export function createWatcherDatabase(
+  databaseUrl: string,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   const client = postgres(databaseUrl, {
     max: 2,
     connect_timeout: 5,
@@ -43,7 +46,7 @@ export function createWatcherDatabase(databaseUrl: string) {
   let writes: Promise<unknown> = Promise.resolve();
   return {
     storeSignal(walletAddress: string, prepare: () => ScoredSignal): Promise<SignalWriteResult> {
-      const write = writes.then(() => storeSignal((run) => db.transaction(run), walletAddress, prepare));
+      const write = writes.then(() => storeSignal((run) => db.transaction(run), walletAddress, prepare, network));
       writes = write.catch(() => undefined);
       return write;
     },
@@ -68,7 +71,7 @@ export function createWatcherDatabase(databaseUrl: string) {
       const rows = await db
         .select({ address: schema.watchedWallets.address })
         .from(schema.watchedWallets)
-        .where(eq(schema.watchedWallets.active, true))
+        .where(and(eq(schema.watchedWallets.active, true), eq(schema.watchedWallets.network, network)))
         .orderBy(schema.watchedWallets.address)
         .limit(101);
       return rows.map((row) => row.address);

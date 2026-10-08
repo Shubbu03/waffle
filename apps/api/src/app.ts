@@ -1,5 +1,6 @@
 import { type AuthStore, databaseConnectionErrorCode, type ReadStore } from "@waffle/db";
 import { createFailureReporter, createLogger, type Logger } from "@waffle/observability";
+import { networkAvailability } from "@waffle/shared";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { routePath } from "hono/route";
@@ -15,7 +16,9 @@ import type { PushDelivery } from "./push-delivery.ts";
 import { createPushTokenRoutes } from "./push-token-routes.ts";
 import { createReadRoutes } from "./read-routes.ts";
 import { createSubscriptionRoutes } from "./subscription-routes.ts";
+import type { TradeAssessor } from "./trade-assessment.ts";
 import { createTradeAttemptRoutes } from "./trade-attempt-routes.ts";
+import type { TradeOrderProvider } from "./trade-attempts.ts";
 import type { AppEnv } from "./types.ts";
 import { validateQuery } from "./validation.ts";
 import type { WalletActivityValidator } from "./wallet-activity.ts";
@@ -27,11 +30,13 @@ export function createApp(
   paper?: {
     jupiter?: Pick<JupiterService, "getPaperQuote"> & Partial<Pick<JupiterService, "getPaperValuation">>;
     now?: () => number;
+    assessor?: TradeAssessor;
   },
   live?: LiveDelivery,
   push?: PushDelivery,
-  trade?: { jupiter?: Pick<JupiterService, "getRealOrder" | "execute">; now?: () => number },
+  trade?: { jupiter?: TradeOrderProvider; now?: () => number; assessor?: TradeAssessor },
   logger: Logger = createLogger({ service: "api" }),
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
 ) {
   const app = new Hono<AppEnv>();
   const health = createFailureReporter(logger, "api.database");
@@ -59,6 +64,7 @@ export function createApp(
   });
   app.use("*", secureHeaders());
 
+  app.get("/network", (c) => c.json(networkAvailability(network)));
   app.get("/health", validateQuery(z.strictObject({})), async (c) => {
     try {
       await database.ping();
@@ -76,13 +82,19 @@ export function createApp(
   if (auth) {
     app.route("/auth", createAuthRoutes(auth.store, auth.uri));
     app.route("/push-tokens", createPushTokenRoutes(auth.store));
-    app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store));
-    app.route("/wallets", createWalletTrackingRoutes(auth.store, auth.activity));
-    app.route("/paper-positions", createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now));
-    app.route("/trade-attempts", createTradeAttemptRoutes(auth.store, trade?.jupiter, trade?.now, logger));
+    app.route("/wallet-subscriptions", createSubscriptionRoutes(auth.store, network));
+    app.route("/wallets", createWalletTrackingRoutes(auth.store, auth.activity, network));
+    app.route(
+      "/paper-positions",
+      createPaperPositionRoutes(auth.store, paper?.jupiter, paper?.now, paper?.assessor, network),
+    );
+    app.route(
+      "/trade-attempts",
+      createTradeAttemptRoutes(auth.store, trade?.jupiter, trade?.now, logger, trade?.assessor, network),
+    );
   }
 
-  if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store));
+  if (database.reads) app.route("/", createReadRoutes(database.reads, auth?.store, network));
 
   app.notFound((c) => apiError(c, 404, "NOT_FOUND", "Route not found"));
   app.onError((error, c) => {

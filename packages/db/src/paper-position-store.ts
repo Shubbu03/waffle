@@ -24,20 +24,30 @@ function serialize(row: typeof paperPositions.$inferSelect) {
 }
 
 /** Only call inside the authenticated owner's transaction. */
-export function createPaperPositionStore(tx: DatabaseExecutor, userId: string) {
+export function createPaperPositionStore(
+  tx: DatabaseExecutor,
+  userId: string,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   return {
     async get(id: string) {
       const [row] = await tx
         .select()
         .from(paperPositions)
-        .where(and(eq(paperPositions.id, id), eq(paperPositions.userId, userId)));
+        .where(and(eq(paperPositions.id, id), eq(paperPositions.userId, userId), eq(paperPositions.network, network)));
       return row ? serialize(row) : null;
     },
     async byQuote(quoteId: string) {
       const [row] = await tx
         .select()
         .from(paperPositions)
-        .where(and(eq(paperPositions.userId, userId), sql`${paperPositions.entryQuote} ->> 'id' = ${quoteId}`))
+        .where(
+          and(
+            eq(paperPositions.userId, userId),
+            eq(paperPositions.network, network),
+            sql`${paperPositions.entryQuote} ->> 'id' = ${quoteId}`,
+          ),
+        )
         .limit(1);
       return row ? serialize(row) : null;
     },
@@ -46,6 +56,7 @@ export function createPaperPositionStore(tx: DatabaseExecutor, userId: string) {
         .insert(paperPositions)
         .values({
           userId,
+          network,
           signalId: quote.signalId,
           sizeLamports: BigInt(quote.inputAmountLamports),
           entryQuote: quote,
@@ -62,7 +73,13 @@ export function createPaperPositionStore(tx: DatabaseExecutor, userId: string) {
         ? await tx
             .select()
             .from(paperPositions)
-            .where(and(eq(paperPositions.id, input.cursor), eq(paperPositions.userId, userId)))
+            .where(
+              and(
+                eq(paperPositions.id, input.cursor),
+                eq(paperPositions.userId, userId),
+                eq(paperPositions.network, network),
+              ),
+            )
         : [];
       if (input.cursor && !cursor) return null;
       const rows = await tx
@@ -71,6 +88,7 @@ export function createPaperPositionStore(tx: DatabaseExecutor, userId: string) {
         .where(
           and(
             eq(paperPositions.userId, userId),
+            eq(paperPositions.network, network),
             cursor
               ? or(
                   lt(paperPositions.createdAt, cursor.createdAt),

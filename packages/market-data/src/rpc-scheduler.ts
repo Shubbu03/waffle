@@ -4,7 +4,15 @@ export type RpcMethod =
   | "getAccountInfo"
   | "getProgramAccounts"
   | "getMultipleAccounts"
-  | "getBlockTime";
+  | "getBlockTime"
+  | "getGenesisHash"
+  | "getLatestBlockhash"
+  | "getBalance"
+  | "getMinimumBalanceForRentExemption"
+  | "getFeeForMessage"
+  | "simulateTransaction"
+  | "sendTransaction"
+  | "getSignatureStatuses";
 
 export type RpcPriority = "provisional" | "evidence" | "backfill";
 
@@ -233,7 +241,7 @@ export class RpcScheduler {
     try {
       job.resolve(await this.withTimeout(job.run));
     } catch (error) {
-      if (!this.closed && job.attempt < 1 && retryable(error)) {
+      if (!this.closed && job.method !== "sendTransaction" && job.attempt < 1 && retryable(error)) {
         if (job.priority === "provisional" && this.status.provisionalQueued >= this.maxProvisionalQueued) {
           this.degraded = true;
           this.droppedProvisional++;

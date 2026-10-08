@@ -3,17 +3,21 @@ import {
   type ApiErrorCode,
   type CreatePaperPositionRequest,
   type CreatePaperQuoteRequest,
-  checkTradeLimits,
   type GetPaperPositionsQuery,
   type PaperQuote,
   type PaperValuation,
   paperQuoteSchema,
   paperValuationQuoteSchema,
   type Session,
-  type SignalDetail,
   scorePolicyV1,
 } from "@waffle/shared";
 import { type JupiterService, JupiterServiceError } from "./jupiter.ts";
+import {
+  assertSupportedSignal,
+  assertTradeAssessment,
+  TradeAssessmentError,
+  type TradeAssessor,
+} from "./trade-assessment.ts";
 
 export class PaperPositionError extends Error {
   constructor(
@@ -26,41 +30,13 @@ export class PaperPositionError extends Error {
   }
 }
 
-function assertSignalFresh(signal: SignalDetail, sizeLamports: string, now: number) {
-  const { snapshot } = signal;
-  const fresh = (timestamp: string | null | undefined, maxAge: number) => {
-    const age = now - Date.parse(timestamp ?? "");
-    return Number.isFinite(age) && age >= 0 && age <= maxAge;
-  };
-  if (
-    signal.status !== "eligible" ||
-    !snapshot.assessment ||
-    snapshot.assessment.streamStale ||
-    !fresh(snapshot.assessment.transactionAt, scorePolicyV1.freshness.signalMs) ||
-    !fresh(signal.observedAt, scorePolicyV1.freshness.signalMs) ||
-    !fresh(snapshot.mint?.fetchedAt, scorePolicyV1.freshness.mintMs) ||
-    !snapshot.pool
-  ) {
-    throw new PaperPositionError("STALE_SIGNAL", 409, "Signal is not eligible for a paper fill");
-  }
-  const gate = checkTradeLimits(
-    "paper",
-    BigInt(sizeLamports),
-    snapshot.pool.liquidityUsd,
-    Date.parse(snapshot.pool.fetchedAt),
-    now,
-  );
-  if (!gate.allowed)
-    throw new PaperPositionError(
-      gate.reason === "liquidity_stale" ? "STALE_SIGNAL" : "LIMIT_EXCEEDED",
-      409,
-      "Paper size or fresh liquidity requirement not met",
-    );
-}
-
 function assertQuoteFresh(quote: PaperQuote, now: number) {
   const age = now - Date.parse(quote.fetchedAt);
-  if (age < 0 || age >= scorePolicyV1.freshness.quoteMs || now >= Date.parse(quote.expiresAt)) {
+  if (
+    age < 0 ||
+    age >= (quote.network === "devnet" ? 60_000 : scorePolicyV1.freshness.quoteMs) ||
+    now >= Date.parse(quote.expiresAt)
+  ) {
     throw new PaperPositionError("QUOTE_UNAVAILABLE", 409, "Request a fresh paper quote");
   }
 }
@@ -70,6 +46,8 @@ export function createPaperPositionService(
   auth: AuthStore,
   jupiter?: Pick<JupiterService, "getPaperQuote"> & Partial<Pick<JupiterService, "getPaperValuation">>,
   now: () => number = Date.now,
+  assessor?: TradeAssessor,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
 ) {
   const quotes = new Map<string, { userId: string; quote: PaperQuote }>();
   async function owner<T>(tokenHash: string, run: (tx: DatabaseExecutor, session: Session) => Promise<T>) {
@@ -78,15 +56,20 @@ export function createPaperPositionService(
     return result;
   }
   async function signalFor(tx: DatabaseExecutor, input: CreatePaperQuoteRequest) {
-    const signal = await createReadStore(tx).signal(input.signalId);
+    const signal = await createReadStore(tx, network).signal(input.signalId);
     if (!signal) throw new PaperPositionError("NOT_FOUND", 404, "Signal not found");
-    assertSignalFresh(signal, input.sizeLamports, now());
+    assertSupportedSignal(signal);
     return signal;
   }
   return {
     async quote(tokenHash: string, input: CreatePaperQuoteRequest) {
       const signal = await owner(tokenHash, (tx) => signalFor(tx, input));
+      if (!assessor) throw new PaperPositionError("SERVICE_UNAVAILABLE", 503, "Current trade checks are unavailable");
       if (!jupiter) throw new PaperPositionError("SERVICE_UNAVAILABLE", 503, "Paper quotes are unavailable");
+      const assessment = await assessor.assess(signal, "paper", input.sizeLamports);
+      if ((assessment.network ?? "mainnet") !== network)
+        throw new TradeAssessmentError("CONFLICT", 409, "Trade checks belong to another network.");
+      assertTradeAssessment(assessment, signal, "paper", input.sizeLamports, now());
       let quote: PaperQuote;
       try {
         // Provider I/O runs outside the database transaction and never supplies a taker.
@@ -103,13 +86,20 @@ export function createPaperPositionService(
         throw error;
       }
       if (
+        (quote.network ?? "mainnet") !== network ||
         quote.signalId !== signal.id ||
         quote.outputMint !== signal.mintAddress ||
         quote.inputAmountLamports !== input.sizeLamports
       ) {
         throw new PaperPositionError("QUOTE_UNAVAILABLE", 503, "Quote does not match the requested signal and size");
       }
-      quote = paperQuoteSchema.parse({ ...quote, outputDecimals: signal.snapshot.mint?.decimals });
+      assertTradeAssessment(assessment, signal, "paper", input.sizeLamports, now());
+      quote = paperQuoteSchema.parse({
+        ...quote,
+        assessment,
+        outputDecimals: assessment.mint.decimals,
+        expiresAt: new Date(Math.min(Date.parse(quote.expiresAt), Date.parse(assessment.expiresAt))).toISOString(),
+      });
       const userId = await owner(tokenHash, async (tx, session) => {
         await signalFor(tx, input);
         assertQuoteFresh(quote, now());
@@ -142,9 +132,10 @@ export function createPaperPositionService(
           if (quote.outputMint !== signal.mintAddress)
             throw new PaperPositionError("CONFLICT", 409, "Quote mint mismatch");
           const filledAt = now();
-          assertSignalFresh(signal, input.sizeLamports, filledAt);
+          if (!quote.assessment) throw new PaperPositionError("QUOTE_UNAVAILABLE", 409, "Request a fresh paper quote");
+          assertTradeAssessment(quote.assessment, signal, "paper", input.sizeLamports, filledAt);
           assertQuoteFresh(quote, filledAt);
-          return createPaperPositionStore(tx, session.userId).create(quote, filledAt);
+          return createPaperPositionStore(tx, session.userId, network).create(quote, filledAt);
         });
       } catch (error) {
         // Restore only after the owner transaction has rolled back.
@@ -154,19 +145,19 @@ export function createPaperPositionService(
     },
     async get(tokenHash: string, id: string) {
       return owner(tokenHash, async (tx, session) => {
-        const position = await createPaperPositionStore(tx, session.userId).get(id);
+        const position = await createPaperPositionStore(tx, session.userId, network).get(id);
         if (!position) throw new PaperPositionError("NOT_FOUND", 404, "Position not found");
         return position;
       });
     },
     async byQuote(tokenHash: string, quoteId: string) {
       return owner(tokenHash, async (tx, session) => ({
-        position: await createPaperPositionStore(tx, session.userId).byQuote(quoteId),
+        position: await createPaperPositionStore(tx, session.userId, network).byQuote(quoteId),
       }));
     },
     async valuation(tokenHash: string, id: string): Promise<PaperValuation> {
       const position = await owner(tokenHash, async (tx, session) => {
-        const found = await createPaperPositionStore(tx, session.userId).get(id);
+        const found = await createPaperPositionStore(tx, session.userId, network).get(id);
         if (!found) throw new PaperPositionError("NOT_FOUND", 404, "Position not found");
         return found;
       });
@@ -177,9 +168,15 @@ export function createPaperPositionService(
       };
       if (position.status === "open" && jupiter?.getPaperValuation) {
         try {
+          if (network === "devnet") {
+            const signal = await owner(tokenHash, (tx) => createReadStore(tx, network).signal(position.signalId));
+            if (!signal || !assessor) throw new JupiterServiceError("UPSTREAM_UNAVAILABLE");
+            await assessor.assess(signal, "paper", position.sizeLamports);
+          }
           const quote = paperValuationQuoteSchema.parse(
             await jupiter.getPaperValuation({
               positionId: id,
+              ...(network === "devnet" ? { signalId: position.signalId } : {}),
               inputMint: position.entryQuote.outputMint,
               inputAmountRaw: position.fill.outputAmountRaw,
             }),
@@ -205,7 +202,7 @@ export function createPaperPositionService(
     },
     async list(tokenHash: string, input: GetPaperPositionsQuery) {
       return owner(tokenHash, async (tx, session) => {
-        const page = await createPaperPositionStore(tx, session.userId).list(input);
+        const page = await createPaperPositionStore(tx, session.userId, network).list(input);
         if (!page) throw new PaperPositionError("NOT_FOUND", 404, "Position cursor not found");
         return page;
       });

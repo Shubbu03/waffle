@@ -33,6 +33,7 @@ export class LiveDelivery {
   constructor(
     private readonly dependencies: {
       auth: AuthStore;
+      network?: import("@waffle/shared").SolanaNetwork;
       reads: LiveReadStore;
       dispatch: LiveDispatchStore;
       now?: () => number;
@@ -160,7 +161,7 @@ export class LiveDelivery {
       try {
         if (sub.view === "following" && sub.tokenHash) {
           const valid = await this.dependencies.auth.withSession(sub.tokenHash, async (tx, session) => {
-            const page = await createLiveReadStore(tx).page(sub.cursor, session.userId);
+            const page = await createLiveReadStore(tx, this.dependencies.network).page(sub.cursor, session.userId);
             // Hold the session lock through sending so logout cannot race this batch.
             this.apply(client, page);
             return true;

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { classifyPumpSwapBuy } from "@waffle/market-data/classify";
+import type { TokenChecks } from "@waffle/market-data/evidence";
+import type { Evidence } from "@waffle/market-data/evidence-cache";
 import { type ScoredSignal, SPL_TOKEN_PROGRAM_ID, scoredSignalSchema, WRAPPED_SOL_MINT } from "@waffle/shared";
-import { classifyPumpSwapBuy } from "../src/classify.ts";
-import type { TokenChecks } from "../src/evidence.ts";
-import type { Evidence } from "../src/evidence-cache.ts";
 import { SignalPipeline } from "../src/signals.ts";
 import type { WatcherEvent } from "../src/watcher.ts";
 

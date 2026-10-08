@@ -81,6 +81,18 @@ async function login(account = wallet()) {
 }
 
 describe("SIWS authentication", () => {
+  test("the same wallet can sign in on all networks and keeps the same account", async () => {
+    const account = wallet();
+    let userId: string | undefined;
+    for (const chainId of ["mainnet", "solana:mainnet", "devnet", "solana:devnet", "testnet", "solana:testnet"]) {
+      const response = await post("verify", signed(account, { chainId }));
+      expect(response.status).toBe(200);
+      const result = authVerifyResponseSchema.parse(await response.json());
+      userId ??= result.session.userId;
+      expect(result.session.userId).toBe(userId);
+      expect(result.session.walletAddress).toBe(account.address);
+    }
+  });
   test("verifies fresh signatures, reuses the wallet user and mints 7-day sessions", async () => {
     const account = wallet();
     const result = await login(account);
@@ -118,7 +130,7 @@ describe("SIWS authentication", () => {
     const mutations = [
       { domain: "evil.example" },
       { uri: "https://evil.example" },
-      { chainId: "devnet" },
+      { chainId: "ethereum:1" },
       { issuedAt: new Date(Date.now() - 300_000).toISOString() },
       { issuedAt: new Date(Date.now() + 300_000).toISOString() },
       { expirationTime: new Date(Date.now() - 1000).toISOString() },

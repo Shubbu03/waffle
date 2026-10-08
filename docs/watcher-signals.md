@@ -1,5 +1,7 @@
 # Scored signal persistence
 
+Network support, configuration and Devnet testing: [Solana networks](networks.md).
+
 Issue #14 connects classified buys and token evidence to the versioned scorer and database. `bun run start:watcher` now writes signals using the existing restricted `waffle_watcher` login. No new migration or environment variable is required. See [watcher setup](watcher-rpc.md) and [evidence configuration](watcher-evidence.md).
 
 ## Assessment
@@ -13,7 +15,7 @@ The watcher preserves the original observation timestamp and source across persi
 - A known transaction block time no older than 90 seconds and not in the future.
 - A healthy wallet stream, both when delivered to the pipeline and when assessed.
 
-Old backfills cannot gain freshness from a recent fetch. Missing transaction time fails the freshness check. A stale signal with otherwise passing critical checks is `history-only`; failed critical evidence is `suppressed`. Only `eligible` signals meeting the v1 threshold can be considered for alerts. Current mint authority, freeze authority, shallow/missing pools, unavailable quotes, and excessive same-asset oracle deviation suppress eligibility. Missing optional holder/creator/oracle data contributes zero points; fresh critical checks alone score 80. The [v1 weights and thresholds](scoring-policy.md) remain unchanged.
+Old backfills cannot gain freshness from a recent fetch. An RPC unsupported-transaction-version response (`-32015`) is recorded as an ignored outcome, so an unreadable transaction cannot permanently block recovery and mark subsequent supported live buys stale. Other RPC errors still fail recovery for retry; unsupported transactions never reach scoring or copy actions. Missing transaction time fails the freshness check. A stale signal with otherwise passing critical checks is `history-only`; failed critical evidence is `suppressed`. Only `eligible` signals meeting the v1 threshold can be considered for alerts. Current mint authority, freeze authority, shallow/missing pools, unavailable quotes, and excessive same-asset oracle deviation suppress eligibility. Missing optional holder/creator/oracle data contributes zero points; fresh critical checks alone score 80. The [v1 weights and thresholds](scoring-policy.md) remain unchanged.
 
 Each signal stores the score version, score, ordered reason buckets, source slot, observation time, status, and snapshot. The snapshot retains known unsafe or stale values and their original timestamps. Its `assessment` also records scoring time, transaction time, source, stream health, and each evidence bucket's freshness, expiry, or unavailable reason. Amounts remain decimal strings. Older stored snapshots without this metadata remain readable.
 

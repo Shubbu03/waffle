@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519";
 import { parseSignInMessage, verifySignIn } from "@solana/wallet-standard-util";
 import type { AuthStore, DatabaseExecutor } from "@waffle/db";
-import { type AuthVerifyRequest, type Session, SIWS_MAX_SKEW_SEC } from "@waffle/shared";
+import { type AuthVerifyRequest, type Session, SIWS_MAX_SKEW_SEC, signInInputSchema } from "@waffle/shared";
 import bs58 from "bs58";
 import type { Context } from "hono";
 import { apiError } from "./errors.ts";
@@ -31,7 +31,11 @@ export function createAuthService(store: AuthStore, authUri: string) {
         const parsed = parseSignInMessage(signedMessage);
         if (!parsed?.nonce || publicKey.length !== 32 || signature.length !== 64) return null;
         if (parsed.domain !== domain || parsed.uri !== uri) return null;
-        if (parsed.version !== "1" || (parsed.chainId !== "mainnet" && parsed.chainId !== "solana:mainnet")) {
+        const { address: _address, ...input } = parsed;
+        const validated = signInInputSchema.safeParse(
+          Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
+        );
+        if (!validated.success) {
           return null;
         }
         if (!parsed.statement) return null;
@@ -46,8 +50,8 @@ export function createAuthService(store: AuthStore, authUri: string) {
           {
             domain: parsed.domain,
             uri: parsed.uri,
-            version: parsed.version,
-            chainId: parsed.chainId,
+            version: validated.data.version,
+            chainId: validated.data.chainId,
             statement: parsed.statement,
             issuedAt,
             expirationTime,
@@ -58,7 +62,12 @@ export function createAuthService(store: AuthStore, authUri: string) {
             account: {
               address: request.accountAddress,
               publicKey,
-              chains: ["solana:mainnet"],
+              chains: [
+                `solana:${parsed.chainId?.replace("solana:", "")}` as
+                  | "solana:mainnet"
+                  | "solana:devnet"
+                  | "solana:testnet",
+              ],
               features: ["solana:signIn"],
             },
             signedMessage,

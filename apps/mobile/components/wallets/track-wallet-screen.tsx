@@ -1,64 +1,72 @@
-import { router, Stack } from 'expo-router'
+import { router } from 'expo-router'
 import { useState } from 'react'
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native'
+import { AccessibilityInfo, ActivityIndicator, Alert, Keyboard, Pressable, TextInput, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
-import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppButton } from '@/components/ui/app-button'
-import { AppCard } from '@/components/ui/app-card'
 import { useTrackWallet } from '@/components/wallets/use-wallets'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { ApiError } from '@/lib/api-error'
 import { checkWalletAddress, trackErrorMessage } from '@/lib/wallet-validation'
 
+/** Content-sized native sheet; avoid flex: 1 so Android can measure its height. */
 export function TrackWalletScreen() {
+  const { selectedCluster } = useCluster()
   const { session, serverLinked, status } = useAuth()
+  const insets = useSafeAreaInsets()
   const ink = useThemeColor({}, 'text')
-  const background = useThemeColor({}, 'background')
+  const background = useThemeColor({}, 'surface')
+  const close = () => {
+    Keyboard.dismiss()
+    router.back()
+  }
   return (
-    <AppView style={{ flex: 1, gap: 0 }}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Track wallet',
-          headerTintColor: ink,
-          headerStyle: { backgroundColor: background },
-          headerShadowVisible: false,
-        }}
-      />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: 20, paddingBottom: 36, gap: 16 }}
+    <View
+      collapsable={false}
+      style={{ backgroundColor: background, padding: 20, paddingBottom: Math.max(insets.bottom, 20), gap: 14 }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <AppText type="subtitle">Track wallet</AppText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close add wallet"
+          onPress={close}
+          hitSlop={8}
+          style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }}
         >
-          {status === 'loading' ? (
-            <ActivityIndicator color={ink} />
-          ) : !session || !serverLinked ? (
-            <AppCard>
-              <AppText>{session ? 'Reconnect your account to track a wallet.' : 'Sign in to track a wallet.'}</AppText>
-              <AppButton
-                title={session ? 'Verify account' : 'Sign in with wallet'}
-                onPress={() => router.push('/sign-in')}
-              />
-            </AppCard>
-          ) : (
-            <TrackWalletForm />
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </AppView>
+          <AppText style={{ fontSize: 14 }}>Close</AppText>
+        </Pressable>
+      </View>
+      <AppText style={{ fontSize: 13 }}>Track on {selectedCluster.name}</AppText>
+      {status === 'loading' ? (
+        <ActivityIndicator color={ink} />
+      ) : !session || !serverLinked ? (
+        <View style={{ gap: 14 }}>
+          <AppText>{session ? 'Reconnect your account to track a wallet.' : 'Sign in to track a wallet.'}</AppText>
+          <AppButton
+            title={session ? 'Verify account' : 'Sign in with wallet'}
+            onPress={() => {
+              Keyboard.dismiss()
+              router.replace('/sign-in')
+            }}
+          />
+        </View>
+      ) : (
+        <TrackWalletForm onAdded={close} />
+      )}
+    </View>
   )
 }
 
-function TrackWalletForm() {
+function TrackWalletForm({ onAdded }: { onAdded: () => void }) {
   const track = useTrackWallet()
   const ink = useThemeColor({}, 'text')
-  const surface = useThemeColor({}, 'surface')
+  const surface = useThemeColor({}, 'background')
   const border = useThemeColor({}, 'border')
   const muted = useThemeColor({}, 'muted')
   const danger = useThemeColor({}, 'danger')
-  const warning = useThemeColor({}, 'warning')
   const [address, setAddress] = useState('')
   const [error, setError] = useState<string | null>(null)
   const onSubmit = () => {
@@ -72,7 +80,13 @@ function TrackWalletForm() {
     track.mutate(
       { address: check.address },
       {
-        onSuccess: () => Keyboard.dismiss(),
+        onSuccess: (result) => {
+          AccessibilityInfo.announceForAccessibility('Wallet added to Following')
+          onAdded()
+          if (result.veryActive) {
+            Alert.alert('Wallet added', 'This wallet is very active, so signals may lag behind.')
+          }
+        },
         onError: (mutationError) => {
           setError(
             mutationError instanceof ApiError
@@ -83,43 +97,10 @@ function TrackWalletForm() {
       },
     )
   }
-  if (track.isSuccess) {
-    const result = track.data
-    return (
-      <View style={{ gap: 16 }}>
-        <AppText type="subtitle">Wallet tracked</AppText>
-        <AppText selectable style={{ color: muted, fontSize: 13 }}>
-          {result.wallet.address}
-        </AppText>
-        <AppText style={{ color: muted, fontSize: 13 }}>
-          {result.followed ? 'Added to Following.' : 'This wallet is now tracked.'}
-        </AppText>
-        {result.veryActive ? (
-          <AppText selectable accessibilityLiveRegion="polite" style={{ color: warning, fontSize: 13 }}>
-            This wallet is very active, so signals may lag behind.
-          </AppText>
-        ) : null}
-        <AppButton
-          title="View signals"
-          onPress={() =>
-            router.replace({
-              pathname: '/signals/wallet/[walletId]',
-              params: { walletId: result.wallet.id, view: result.followed ? 'following' : 'all' },
-            })
-          }
-        />
-      </View>
-    )
-  }
   return (
-    <View style={{ gap: 16 }}>
-      <AppText style={{ color: muted, fontSize: 13 }}>
-        Add up to 3 Solana wallets. Their PumpSwap buys appear in Following.
-      </AppText>
+    <View style={{ gap: 14 }}>
+      <AppText style={{ color: muted, fontSize: 13 }}>Add up to 3 wallets to Following.</AppText>
       <View style={{ gap: 8 }}>
-        <AppText type="defaultSemiBold" style={{ fontSize: 14 }}>
-          Wallet address
-        </AppText>
         <TextInput
           value={address}
           onChangeText={(value) => {
@@ -128,7 +109,6 @@ function TrackWalletForm() {
           }}
           placeholder="Paste Solana wallet address"
           placeholderTextColor={muted}
-          autoFocus
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="done"

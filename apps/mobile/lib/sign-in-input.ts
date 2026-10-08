@@ -9,7 +9,7 @@ export type SignInInput = {
   statement: string
   uri: string
   version: '1'
-  chainId: 'solana:mainnet'
+  chainId: 'solana:mainnet' | 'solana:devnet' | 'solana:testnet'
   nonce: string
   issuedAt: string
   expirationTime: string
@@ -22,7 +22,11 @@ function randomNonce(): string {
 }
 
 /** Build a fresh input; throws on non-HTTPS uri (fail fast, never sign garbage). */
-export function buildSignInInput(uri: string, now: number = Date.now()): SignInInput {
+export function buildSignInInput(
+  uri: string,
+  now: number = Date.now(),
+  chainId: SignInInput['chainId'] = 'solana:mainnet',
+): SignInInput {
   console.log('[sign-in-input] buildSignInInput: constructing local input')
   const url = new URL(uri)
   if (url.protocol !== 'https:') throw new Error('SIWS URI must use HTTPS')
@@ -31,7 +35,7 @@ export function buildSignInInput(uri: string, now: number = Date.now()): SignInI
     statement: SIGN_IN_STATEMENT,
     uri: url.href,
     version: '1',
-    chainId: 'solana:mainnet',
+    chainId,
     nonce: randomNonce(),
     issuedAt: new Date(now).toISOString(),
     expirationTime: new Date(now + 5 * 60_000).toISOString(),

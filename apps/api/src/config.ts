@@ -1,3 +1,4 @@
+import { pythFeedMapSchema } from "@waffle/market-data/pyth";
 import { z } from "zod";
 
 const portSchema = z.string().regex(/^\d+$/).default("3000").transform(Number).pipe(z.number().int().min(1).max(65535));
@@ -39,6 +40,22 @@ const envSchema = z.strictObject({
     .url()
     .refine((value) => new URL(value).protocol === "https:", "Expected an HTTPS RPC URL")
     .optional(),
+  SOLANA_DEVNET_RPC_URL: z
+    .url()
+    .refine((value) => new URL(value).protocol === "https:")
+    .default("https://api.devnet.solana.com"),
+  PYTH_API_KEY: z.string().min(1).optional(),
+  PYTH_PRICE_FEEDS_JSON: z
+    .string()
+    .default("{}")
+    .transform((value, ctx) => {
+      try {
+        return pythFeedMapSchema.parse(JSON.parse(value));
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Invalid Pyth feed map" });
+        return z.NEVER;
+      }
+    }),
   RPC_REQUESTS_PER_SECOND: z
     .string()
     .regex(/^[1-9]\d*$/)
@@ -61,7 +78,10 @@ export function parseApiEnv(env: Record<string, string | undefined>) {
     API_HOST: env.API_HOST,
     API_PORT: env.API_PORT,
     HELIUS_RPC_URL: env.HELIUS_RPC_URL,
+    SOLANA_DEVNET_RPC_URL: env.SOLANA_DEVNET_RPC_URL,
     RPC_REQUESTS_PER_SECOND: env.RPC_REQUESTS_PER_SECOND,
+    PYTH_API_KEY: env.PYTH_API_KEY,
+    PYTH_PRICE_FEEDS_JSON: env.PYTH_PRICE_FEEDS_JSON,
   });
   if (!result.success) {
     const fields = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];

@@ -21,6 +21,7 @@ export const paperPositions = pgTable(
   "paper_positions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    network: varchar("network", { length: 16 }).$type<"mainnet" | "devnet" | "testnet">().default("mainnet").notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -49,6 +50,7 @@ export const tradeAttempts = pgTable(
   "trade_attempts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    network: varchar("network", { length: 16 }).$type<"mainnet" | "devnet" | "testnet">().default("mainnet").notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -74,7 +76,7 @@ export const tradeAttempts = pgTable(
       "trade_attempts_size_check",
       sql`${table.inputAmountLamports} > 0 AND ${table.inputAmountLamports} <= 50000000`,
     ),
-    check("trade_attempts_router_check", sql`${table.router} IN ('metis', 'dflow', 'okx')`),
+    check("trade_attempts_router_check", sql`${table.router} IN ('metis', 'dflow', 'okx', 'pumpswap')`),
     check(
       "trade_attempts_status_check",
       sql`${table.status} IN ('prepared', 'wallet_rejected', 'submitted', 'confirmed', 'failed')`,

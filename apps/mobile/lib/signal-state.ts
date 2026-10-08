@@ -1,4 +1,4 @@
-import { type SignalDetail, type SignalSummary, scorePolicyV1 } from '@waffle/shared'
+import { PUMP_SWAP_PROGRAM_ID, type SignalDetail, type SignalSummary, scorePolicyV1 } from '@waffle/shared'
 
 export type SignalView = 'all' | 'following'
 export const MAX_CACHED_SIGNALS = 200
@@ -26,34 +26,19 @@ function fresh(timestamp: string | null | undefined, limit: number, now: number)
 }
 export function signalDataLabel(signal: SignalSummary, offline: boolean, now = Date.now()): string {
   if (offline) return 'Cached · stale'
-  if (!fresh(signal.observedAt, scorePolicyV1.freshness.signalMs, now)) return 'Stale'
+  if (signal.status === 'history-only') return 'Earlier buy'
+  if (!fresh(signal.observedAt, scorePolicyV1.freshness.signalMs, now)) return 'Earlier buy'
   if (signal.dataStatus === 'unknown') return 'Unknown data'
-  if (signal.dataStatus === 'stale') return 'Stale'
+  if (signal.dataStatus === 'stale') return 'Earlier buy'
   return signal.dataStatus === 'partial' ? 'Partial data' : 'Complete data'
 }
-export function copyBlockReason(signal: SignalDetail, offline: boolean, now = Date.now()): string | null {
-  if (offline) return 'Reconnect and refresh before copying.'
-  if (signal.status === 'suppressed') return 'Copying is blocked by the signal checks.'
-  if (signal.status === 'history-only') return 'This signal is for history only.'
-  if (signal.dataStatus === 'unknown' || signal.dataStatus === 'stale') return 'Critical data is unknown or stale.'
-  const assessment = signal.snapshot.assessment
-  if (!assessment || assessment.streamStale) return 'The source stream is degraded or its health is unknown.'
+/** Opening review requests fresh server checks; the historical score cannot authorize a trade. */
+export function copyBlockReason(signal: SignalDetail, offline: boolean, _now = Date.now()): string | null {
+  if (offline) return 'Reconnect and refresh before trading.'
   if (
-    !fresh(assessment.transactionAt, scorePolicyV1.freshness.signalMs, now) ||
-    !fresh(signal.observedAt, scorePolicyV1.freshness.signalMs, now)
+    signal.sourceProgramId !== PUMP_SWAP_PROGRAM_ID ||
+    !signal.reasons.some((reason) => reason.code === 'supported_buy' && reason.points === 20)
   )
-    return 'This signal is stale.'
-  for (const key of ['mint', 'pool'] as const) {
-    const evidence = assessment.evidence[key]
-    if (evidence.status !== 'fresh' || !evidence.expiresAt || Date.parse(evidence.expiresAt) <= now) {
-      return 'Token or pool checks need refreshing.'
-    }
-  }
-  if (
-    !fresh(signal.snapshot.mint?.fetchedAt, scorePolicyV1.freshness.mintMs, now) ||
-    !fresh(signal.snapshot.pool?.fetchedAt, scorePolicyV1.freshness.poolMs, now)
-  ) {
-    return 'Token or pool checks need refreshing.'
-  }
+    return 'This is not a confirmed supported buy.'
   return null
 }

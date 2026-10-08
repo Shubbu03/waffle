@@ -28,14 +28,20 @@ function serialize(row: typeof tradeAttempts.$inferSelect) {
 }
 
 /** Every method requires an authenticated owner transaction; RLS is a second boundary. */
-export function createTradeAttemptStore(tx: DatabaseExecutor, userId: string) {
-  const owned = (id: string) => and(eq(tradeAttempts.id, id), eq(tradeAttempts.userId, userId));
+export function createTradeAttemptStore(
+  tx: DatabaseExecutor,
+  userId: string,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
+  const owned = (id: string) =>
+    and(eq(tradeAttempts.id, id), eq(tradeAttempts.userId, userId), eq(tradeAttempts.network, network));
   return {
     async create(order: RealOrder) {
       const [row] = await tx
         .insert(tradeAttempts)
         .values({
           userId,
+          network,
           signalId: order.signalId,
           quoteId: order.id,
           requestId: order.requestId,
@@ -61,6 +67,7 @@ export function createTradeAttemptStore(tx: DatabaseExecutor, userId: string) {
         .where(
           and(
             eq(tradeAttempts.userId, userId),
+            eq(tradeAttempts.network, network),
             cursor
               ? or(
                   lt(tradeAttempts.createdAt, cursor.createdAt),

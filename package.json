@@ -25,7 +25,10 @@
     "db:generate": "bun run --filter '@waffle/db' db:generate",
     "db:migrate": "bun run --filter '@waffle/db' db:migrate",
     "dev:watcher": "bun run --filter '@waffle/watcher' dev",
-    "start:watcher": "bun run --filter '@waffle/watcher' start"
+    "start:watcher": "bun run --filter '@waffle/watcher' start",
+    "dev:watcher:devnet": "SOLANA_NETWORK=devnet WATCHER_STATUS_PORT=3003 bun run --filter '@waffle/watcher' dev",
+    "start:watcher:devnet": "SOLANA_NETWORK=devnet WATCHER_STATUS_PORT=3003 bun run --filter '@waffle/watcher' start",
+    "test:market-data": "bun run --filter '@waffle/market-data' test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

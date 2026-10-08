@@ -1,4 +1,5 @@
 import { createHttpClient, type HttpTransport } from "@waffle/http";
+import type { MarketRpc } from "@waffle/market-data/rpc";
 import { PUMP_SWAP_PROGRAM_ID, solanaAddressSchema } from "@waffle/shared";
 
 /** Bound the per-track budget: 1 history page + at most this many body fetches. */
@@ -51,6 +52,7 @@ function mentionsPumpSwap(transaction: unknown): boolean {
  */
 export function createWalletActivityValidator(options: {
   url: string;
+  rpc?: Pick<MarketRpc, "call">;
   requestsPerSecond?: number;
   transport?: HttpTransport | undefined;
   now?: () => number;
@@ -66,7 +68,8 @@ export function createWalletActivityValidator(options: {
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let lastCallAt = 0;
 
-  async function rpc(method: string, params: unknown[]): Promise<unknown> {
+  async function rpc(method: "getTransaction" | "getSignaturesForAddress", params: unknown[]): Promise<unknown> {
+    if (options.rpc) return options.rpc.call(method, params);
     const wait = spacingMs - (now() - lastCallAt);
     if (wait > 0) await sleep(wait);
     lastCallAt = now();

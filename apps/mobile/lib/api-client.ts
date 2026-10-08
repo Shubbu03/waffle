@@ -1,6 +1,6 @@
 import { createHttpClient, type HttpRequest, HttpResponseError } from '@waffle/http'
 import { type AuthVerifyRequest, apiErrorSchema, authVerifyResponseSchema, sessionSchema } from '@waffle/shared'
-import { AppConfig } from '@/constants/app-config'
+import { AppConfig, apiRootUrl } from '@/constants/app-config'
 import { ApiError } from './api-error'
 
 export { ApiError } from './api-error'
@@ -28,7 +28,8 @@ export function apiBaseUrl(): string {
 }
 
 export async function apiRequest(path: string, init: Omit<HttpRequest, 'url' | 'onResponse'> = {}, token?: string) {
-  const baseUrl = apiBaseUrl()
+  const marketUrl = apiBaseUrl()
+  const baseUrl = path.startsWith('/auth/') || path.startsWith('/push-tokens') ? apiRootUrl() : marketUrl
   try {
     const response = await mobileClient.request({
       ...init,

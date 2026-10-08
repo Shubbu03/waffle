@@ -93,8 +93,8 @@ Commit: `feat(api): realtime filter + FCM fanout + notification permission`
 
 ### C3.1 Feed + detail
 Work: public All signals and authenticated Following feeds; Wallets catalog with follow/unfollow and separate alert toggle (see docs/wallet-selection.md); feed (whale, token, score, age, source), detail (tx link, reasons, data status, degraded banner). Opening push reloads live quote.
-Unit tests: stale card renders suppressed CTA; unknown holders renders unknown.
-Manual: airplane-mode shows cached + stale flag, no copy on stale.
+Unit tests: historical score stays immutable; connected supported buys can request current trade checks; unknown holders renders unknown.
+Manual: airplane-mode shows cached state and blocks trading; reconnect and request a new current assessment before confirmation.
 Commit: `feat(mobile): feed + detail + staleness`
 
 ### C3.2 Paper copy

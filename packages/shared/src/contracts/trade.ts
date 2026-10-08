@@ -26,7 +26,7 @@ export const tradeAttemptSchema = z
     quoteId: idSchema,
     requestId: z.string().min(1).max(200),
     taker: solanaAddressSchema,
-    router: z.enum(["metis", "dflow", "okx"]),
+    router: z.enum(["metis", "dflow", "okx", "pumpswap"]),
     inputAmountLamports: positiveRawAmountSchema,
     status: z.enum(["prepared", "wallet_rejected", "submitted", "confirmed", "failed"]),
     signature: transactionSignatureSchema.nullable(),

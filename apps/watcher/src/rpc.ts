@@ -1,8 +1,6 @@
 import type { HttpClient, HttpTransport } from "@waffle/http";
-import { solanaAddressSchema, transactionSignatureSchema } from "@waffle/shared";
-import { type ClassificationSkipReason, classifyPumpSwapBuy, type PumpSwapBuy } from "./classify.ts";
-import { parseWatcherRpcEnv } from "./config.ts";
-import { createRpcClient } from "./http-clients.ts";
+import { type ClassificationSkipReason, classifyPumpSwapBuy, type PumpSwapBuy } from "@waffle/market-data/classify";
+import { createRpcClient } from "@waffle/market-data/http-clients";
 import {
   RpcHttpError,
   type RpcMethod,
@@ -11,11 +9,18 @@ import {
   RpcRemoteError,
   RpcScheduler,
   type RpcSchedulerOptions,
-} from "./rpc-scheduler.ts";
+} from "@waffle/market-data/rpc-scheduler";
+import { solanaAddressSchema, transactionSignatureSchema } from "@waffle/shared";
+import { parseWatcherRpcEnv } from "./config.ts";
 
 export type TransactionOutcome =
   | { status: "buy"; wallet: string; signature: string; buy: PumpSwapBuy; transaction: unknown }
-  | { status: "ignored"; wallet: string; signature: string; reason: ClassificationSkipReason }
+  | {
+      status: "ignored";
+      wallet: string;
+      signature: string;
+      reason: ClassificationSkipReason | "unsupported-transaction-version";
+    }
   | { status: "not-ready"; wallet: string; signature: string }
   | { status: "dropped"; wallet: string; signature: string }
   | { status: "duplicate"; wallet: string; signature: string };
@@ -125,6 +130,10 @@ export class WatcherRpc {
 
     const result: Promise<TransactionOutcome> = submitted.result
       .catch((error: unknown) => {
+        // A format this client cannot read must not strand the wallet in recovery.
+        // It is never classified, scored, or offered as a copyable buy.
+        if (error instanceof RpcRemoteError && error.code === -32015)
+          return { status: "ignored", wallet, signature, reason: "unsupported-transaction-version" } as const;
         if (error instanceof RpcNotReadyError) return { status: "not-ready", wallet, signature } as const;
         if (error instanceof RpcProvisionalDroppedError) return { status: "dropped", wallet, signature } as const;
         throw error;

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { HttpTransport } from "@waffle/http";
+import { RpcHttpError, RpcScheduler, RpcTimeoutError } from "@waffle/market-data/rpc-scheduler";
 import { parseWatcherRpcEnv } from "../src/config.ts";
 import { WatcherRpc } from "../src/rpc.ts";
-import { RpcHttpError, RpcScheduler, RpcTimeoutError } from "../src/rpc-scheduler.ts";
 
 const wallet = "1".repeat(32);
 const otherWallet = `${"1".repeat(31)}2`;
@@ -212,6 +212,44 @@ describe("watcher RPC client", () => {
     expect(methods.filter((method) => method === "getTransaction")).toHaveLength(1);
     expect(methods.filter((method) => method === "getSignaturesForAddress")).toHaveLength(1);
     rpc.close();
+  });
+
+  test("unsupported transaction versions do not block wallet recovery", async () => {
+    const rpc = new WatcherRpc({
+      url: rpcUrl,
+      transport: async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as RpcRequest;
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code: -32015, message: "Transaction version is not supported" },
+        });
+      },
+    });
+    try {
+      expect(await rpc.queueTransaction(wallet, signature, "backfill")).toMatchObject({
+        status: "ignored",
+        reason: "unsupported-transaction-version",
+      });
+      expect((await rpc.queueTransaction(wallet, signature, "backfill")).status).toBe("duplicate");
+    } finally {
+      rpc.close();
+    }
+  });
+
+  test("unrelated RPC failures still abort recovery rather than silently losing transactions", async () => {
+    const rpc = new WatcherRpc({
+      url: rpcUrl,
+      transport: async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as RpcRequest;
+        return Response.json({ jsonrpc: "2.0", id: request.id, error: { code: -32016, message: "Context not ready" } });
+      },
+    });
+    try {
+      await expect(rpc.queueTransaction(wallet, signature, "backfill")).rejects.toMatchObject({ code: -32016 });
+    } finally {
+      rpc.close();
+    }
   });
 
   test("routes token, pool, and program checks through the same scheduler", async () => {

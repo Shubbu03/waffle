@@ -3,7 +3,7 @@ import { createLogger } from "@waffle/observability";
 import { PUMP_SWAP_PROGRAM_ID } from "@waffle/shared";
 import { parseWatcherEnv } from "../src/config.ts";
 import type { SocketFactory, WatcherSocket } from "../src/connection.ts";
-import type { BackfillSignature, TransactionOutcome } from "../src/rpc.ts";
+import { type BackfillSignature, type TransactionOutcome, WatcherRpc } from "../src/rpc.ts";
 import { WalletWatcher, type WatcherEvent } from "../src/watcher.ts";
 
 const wallets = ["1".repeat(32), `${"1".repeat(31)}2`, `${"1".repeat(31)}3`];
@@ -207,6 +207,48 @@ describe("catalog watcher", () => {
       ["dependency.recovered", "watcher.rpc"],
     ]);
   });
+  test("unsupported history format does not keep a subsequent supported live buy stale", async () => {
+    const transaction = await Bun.file(new URL("../../../tests/fixtures/pumpswap-buy.json", import.meta.url)).json();
+    const address = transaction.transaction.message.accountKeys.find((key: { signer: boolean }) => key.signer).pubkey;
+    transaction.slot = 100;
+    transaction.blockTime = 1;
+    transaction.transaction.signatures = [signature(2)];
+    const rpc = new WatcherRpc({
+      url: "https://rpc.example.test/",
+      transport: async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as Request;
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          ...(request.params[0] === signature(1)
+            ? { error: { code: -32015, message: "Unsupported transaction version" } }
+            : { result: transaction }),
+        });
+      },
+    });
+    const h = setup();
+    h.setActive([address]);
+    h.history.set(address, [entry(1)]);
+    let fetching: Promise<TransactionOutcome> | undefined;
+    h.setTransaction((wallet, sig) => {
+      fetching = rpc.queueTransaction(wallet, sig, "backfill");
+      return fetching;
+    });
+    try {
+      await h.start();
+      await fetching;
+      await settle();
+      expect(h.watcher.status.wallets[0]).toMatchObject({ stale: false, checkpoint: signature(1), error: null });
+      h.sockets[0]?.log(address, 2, null, 100);
+      await settle();
+      await fetching;
+      await settle();
+      expect(h.events.at(-1)).toMatchObject({ source: "provisional", stale: false, outcome: { status: "buy" } });
+    } finally {
+      rpc.close();
+    }
+  });
+
   test("balances two or three connections and dedupes live overlap with confirmed recovery", async () => {
     const h = setup(3);
     h.setActive(wallets);

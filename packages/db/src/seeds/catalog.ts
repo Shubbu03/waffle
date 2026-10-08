@@ -7,7 +7,7 @@
  *
  * Volume bands: low (<=40 recent txs) · mid (<=90) · high (>90, capped 100-tx window).
  */
-import { notInArray } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import type { DatabaseExecutor } from "../database.ts";
 import { watchedWallets } from "../schema/catalog.ts";
 
@@ -78,7 +78,7 @@ export async function seedCatalog(db: DatabaseExecutor): Promise<{ upserted: num
       .insert(watchedWallets)
       .values({ address: entry.address, label: entry.label, inclusionReason: entry.inclusionReason, active: true })
       .onConflictDoUpdate({
-        target: watchedWallets.address,
+        target: [watchedWallets.network, watchedWallets.address],
         set: { label: entry.label, inclusionReason: entry.inclusionReason, active: true },
       });
     upserted += 1;
@@ -87,7 +87,13 @@ export async function seedCatalog(db: DatabaseExecutor): Promise<{ upserted: num
   const deactivated = await db
     .update(watchedWallets)
     .set({ active: false })
-    .where(notInArray(watchedWallets.address, addresses))
+    .where(
+      and(
+        eq(watchedWallets.network, "mainnet"),
+        eq(watchedWallets.source, "catalog"),
+        notInArray(watchedWallets.address, addresses),
+      ),
+    )
     .returning({ id: watchedWallets.id });
   for (const row of deactivated) console.log(`[seed] deactivate: ${row.id} (removed from catalog, history preserved)`);
   console.log(

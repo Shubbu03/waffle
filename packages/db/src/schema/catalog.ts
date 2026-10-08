@@ -17,6 +17,7 @@ export const watchedWallets = pgTable(
   "watched_wallets",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    network: varchar("network", { length: 16 }).$type<"mainnet" | "devnet" | "testnet">().default("mainnet").notNull(),
     address: varchar("address", { length: 44 }).notNull(),
     label: varchar("label", { length: 80 }).notNull(),
     active: boolean("active").default(true).notNull(),
@@ -27,7 +28,8 @@ export const watchedWallets = pgTable(
     createdAt: createdAt(),
   },
   (table) => [
-    uniqueIndex("watched_wallets_address_unique").on(table.address),
+    uniqueIndex("watched_wallets_network_address_unique").on(table.network, table.address),
+    check("watched_wallets_network_check", sql`${table.network} IN ('mainnet', 'devnet', 'testnet')`),
     check("watched_wallets_source_check", sql`${table.source} IN ('catalog', 'user')`),
   ],
 );

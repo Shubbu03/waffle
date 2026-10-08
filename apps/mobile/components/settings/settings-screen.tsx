@@ -23,7 +23,13 @@ export function SettingsScreen() {
             <SettingsUiTheme />
             <SettingsRow
               title="Network"
-              detail={selectedCluster.id !== 'solana:mainnet' ? 'Sign-in and copying require Mainnet.' : undefined}
+              detail={
+                selectedCluster.id === 'solana:devnet'
+                  ? 'Test SOL · PumpSwap trades on Devnet'
+                  : selectedCluster.id === 'solana:testnet'
+                    ? 'Account access available. PumpSwap trading is not deployed on Testnet.'
+                    : undefined
+              }
             >
               <SettingsDropdown
                 label="Network"

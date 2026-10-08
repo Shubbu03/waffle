@@ -1,11 +1,21 @@
-import { Link, Stack, useLocalSearchParams } from 'expo-router'
-import { RefreshControl, ScrollView, TextInput, View } from 'react-native'
+import { router, useLocalSearchParams } from 'expo-router'
+import { useEffect, useRef } from 'react'
+import { ActivityIndicator, Alert, type ScrollView, View } from 'react-native'
 import { AppText } from '@/components/app-text'
-import { AppView } from '@/components/app-view'
 import { useSignalClock, useSignalDetail } from '@/components/signals/use-signals'
+import {
+  returnToSignal,
+  TradeAmount,
+  TradeError,
+  TradeIdentity,
+  TradePage,
+  TradeQuoteDetails,
+} from '@/components/trade/trade-ui'
+import { AppButton } from '@/components/ui/app-button'
+import { AppCard } from '@/components/ui/app-card'
 import { useThemeColor } from '@/hooks/use-theme-color'
-import { formatSol, formatTokens, paperQuoteFresh, paperReviewBlock, parsePaperSize } from '@/lib/paper-state'
-import { PaperButton, PaperCard, PaperSignIn } from './paper-ui'
+import { formatSol, formatTokens, paperQuoteFresh, paperReviewBlock } from '@/lib/paper-state'
+import { PaperSignIn } from './paper-ui'
 import { usePaperTrade } from './use-paper'
 
 export function PaperReviewScreen() {
@@ -13,7 +23,9 @@ export function PaperReviewScreen() {
   const signalId = typeof id === 'string' ? id : ''
   const detail = useSignalDetail(signalId)
   const now = useSignalClock()
+  const muted = useThemeColor({}, 'muted')
   const ink = useThemeColor({}, 'text')
+  const scroll = useRef<ScrollView>(null)
   const blocked = paperReviewBlock(
     detail.data?.signal,
     detail.isError || !detail.data || detail.data.fromCache || now - detail.data.fetchedAt > 45_000,
@@ -21,153 +33,124 @@ export function PaperReviewScreen() {
   )
   const trade = usePaperTrade(signalId, blocked)
   const quote = trade.quote
-  const fresh = quote && paperQuoteFresh(quote, now)
-  const unavailable = !trade.available || !!blocked || trade.busy || !trade.ready || !!trade.pending || !!trade.position
+  const fresh = quote !== null && paperQuoteFresh(quote, now)
+  useEffect(() => {
+    // Confirmation replaces the quote with recovery or success; keep that outcome in view.
+    if (quote || trade.pending || trade.position || trade.error) scroll.current?.scrollTo({ y: 0, animated: true })
+  }, [quote, trade.pending, trade.position, trade.error])
   return (
-    <AppView style={{ flex: 1 }}>
-      <Stack.Screen options={{ headerShown: true, title: 'Review paper copy', headerTintColor: ink }} />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 20, paddingBottom: 40, gap: 20 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={detail.isFetching}
-            onRefresh={() => {
-              trade.controller.invalidate()
-              void detail.refetch()
-            }}
-          />
-        }
-      >
-        <View style={{ gap: 8 }}>
-          <AppText type="title">Paper copy</AppText>
-          <AppText type="defaultSemiBold">SIMULATED · No wallet transaction</AppText>
-          <AppText>Review a fresh quote before recording a simulated fill.</AppText>
-          <AppText selectable>{detail.data?.signal.mintAddress ?? 'Loading signal…'}</AppText>
-        </View>
-        {!trade.isAuthenticated ? (
-          <PaperSignIn />
-        ) : !trade.serverLinked ? (
-          <AppText>Verifying your session. Reconnect before trading.</AppText>
-        ) : null}
-        {blocked && !trade.position && !trade.pending ? (
-          <PaperCard>
-            <AppText>{blocked}</AppText>
-            <AppText>
-              Refresh updates the saved evidence; a new quote alone does not renew token or pool checks.
-            </AppText>
-          </PaperCard>
-        ) : null}
-        {trade.position ? (
-          <PaperCard>
-            <AppText type="subtitle">Simulated fill recorded</AppText>
-            <AppText selectable>Entry cost: {formatSol(trade.position.fill.totalDebitLamports)}</AppText>
-            <AppText>{new Date(trade.position.createdAt).toLocaleString()}</AppText>
-            <Link href={{ pathname: '/paper/positions/[id]', params: { id: trade.position.id } }}>
-              <AppText type="link">View position</AppText>
-            </Link>
-            <Link href="/paper/positions">
-              <AppText type="link">All paper positions</AppText>
-            </Link>
-          </PaperCard>
-        ) : (
-          <>
-            <PaperCard>
-              <AppText type="subtitle">Size in SOL</AppText>
-              <AppText>Maximum 0.1 SOL per paper fill.</AppText>
-              <TextInput
-                accessibilityLabel="Paper size in SOL"
-                value={trade.size}
-                onChangeText={(size) => trade.controller.setSize(size)}
-                editable={!trade.busy && !trade.pending}
-                keyboardType="decimal-pad"
-                placeholder="0.1"
-                placeholderTextColor={ink}
-                style={{ color: ink, borderColor: ink, borderWidth: 1, padding: 14, borderRadius: 12, fontSize: 22 }}
-              />
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                {['0.01', '0.05', '0.1'].map((size) => (
-                  <View key={size} style={{ flex: 1 }}>
-                    <PaperButton
-                      title={size}
-                      disabled={trade.busy || !!trade.pending}
-                      onPress={() => trade.controller.setSize(size)}
-                    />
-                  </View>
-                ))}
-              </View>
-              <PaperButton
-                title={trade.busy && !trade.pending ? 'Working…' : 'Get fresh quote'}
-                disabled={unavailable || !parsePaperSize(trade.size)}
-                onPress={() => void trade.controller.prepare()}
-              />
-            </PaperCard>
-            {quote ? (
-              <PaperCard>
-                <AppText type="subtitle">Quote review</AppText>
-                <AppText>
-                  {fresh
-                    ? `Expires in ${Math.max(0, Math.ceil((Date.parse(quote.expiresAt) - now) / 1000))}s`
-                    : 'Expired · request a fresh quote'}
-                </AppText>
-                <AppText selectable>Expected: {formatTokens(quote.outputAmountRaw, quote.outputDecimals)}</AppText>
-                <AppText selectable>
-                  Minimum received: {formatTokens(quote.minOutputAmountRaw, quote.outputDecimals)}
-                </AppText>
-                <AppText>
-                  Slippage: {quote.slippageBps / 100}% · Price impact: {quote.priceImpactPct}%
-                </AppText>
-                <AppText>Signature fee: {formatSol(quote.fees.signatureLamports)}</AppText>
-                <AppText>Priority fee: {formatSol(quote.fees.prioritizationLamports)}</AppText>
-                <AppText>Rent: {formatSol(quote.fees.rentLamports)}</AppText>
-                <AppText>Router fee: {quote.fees.totalBps / 100}% (included in output)</AppText>
-                {quote.fees.platform ? (
-                  <AppText selectable>
-                    Platform fee: {quote.fees.platform.amountRaw} base units · mint {quote.fees.platform.mint} (included
-                    in output)
-                  </AppText>
-                ) : null}
-                <AppText type="defaultSemiBold">
-                  Total entry cost:{' '}
-                  {formatSol((BigInt(quote.inputAmountLamports) + BigInt(quote.feeLamports)).toString())}
-                </AppText>
-                <PaperButton
-                  title="Confirm simulated fill"
-                  disabled={unavailable || !fresh}
-                  onPress={() => void trade.controller.confirm()}
-                />
-              </PaperCard>
-            ) : null}
-            {trade.pending ? (
-              <PaperCard>
-                <AppText type="subtitle">Checking fill status</AppText>
-                <AppText>
-                  A request may have completed even when the response was lost. This review stays locked until the saved
-                  fill is found.
-                </AppText>
-                <PaperButton
-                  title={trade.busy ? 'Checking…' : 'Check saved fill'}
-                  disabled={trade.busy || !trade.available}
-                  onPress={() => void trade.controller.reconcile()}
-                />
-                <Link href="/paper/positions">
-                  <AppText type="link">View paper positions</AppText>
-                </Link>
-              </PaperCard>
-            ) : null}
-          </>
-        )}
-        {!trade.ready && trade.available ? (
-          <PaperButton title="Retry saved fill status" onPress={() => void trade.controller.restore()} />
-        ) : null}
-        {trade.error ? (
-          <AppText selectable accessibilityRole="alert">
-            {trade.error}
+    <TradePage title="Paper trade" signalId={signalId} scrollRef={scroll}>
+      <TradeIdentity
+        mint={detail.data?.signal.mintAddress}
+        description="Practice with a simulated purchase. No SOL is spent and no wallet approval is needed."
+      />
+      {trade.error ? <TradeError message={trade.error} /> : null}
+      {!trade.isAuthenticated ? (
+        <PaperSignIn />
+      ) : !trade.serverLinked ? (
+        <AppText>Reconnect to verify your account.</AppText>
+      ) : null}
+      {trade.position ? (
+        <AppCard>
+          <AppText type="subtitle">Paper trade saved</AppText>
+          <AppText style={{ color: muted, fontSize: 13 }}>Your simulated position is ready.</AppText>
+          <AppText selectable>
+            {formatTokens(trade.position.fill.outputAmountRaw, trade.position.entryQuote.outputDecimals)}
           </AppText>
-        ) : null}
-        {detail.error ? <AppText selectable>{detail.error.message}</AppText> : null}
-      </ScrollView>
-    </AppView>
+          <AppText style={{ color: muted, fontSize: 13 }}>
+            Entry cost: {formatSol(trade.position.fill.totalDebitLamports)}
+          </AppText>
+          <AppButton
+            title="View paper position"
+            onPress={() =>
+              router.replace({ pathname: '/paper/positions/[id]', params: { id: trade.position?.id ?? '' } })
+            }
+          />
+        </AppCard>
+      ) : trade.pending ? (
+        <AppCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {trade.busy ? <ActivityIndicator color={ink} /> : null}
+            <AppText type="subtitle" style={{ flex: 1 }}>
+              {trade.busy ? 'Confirming paper trade…' : 'Check paper trade status'}
+            </AppText>
+          </View>
+          <AppText style={{ color: muted, fontSize: 13, lineHeight: 21 }}>
+            We’re checking whether this purchase was saved. You can leave this screen; the check resumes when you
+            return.
+          </AppText>
+          <AppButton
+            title="Check status"
+            busy={trade.busy}
+            disabled={!trade.available}
+            onPress={() => void trade.controller.reconcile()}
+          />
+          <AppButton title="View paper positions" variant="secondary" onPress={() => router.push('/paper/positions')} />
+          {trade.canStartOver ? (
+            <AppButton
+              title="Start a new paper trade"
+              variant="quiet"
+              disabled={trade.busy || !trade.available}
+              onPress={() =>
+                Alert.alert(
+                  'Start a new simulation?',
+                  'No saved position was found. The earlier request could still finish and appear in your paper positions. No real funds are involved.',
+                  [
+                    { text: 'Keep checking', style: 'cancel' },
+                    { text: 'Start new', onPress: () => void trade.controller.startOver() },
+                  ],
+                )
+              }
+            />
+          ) : null}
+        </AppCard>
+      ) : blocked ? (
+        <AppCard>
+          <AppText style={{ fontSize: 14 }}>{blocked}</AppText>
+          <AppButton title="Refresh signal" busy={detail.isFetching} onPress={() => void detail.refetch()} />
+        </AppCard>
+      ) : quote ? (
+        <AppCard>
+          <AppText type="subtitle">Review simulated purchase</AppText>
+          <TradeQuoteDetails quote={quote} />
+          <AppText style={{ color: muted, fontSize: 12 }}>
+            {fresh
+              ? `Quote valid for ${Math.max(0, Math.ceil((Date.parse(quote.expiresAt) - now) / 1000))}s`
+              : 'Quote expired. Get a new quote to continue.'}
+          </AppText>
+          <AppButton
+            title="Confirm paper trade"
+            busy={trade.busy}
+            disabled={!trade.available || !fresh || !trade.ready}
+            onPress={() => void trade.controller.confirm()}
+          />
+          <AppButton
+            title="Get a new quote"
+            variant="secondary"
+            disabled={trade.busy || !trade.available}
+            onPress={() => void trade.controller.prepare()}
+          />
+          <AppButton
+            title="Change amount"
+            variant="quiet"
+            disabled={trade.busy}
+            onPress={() => trade.controller.invalidate()}
+          />
+        </AppCard>
+      ) : (
+        <TradeAmount
+          value={trade.size}
+          onChange={(size) => trade.controller.setSize(size)}
+          max="0.1"
+          disabled={!trade.available || !trade.ready}
+          busy={trade.busy}
+          onQuote={() => void trade.controller.prepare()}
+        />
+      )}
+      {!trade.ready && trade.available ? (
+        <AppButton title="Retry saved status" onPress={() => void trade.controller.restore()} />
+      ) : null}
+      <AppButton title="Back to signal" variant="quiet" onPress={() => returnToSignal(signalId)} />
+    </TradePage>
   )
 }

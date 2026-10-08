@@ -9,8 +9,10 @@ import {
   solanaAddressSchema,
   timestampSchema,
 } from "./primitives.ts";
+import { tradeAssessmentSchema } from "./trade-assessment.ts";
 
 const quoteFields = z.strictObject({
+  network: z.enum(["mainnet", "devnet", "testnet"]).optional(),
   id: idSchema,
   signalId: idSchema,
   inputMint: z.literal(WRAPPED_SOL_MINT),
@@ -19,7 +21,7 @@ const quoteFields = z.strictObject({
   outputAmountRaw: positiveRawAmountSchema,
   minOutputAmountRaw: positiveRawAmountSchema,
   requestId: z.string().min(1).max(200),
-  router: z.enum(["metis", "jupiterz", "dflow", "okx"]),
+  router: z.enum(["metis", "jupiterz", "dflow", "okx", "pumpswap"]),
   feeLamports: rawAmountSchema,
   fees: z.strictObject({
     totalBps: z.number().int().min(0).max(10_000),
@@ -40,6 +42,7 @@ const quoteFields = z.strictObject({
   priceImpactPct: z.number().min(-100).max(100),
   fetchedAt: timestampSchema,
   expiresAt: timestampSchema,
+  assessment: tradeAssessmentSchema.optional(),
 });
 
 function quoteIsConsistent(quote: z.infer<typeof quoteFields>): boolean {
@@ -50,6 +53,13 @@ function quoteIsConsistent(quote: z.infer<typeof quoteFields>): boolean {
     (parseRawAmount(quote.fees.prioritizationLamports) ?? 0n) +
     (parseRawAmount(quote.fees.rentLamports) ?? 0n);
   return (
+    (quote.router !== "pumpswap" ? (quote.network ?? "mainnet") === "mainnet" : quote.network === "devnet") &&
+    (!quote.assessment || (quote.assessment.network ?? "mainnet") === (quote.network ?? "mainnet")) &&
+    (!quote.assessment ||
+      (quote.assessment.signalId === quote.signalId &&
+        quote.assessment.mint.address === quote.outputMint &&
+        quote.assessment.inputAmountLamports === quote.inputAmountLamports &&
+        Date.parse(quote.expiresAt) <= Date.parse(quote.assessment.expiresAt))) &&
     minimum !== null &&
     output !== null &&
     minimum <= output &&
@@ -69,7 +79,12 @@ export const paperQuoteSchema = quoteFields
   })
   .refine((quote) => {
     const input = parseRawAmount(quote.inputAmountLamports);
-    return quoteIsConsistent(quote) && input !== null && input <= scorePolicyV1.sizeLamports.paperMax;
+    return (
+      (!quote.assessment || quote.assessment.mode === "paper") &&
+      quoteIsConsistent(quote) &&
+      input !== null &&
+      input <= scorePolicyV1.sizeLamports.paperMax
+    );
   }, "Invalid paper quote bounds or amount");
 
 /** Normalized, accepted Jupiter order; unsafe routes never enter this contract. */
@@ -82,13 +97,14 @@ export const realOrderSchema = quoteFields
     rentFeePayer: solanaAddressSchema.nullable(),
     gasless: z.literal(false),
     requiredSignatures: z.literal(1),
-    router: z.enum(["metis", "dflow", "okx"]),
+    router: z.enum(["metis", "dflow", "okx", "pumpswap"]),
     lastValidBlockHeight: positiveRawAmountSchema,
     transactionBase64: z.base64().max(8192),
   })
   .refine((order) => {
     const input = parseRawAmount(order.inputAmountLamports);
     return (
+      (!order.assessment || order.assessment.mode === "real") &&
       quoteIsConsistent(order) &&
       input !== null &&
       input <= scorePolicyV1.sizeLamports.realMax &&

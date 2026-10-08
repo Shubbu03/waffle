@@ -16,6 +16,7 @@ import {
   useUntrackWallet,
   useWalletRows,
 } from '@/components/wallets/use-wallets'
+import { AppConfig } from '@/constants/app-config'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { ageLabel } from '@/lib/signal-state'
 import { followLabel, nextAlertsValue, type WalletRow } from '@/lib/wallet-subscription-state'
@@ -62,7 +63,9 @@ function WalletCard({ row }: { row: WalletRow }) {
         <View style={{ flex: 1, gap: 2 }}>
           <AppText type="defaultSemiBold">{row.label}</AppText>
           <AppText style={{ color: muted, fontSize: 12 }}>
-            {row.active ? 'Tracking on Mainnet' : 'Tracking paused'}
+            {row.active
+              ? `Tracking on ${AppConfig.network === 'mainnet' ? 'Mainnet' : AppConfig.network === 'devnet' ? 'Devnet' : 'Testnet'}`
+              : 'Tracking paused'}
             {row.source === 'user' ? ' · Custom' : ''}
           </AppText>
         </View>

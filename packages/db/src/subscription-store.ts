@@ -31,13 +31,18 @@ function serializeSubscription(row: {
 type FollowResult = { status: "ok"; subscription: WalletSubscription } | { status: "not-found" | "paused" };
 
 /** Use only the database transaction and user ID supplied by an authenticated owner operation. */
-export function createSubscriptionStore(tx: DatabaseExecutor, userId: string) {
+export function createSubscriptionStore(
+  tx: DatabaseExecutor,
+  userId: string,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   return {
     async list() {
       const rows = await tx
         .select(columns)
         .from(subscriptions)
-        .where(eq(subscriptions.userId, userId))
+        .innerJoin(watchedWallets, eq(watchedWallets.id, subscriptions.watchedWalletId))
+        .where(and(eq(subscriptions.userId, userId), eq(watchedWallets.network, network)))
         .orderBy(subscriptions.createdAt, subscriptions.watchedWalletId)
         .limit(101);
       return walletSubscriptionsResponseSchema.parse({ items: rows.map(serializeSubscription) });
@@ -46,7 +51,7 @@ export function createSubscriptionStore(tx: DatabaseExecutor, userId: string) {
       const [wallet] = await tx
         .select({ active: watchedWallets.active })
         .from(watchedWallets)
-        .where(eq(watchedWallets.id, walletId));
+        .where(and(eq(watchedWallets.id, walletId), eq(watchedWallets.network, network)));
       if (!wallet) return { status: "not-found" };
       const preference = {
         alertsEnabled: input.alertsEnabled ?? subscriptions.alertsEnabled,
@@ -73,7 +78,13 @@ export function createSubscriptionStore(tx: DatabaseExecutor, userId: string) {
                   createdAt: sql<Date>`clock_timestamp()`.as("created_at"),
                 })
                 .from(watchedWallets)
-                .where(and(eq(watchedWallets.id, walletId), eq(watchedWallets.active, true))),
+                .where(
+                  and(
+                    eq(watchedWallets.id, walletId),
+                    eq(watchedWallets.active, true),
+                    eq(watchedWallets.network, network),
+                  ),
+                ),
             )
             .onConflictDoUpdate({ target: [subscriptions.userId, subscriptions.watchedWalletId], set: preference })
             .returning(columns)
@@ -96,6 +107,11 @@ export function createSubscriptionStore(tx: DatabaseExecutor, userId: string) {
         : { status: "paused" };
     },
     async remove(walletId: string): Promise<void> {
+      const [wallet] = await tx
+        .select({ id: watchedWallets.id })
+        .from(watchedWallets)
+        .where(and(eq(watchedWallets.id, walletId), eq(watchedWallets.network, network)));
+      if (!wallet) return;
       await tx
         .delete(subscriptions)
         .where(and(eq(subscriptions.userId, userId), eq(subscriptions.watchedWalletId, walletId)));

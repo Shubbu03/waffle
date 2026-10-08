@@ -11,7 +11,7 @@ import { z } from "zod";
 import { decodeMint, decodePool, decodeVault, parseAccounts } from "./accounts.ts";
 import { type Evidence, EvidenceCache, EvidenceUnavailable, freshness } from "./evidence-cache.ts";
 import type { PythPrices } from "./pyth.ts";
-import type { WatcherRpc } from "./rpc.ts";
+import type { MarketRpc } from "./rpc.ts";
 
 type Mint = ReturnType<typeof decodeMint>;
 type Pool = ReturnType<typeof decodePool> & {
@@ -43,12 +43,12 @@ export type TokenChecks = {
 };
 const optionalSchema = z.object({
   mintAddress: solanaAddressSchema,
-  percentage: z.number().finite().min(0).max(100),
-  fetchedAtMs: z.number().finite().nonnegative(),
+  percentage: z.number().min(0).max(100),
+  fetchedAtMs: z.number().nonnegative(),
 });
 export type OptionalTokenData = z.infer<typeof optionalSchema>;
 type Dependencies = {
-  rpc: Pick<WatcherRpc, "getMultipleAccounts" | "getBlockTime">;
+  rpc: Pick<MarketRpc, "getMultipleAccounts" | "getBlockTime">;
   jupiter: Pick<JupiterService, "getPaperQuote" | "getUsdPrice">;
   pyth: Pick<PythPrices, "get">;
   copySizeLamports?: bigint;
@@ -80,7 +80,10 @@ export class TokenEvidenceCollector {
     this.creatorCache = new EvidenceCache(this.now);
   }
 
-  async collect(input: { mintAddress: string; poolAddress: string; slot: number }): Promise<TokenChecks> {
+  async collect(
+    input: { mintAddress: string; poolAddress: string; slot: number },
+    options: { quote?: boolean } = {},
+  ): Promise<TokenChecks> {
     const mint = solanaAddressSchema.parse(input.mintAddress);
     const pool = solanaAddressSchema.parse(input.poolAddress);
     if (!Number.isSafeInteger(input.slot) || input.slot < 0 || mint === WRAPPED_SOL_MINT)
@@ -100,27 +103,29 @@ export class TokenEvidenceCollector {
         };
       }),
       this.poolCache.get(`${pool}:${mint}`, () => this.loadPool(pool, mint, input.slot)),
-      this.quoteCache.get(`${mint}:${this.copySize}`, async () => {
-        const quote = paperQuoteSchema.parse(
-          await this.dependencies.jupiter.getPaperQuote({
-            signalId: crypto.randomUUID(),
-            outputMint: mint,
-            inputAmountLamports: this.copySize.toString(),
+      options.quote === false
+        ? Promise.resolve({ status: "unknown", reason: "separate-trade-quote" } as const)
+        : this.quoteCache.get(`${mint}:${this.copySize}`, async () => {
+            const quote = paperQuoteSchema.parse(
+              await this.dependencies.jupiter.getPaperQuote({
+                signalId: crypto.randomUUID(),
+                outputMint: mint,
+                inputAmountLamports: this.copySize.toString(),
+              }),
+            );
+            if (
+              quote.outputMint !== mint ||
+              quote.inputMint !== WRAPPED_SOL_MINT ||
+              quote.inputAmountLamports !== this.copySize.toString()
+            )
+              throw new EvidenceUnavailable("quote-mint-or-size-mismatch");
+            const fetchedAtMs = Date.parse(quote.fetchedAt);
+            return {
+              value: quote,
+              fetchedAtMs,
+              expiresAtMs: Math.min(Date.parse(quote.expiresAt), fetchedAtMs + scorePolicyV1.freshness.quoteMs),
+            };
           }),
-        );
-        if (
-          quote.outputMint !== mint ||
-          quote.inputMint !== WRAPPED_SOL_MINT ||
-          quote.inputAmountLamports !== this.copySize.toString()
-        )
-          throw new EvidenceUnavailable("quote-mint-or-size-mismatch");
-        const fetchedAtMs = Date.parse(quote.fetchedAt);
-        return {
-          value: quote,
-          fetchedAtMs,
-          expiresAtMs: Math.min(Date.parse(quote.expiresAt), fetchedAtMs + scorePolicyV1.freshness.quoteMs),
-        };
-      }),
       this.holdersCache.get(mint, async () => {
         const data = await this.optional(mint, this.dependencies.getHolders, "holder-distribution-unavailable");
         return {
@@ -198,6 +203,7 @@ export class TokenEvidenceCollector {
     if (verified.baseVault !== pool.baseVault || verified.quoteVault !== pool.quoteVault)
       throw new EvidenceUnavailable("pool-changed");
     const token = decodeMint(snapshot.value[1], mint);
+    if (token.mintAuthority || token.freezeAuthority) throw new EvidenceUnavailable("unsafe-pool-mint");
     const base = decodeVault(snapshot.value[2], mint, address);
     const quote = decodeVault(snapshot.value[3], WRAPPED_SOL_MINT, address);
     if (base === 0n || quote === 0n) throw new EvidenceUnavailable("pool-empty");

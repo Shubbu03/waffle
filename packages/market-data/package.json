@@ -1,0 +1,28 @@
+{
+  "name": "@waffle/market-data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@waffle/shared": "workspace:*",
+    "@waffle/http": "workspace:*",
+    "@waffle/jupiter": "workspace:*",
+    "@solana/web3.js": "1.99.0",
+    "zod": "4.6.5",
+    "@pump-fun/pump-swap-sdk": "2.1.0",
+    "bn.js": "5.2.2",
+    "bs58": "6.0.0",
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.13",
+    "@types/bn.js": "5.2.0"
+  }
+}

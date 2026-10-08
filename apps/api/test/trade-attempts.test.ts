@@ -6,6 +6,7 @@ import { sessions, signalEvents, signals, tradeAttempts, users, watchedWallets }
 import type { HttpTransport } from "@waffle/http";
 import { createLogger } from "@waffle/observability";
 import {
+  apiErrorSchema,
   PUMP_SWAP_PROGRAM_ID,
   SPL_TOKEN_PROGRAM_ID,
   scorePolicyV1,
@@ -21,10 +22,14 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.ts";
 import { hashSecret } from "../src/auth.ts";
-import { JupiterService } from "../src/jupiter.ts";
+import { JupiterService, JupiterServiceError } from "../src/jupiter.ts";
+import type { TradeAssessor } from "../src/trade-assessment.ts";
+import { createTradeAttemptService } from "../src/trade-attempts.ts";
+import { assessmentFixture } from "./trade-assessment-fixture.ts";
 
 let pg: PGlite;
 let clock: number;
+let assess: TradeAssessor["assess"];
 let app: ReturnType<typeof createApp>;
 let logs: Record<string, unknown>[];
 let requests: Array<{ url: URL; init: RequestInit }>;
@@ -126,6 +131,7 @@ afterAll(async () => {
 beforeEach(async () => {
   logs = [];
   clock = Date.now();
+  assess = async (signal, mode, size) => assessmentFixture(signal, mode, size, clock);
   requests = [];
   orderCalls = 0;
   afterOrder = async () => {};
@@ -141,6 +147,7 @@ beforeEach(async () => {
   });
   await pg.exec("TRUNCATE users, signals CASCADE");
   const db = drizzle(pg);
+  await db.update(watchedWallets).set({ network: "mainnet" }).where(eq(watchedWallets.id, walletId));
   await db.insert(users).values([
     { id: ownerA, walletAddress: wallet.publicKey.toBase58() },
     { id: ownerB, walletAddress: otherWallet.publicKey.toBase58() },
@@ -239,7 +246,7 @@ beforeEach(async () => {
     undefined,
     undefined,
     undefined,
-    { jupiter, now: () => clock },
+    { jupiter, now: () => clock, assessor: { assess: (...args) => assess(...args) } },
     createLogger({ service: "api", write: (line) => logs.push(JSON.parse(line)) }),
   );
 });
@@ -269,6 +276,43 @@ test("a real order is issued for the authenticated wallet and persisted before s
   });
 });
 
+test("empty Jupiter transactions explain funding or build failures and never prepare execution", async () => {
+  for (const router of ["metis", "dflow", "okx"]) {
+    for (const [errorCode, message] of [
+      [1, "enough SOL"],
+      [2, "network fees"],
+      [3, "could not build"],
+    ] as const) {
+      orderReply = () =>
+        upstreamOrder({
+          router,
+          errorCode,
+          transaction: "",
+          lastValidBlockHeight: null,
+          errorMessage: "private upstream diagnostic",
+        });
+      const response = await prepare();
+      expect(response.status).toBe(409);
+      const body = apiErrorSchema.parse(await response.json());
+      expect(body.error.code).toBe("QUOTE_UNAVAILABLE");
+      expect(body.error.message).toContain(message);
+      expect(JSON.stringify(body)).not.toContain("private upstream");
+    }
+  }
+  expect(await drizzle(pg).select().from(tradeAttempts)).toHaveLength(0);
+});
+
+test("Jupiter throttling asks the user to wait without preparing or retrying an order", async () => {
+  orderReply = () => {
+    throw new JupiterServiceError("UPSTREAM_UNAVAILABLE", 429);
+  };
+  const response = await prepare();
+  expect(response.status).toBe(503);
+  expect(apiErrorSchema.parse(await response.json()).error.message).toContain("quote service is busy");
+  expect(requests).toHaveLength(1);
+  expect(await drizzle(pg).select().from(tradeAttempts)).toHaveLength(0);
+});
+
 test("duplicate request IDs and mismatched provider orders cannot create a second attempt", async () => {
   orderReply = () => upstreamOrder({ requestId: "same-provider-request" });
   expect((await prepare()).status).toBe(201);
@@ -287,7 +331,7 @@ test("duplicate request IDs and mismatched provider orders cannot create a secon
   expect(await drizzle(pg).select().from(tradeAttempts)).toHaveLength(1);
 });
 
-test("stale, suppressed, low-liquidity, oversized, and unknown signals cannot issue orders", async () => {
+test("unsupported buys, current low liquidity, oversized and unknown signals cannot issue orders", async () => {
   const db = drizzle(pg);
   expect((await prepare({ signalId: crypto.randomUUID(), inputAmountLamports: amount })).status).toBe(404);
   expect((await prepare({ signalId, inputAmountLamports: "50000001" })).status).toBe(400);
@@ -310,11 +354,50 @@ test("stale, suppressed, low-liquidity, oversized, and unknown signals cannot is
     reasons: original.reasons,
     snapshot: sql`jsonb_set(snapshot, '{pool,liquidityUsd}', '50000'::jsonb)`,
   });
+  assess = async (signal, mode, size) => {
+    const a = assessmentFixture(signal, mode, size, clock);
+    a.pool.liquidityUsd = 50000;
+    return a;
+  };
   expect((await prepare()).status).toBe(409);
   await db.update(signals).set({ snapshot: sql`jsonb_set(snapshot, '{pool,liquidityUsd}', '100000'::jsonb)` });
-  clock += 90001;
   expect((await prepare()).status).toBe(409);
   expect(requests).toEqual([]);
+});
+
+test("old and originally suppressed market checks can be reassessed for a real order", async () => {
+  const db = drizzle(pg);
+  const [before] = await db.select().from(signals);
+  if (!before) throw new Error("Missing signal");
+  await db.update(signals).set({
+    observedAt: new Date(clock - 86400000),
+    status: "suppressed",
+    score: before.score - 20,
+    reasons: before.reasons.map((r) =>
+      r.code === "mint_safe" ? { code: "mint_unavailable_or_unsafe" as const, points: 0 } : r,
+    ),
+    snapshot: sql`jsonb_set(snapshot, '{pool,fetchedAt}', to_jsonb(${new Date(clock - 86400000).toISOString()}::text))`,
+  });
+  clock += 30000;
+  const response = await prepare();
+  expect(response.status).toBe(201);
+  const result = tradeAttemptOrderResponseSchema.parse(await response.json());
+  expect(result.order.assessment?.pool.liquidityUsd).toBe(100000);
+  expect((await db.select().from(signals))[0]?.score).toBe(before.score - 20);
+});
+
+test("assessment expiry before signed execution prevents broadcast", async () => {
+  assess = async (signal, mode, size) => ({
+    ...assessmentFixture(signal, mode, size, clock),
+    expiresAt: new Date(clock + 2000).toISOString(),
+  });
+  const { attempt } = await prepared();
+  clock += 2000;
+  const response = await execution(attempt);
+  expect(response.status).toBe(409);
+  expect(apiErrorSchema.parse(await response.json()).error.code).toBe("QUOTE_UNAVAILABLE");
+  expect(requests.filter((r) => r.url.pathname.endsWith("/execute"))).toHaveLength(0);
+  expect((await drizzle(pg).select().from(tradeAttempts))[0]?.status).toBe("prepared");
 });
 
 test("logout during provider I/O prevents an attempt from being stored", async () => {
@@ -483,4 +566,54 @@ test("revoked sessions cannot prepare or mutate attempts", async () => {
     ).status,
   ).toBe(401);
   expect((await drizzle(pg).select().from(tradeAttempts))[0]?.status).toBe("prepared");
+});
+
+test("read-only status recovers a submitted Devnet signature without another broadcast", async () => {
+  const id = crypto.randomUUID(),
+    quoteId = crypto.randomUUID();
+  await drizzle(pg).update(watchedWallets).set({ network: "devnet" }).where(eq(watchedWallets.id, walletId));
+  await drizzle(pg)
+    .insert(tradeAttempts)
+    .values({
+      id,
+      network: "devnet",
+      userId: ownerA,
+      signalId,
+      quoteId,
+      requestId: "recover-devnet",
+      taker: wallet.publicKey.toBase58(),
+      router: "pumpswap",
+      inputAmountLamports: 10_000_000n,
+      status: "submitted",
+      signature: signedSignature,
+    });
+  let checks = 0;
+  const provider = {
+    async getRealOrder(): Promise<never> {
+      throw new Error("Must not prepare during recovery");
+    },
+    async execute(): Promise<never> {
+      throw new Error("Must not broadcast during recovery");
+    },
+    async getExecution(signature: string) {
+      checks++;
+      expect(signature).toBe(signedSignature);
+      return {
+        status: "confirmed" as const,
+        requestId: "recover-devnet",
+        code: 0 as const,
+        signature,
+        totalInputAmountRaw: "9000000",
+        inputAmountResultRaw: "9000000",
+        totalOutputAmountRaw: "1000",
+        outputAmountResultRaw: "1000",
+      };
+    },
+  };
+  const service = createTradeAttemptService(auth, provider, () => clock, undefined, "devnet");
+  await expect(service.get(hashSecret(tokenB), id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  expect(checks).toBe(0);
+  expect((await service.get(hashSecret(tokenA), id)).status).toBe("confirmed");
+  expect((await service.get(hashSecret(tokenA), id)).status).toBe("confirmed");
+  expect(checks).toBe(1);
 });

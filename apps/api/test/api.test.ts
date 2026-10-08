@@ -21,6 +21,8 @@ describe("API environment", () => {
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
       RPC_REQUESTS_PER_SECOND: 10,
+      PYTH_PRICE_FEEDS_JSON: {},
+      SOLANA_DEVNET_RPC_URL: "https://api.devnet.solana.com",
     });
   });
 

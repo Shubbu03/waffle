@@ -57,6 +57,7 @@ const orderResponseSchema = z.object({
   taker: solanaAddressSchema.nullish(),
   transaction: z.string().nullable(),
   lastValidBlockHeight: positiveRawAmountSchema.nullish(),
+  errorCode: z.number().int().optional(),
   quoteId: z.string().max(200).nullish(),
   expireAt: z.iso.datetime({ offset: true }).nullish(),
 });
@@ -76,6 +77,9 @@ export type JupiterServiceErrorCode =
   | "INVALID_ORDER"
   | "STALE_ORDER"
   | "UNSUPPORTED_ORDER"
+  | "INSUFFICIENT_FUNDS"
+  | "INSUFFICIENT_GAS"
+  | "ORDER_BUILD_FAILED"
   | "UPSTREAM_UNAVAILABLE"
   | "UPSTREAM_INVALID"
   | "EXECUTION_UNKNOWN";
@@ -228,6 +232,17 @@ export class JupiterService {
       response.taker !== request.taker
     ) {
       throw new JupiterServiceError("UPSTREAM_INVALID");
+    }
+    // A price quote can succeed while transaction building fails. Interpret
+    // aggregator build codes before checking the executable signing route.
+    if (response.transaction === "" && response.router !== "jupiterz") {
+      throw new JupiterServiceError(
+        response.errorCode === 1
+          ? "INSUFFICIENT_FUNDS"
+          : response.errorCode === 2
+            ? "INSUFFICIENT_GAS"
+            : "ORDER_BUILD_FAILED",
+      );
     }
     if (
       response.router === "jupiterz" ||

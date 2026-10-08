@@ -17,7 +17,11 @@ import { validateJson, validateParams, validateQuery } from "./validation.ts";
 import type { WalletActivityValidator } from "./wallet-activity.ts";
 import { isOnCurveAddress } from "./wallet-address.ts";
 
-export function createWalletTrackingRoutes(auth: AuthStore, activity?: WalletActivityValidator) {
+export function createWalletTrackingRoutes(
+  auth: AuthStore,
+  activity?: WalletActivityValidator,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   const app = new Hono<AppEnv>();
   const allow = createAuthLimiter();
   app.use("*", async (c, next) => {
@@ -32,7 +36,7 @@ export function createWalletTrackingRoutes(auth: AuthStore, activity?: WalletAct
   /** Wallet IDs the caller personally tracks (drives the untrack UI). */
   app.get("/mine", validateQuery(z.strictObject({})), (c) =>
     withOwner(c, auth, async (tx, session) => {
-      const items = await createWalletTrackingStore(tx, session.userId).mine();
+      const items = await createWalletTrackingStore(tx, session.userId, network).mine();
       return c.json(trackedWalletsResponseSchema.parse({ items }));
     }),
   );
@@ -82,7 +86,7 @@ export function createWalletTrackingRoutes(auth: AuthStore, activity?: WalletAct
       }
     }
     return withOwner(c, auth, async (tx, session) => {
-      const result = await createWalletTrackingStore(tx, session.userId).add(address, label);
+      const result = await createWalletTrackingStore(tx, session.userId, network).add(address, label);
       switch (result.status) {
         case "ok":
           return c.json(
@@ -107,7 +111,7 @@ export function createWalletTrackingRoutes(auth: AuthStore, activity?: WalletAct
   /** Stop tracking: removes the caller's follow and pauses the wallet when no tracker remains. */
   app.delete("/:id", validateQuery(z.strictObject({})), validateParams(z.strictObject({ id: idSchema })), (c) =>
     withOwner(c, auth, async (tx, session) => {
-      const result = await createWalletTrackingStore(tx, session.userId).remove(c.req.valid("param").id);
+      const result = await createWalletTrackingStore(tx, session.userId, network).remove(c.req.valid("param").id);
       if (result.status === "not-tracked") {
         return apiError(c, 404, "NOT_FOUND", "You are not tracking that wallet");
       }

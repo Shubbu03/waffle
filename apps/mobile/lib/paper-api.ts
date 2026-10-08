@@ -26,7 +26,7 @@ export async function preparePaperQuote(input: CreatePaperQuoteRequest, token: s
   const request = createPaperQuoteRequestSchema.parse(input)
   const quote = responseData(
     paperQuoteSchema,
-    await apiRequest('/paper-positions/quote', { method: 'POST', data: request, signal }, token),
+    await apiRequest('/paper-positions/quote', { method: 'POST', data: request, signal, timeoutMs: 30_000 }, token),
   )
   if (quote.signalId !== request.signalId || quote.inputAmountLamports !== request.sizeLamports)
     throw new ApiError(0, 'BAD_RESPONSE', 'Quote does not match this review.')

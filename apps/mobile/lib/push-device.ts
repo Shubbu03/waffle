@@ -2,7 +2,7 @@ import notifee, { AndroidImportance, AuthorizationStatus } from '@notifee/react-
 import { deleteToken, getMessaging, getToken } from '@react-native-firebase/messaging'
 import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
-import { AppConfig } from '@/constants/app-config'
+import { apiRootUrl } from '@/constants/app-config'
 import { type PushRegistration, PushRegistrationController } from './push-registration'
 import type { PushPermission } from './push-tap'
 import { deletePushToken, PUSH_ID_KEY, registerPushToken } from './push-tokens-api'
@@ -25,7 +25,7 @@ export async function readPushRegistration(): Promise<PushRegistration | null> {
       ? {
           id: legacyId,
           userId: session.userId,
-          apiUrl: AppConfig.apiUrl,
+          apiUrl: apiRootUrl(),
           token: '',
           rotationRequired: true,
         }
@@ -47,7 +47,9 @@ export async function readPushPermission(request = false): Promise<PushPermissio
 }
 
 export const pushDevice = new PushRegistrationController({
-  apiUrl: AppConfig.apiUrl,
+  get apiUrl() {
+    return apiRootUrl()
+  },
   load: readPushRegistration,
   loadEnabled: readPushEnabled,
   saveEnabled: (enabled) => SecureStore.setItemAsync(ENABLED_KEY, String(enabled)),

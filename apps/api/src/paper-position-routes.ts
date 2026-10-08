@@ -12,6 +12,7 @@ import { bearerToken, hashSecret } from "./auth.ts";
 import { apiError } from "./errors.ts";
 import type { JupiterService } from "./jupiter.ts";
 import { createPaperPositionService, PaperPositionError } from "./paper-positions.ts";
+import { TradeAssessmentError, type TradeAssessor } from "./trade-assessment.ts";
 import type { AppEnv } from "./types.ts";
 import { validateJson, validateParams, validateQuery } from "./validation.ts";
 
@@ -19,9 +20,11 @@ export function createPaperPositionRoutes(
   auth: AuthStore,
   jupiter?: Pick<JupiterService, "getPaperQuote"> & Partial<Pick<JupiterService, "getPaperValuation">>,
   now?: () => number,
+  assessor?: TradeAssessor,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
 ) {
   const app = new Hono<AppEnv>();
-  const service = createPaperPositionService(auth, jupiter, now);
+  const service = createPaperPositionService(auth, jupiter, now, assessor, network);
   app.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     const token = bearerToken(c.req.header("Authorization"));
@@ -72,7 +75,7 @@ export function createPaperPositionRoutes(
     c.json(await service.get(hashSecret(bearerToken(c.req.header("Authorization")) ?? ""), c.req.valid("param").id)),
   );
   app.onError((error, c) => {
-    if (!(error instanceof PaperPositionError)) throw error;
+    if (!(error instanceof PaperPositionError || error instanceof TradeAssessmentError)) throw error;
     if (error.status >= 500) c.set("failure", error);
     if (error.status === 401) c.header("WWW-Authenticate", "Bearer");
     return apiError(c, error.status, error.code, error.message);

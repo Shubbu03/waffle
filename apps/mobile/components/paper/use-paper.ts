@@ -2,12 +2,15 @@ import { useIsFocused } from '@react-navigation/native'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { AppState } from 'react-native'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppConfig } from '@/constants/app-config'
+import { ApiError } from '@/lib/api-error'
 import { createPaperPosition, lookupPaperPosition, preparePaperQuote } from '@/lib/paper-api'
 import { PaperTradeController } from '@/lib/paper-state'
 import { paperPendingStore } from '@/lib/paper-storage'
 
 export function usePaperAvailability() {
+  useCluster()
   const auth = useAuth()
   const focused = useIsFocused()
   const [foreground, setForeground] = useState(AppState.currentState === 'active')
@@ -19,13 +22,20 @@ export function usePaperAvailability() {
 }
 export function usePaperTrade(signalId: string, blocked: string | null) {
   const auth = usePaperAvailability()
+  const { apiUrl: origin } = useCluster()
   const current = useRef({ available: false, blocked, token: auth.session?.accessToken })
   current.current = { available: auth.available, blocked, token: auth.session?.accessToken }
   const token = auth.session?.accessToken
   const owner = auth.session?.userId
   const controller = useMemo(() => {
     const assertSession = () => {
-      if (!token || current.current.token !== token || !current.current.available || AppState.currentState !== 'active')
+      if (
+        AppConfig.apiUrl !== origin ||
+        !token ||
+        current.current.token !== token ||
+        !current.current.available ||
+        AppState.currentState !== 'active'
+      )
         throw new Error('Sign in before continuing.')
     }
     const assertTrade = () => {
@@ -33,7 +43,7 @@ export function usePaperTrade(signalId: string, blocked: string | null) {
       if (current.current.blocked) throw new Error(current.current.blocked)
     }
     const store = owner
-      ? paperPendingStore(AppConfig.apiUrl, owner, signalId)
+      ? paperPendingStore(origin, owner, signalId)
       : {
           load: async () => null,
           save: async () => {
@@ -44,6 +54,7 @@ export function usePaperTrade(signalId: string, blocked: string | null) {
     return new PaperTradeController(signalId, {
       ...store,
       canSubmit: () =>
+        AppConfig.apiUrl === origin &&
         current.current.token === token &&
         current.current.available &&
         current.current.blocked === null &&
@@ -53,7 +64,12 @@ export function usePaperTrade(signalId: string, blocked: string | null) {
         return preparePaperQuote({ signalId, sizeLamports }, token ?? '', signal)
       },
       create: async (pending) => {
-        assertTrade()
+        // A local refusal before POST is a definitive non-submission.
+        try {
+          assertTrade()
+        } catch (error) {
+          throw new ApiError(409, 'REVIEW_CHANGED', error instanceof Error ? error.message : 'Review changed.')
+        }
         return createPaperPosition(pending, token ?? '')
       },
       lookup: (quoteId) => {
@@ -61,7 +77,7 @@ export function usePaperTrade(signalId: string, blocked: string | null) {
         return lookupPaperPosition(quoteId, token ?? '')
       },
     })
-  }, [signalId, token, owner])
+  }, [signalId, token, owner, origin])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   useEffect(() => {
     if (auth.available) void controller.restore()

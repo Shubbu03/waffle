@@ -6,7 +6,7 @@ export const signInInputSchema = z
     domain: z.string().min(1).max(253),
     uri: z.url().refine((value) => value.startsWith("https://"), "SIWS URI must use HTTPS"),
     version: z.literal("1"),
-    chainId: z.enum(["mainnet", "solana:mainnet"]),
+    chainId: z.enum(["mainnet", "solana:mainnet", "devnet", "solana:devnet", "testnet", "solana:testnet"]),
     nonce: z.string().regex(/^[A-Za-z0-9]{22,128}$/),
     issuedAt: timestampSchema,
     expirationTime: timestampSchema,

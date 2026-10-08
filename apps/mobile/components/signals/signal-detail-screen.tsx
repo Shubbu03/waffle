@@ -1,16 +1,11 @@
-import {
-  PUMP_SWAP_PROGRAM_ID,
-  SCORE_REASON_GROUPS,
-  type ScoreReasonCode,
-  SPL_TOKEN_PROGRAM_ID,
-  WRAPPED_SOL_MINT,
-} from '@waffle/shared'
+import { PUMP_SWAP_PROGRAM_ID, SCORE_REASON_GROUPS, type ScoreReasonCode, WRAPPED_SOL_MINT } from '@waffle/shared'
 import { router, Stack, useLocalSearchParams } from 'expo-router'
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native'
 import { AppExternalLink } from '@/components/app-external-link'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { CopyableValue, DetailRow, SnapshotMetric } from '@/components/signals/signal-detail-ui'
 import { useSignalClock, useSignalDetail } from '@/components/signals/use-signals'
 import { AppButton } from '@/components/ui/app-button'
@@ -20,7 +15,7 @@ import { UiIconSymbol } from '@/components/ui/ui-icon-symbol'
 import { useCatalogWallets } from '@/components/wallets/use-wallets'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { formatSol, formatTokens } from '@/lib/paper-state'
-import { signalEvidenceLabel } from '@/lib/signal-evidence-state'
+import { signalEvidenceLabel, tokenProgramLabel } from '@/lib/signal-evidence-state'
 import { copyBlockReason, signalDataLabel } from '@/lib/signal-state'
 import { ellipsify } from '@/utils/ellipsify'
 
@@ -59,6 +54,7 @@ const dateLabel = (value: string | null | undefined) =>
 export function SignalDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>()
   const id = typeof params.id === 'string' ? params.id : ''
+  const { selectedCluster, getExplorerUrl } = useCluster()
   const query = useSignalDetail(id)
   const catalog = useCatalogWallets()
   const now = useSignalClock()
@@ -70,7 +66,12 @@ export function SignalDetailScreen() {
   const danger = useThemeColor({}, 'danger')
   const signal = query.data?.signal
   const offline = query.isError || !query.data || query.data.fromCache || now - query.data.fetchedAt > 45_000
-  const blocked = signal ? copyBlockReason(signal, offline, now) : 'Signal unavailable.'
+  const blocked =
+    selectedCluster.id === 'solana:testnet'
+      ? 'PumpSwap is not deployed on Testnet. Use Devnet for test-token trades.'
+      : signal
+        ? copyBlockReason(signal, offline, now)
+        : 'Signal unavailable.'
   const snapshot = signal?.snapshot
   const assessment = snapshot?.assessment
   const wallet = catalog.data?.find((entry) => entry.id === signal?.walletId)
@@ -123,15 +124,17 @@ export function SignalDetailScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ gap: 4, flex: 1 }}>
                   <AppText type="defaultSemiBold" style={{ fontSize: 14 }}>
-                    Assessment score
+                    Original assessment
                   </AppText>
                   <AppText style={{ color: muted, fontSize: 12 }}>
                     Score v{signal.scoreVersion} ·{' '}
-                    {signal.status === 'eligible'
-                      ? 'Eligible when scored'
-                      : signal.status === 'history-only'
-                        ? 'History only'
-                        : 'Checks failed'}
+                    {selectedCluster.id === 'solana:devnet'
+                      ? 'USD scoring does not apply to test tokens'
+                      : signal.status === 'eligible'
+                        ? 'Eligible when scored'
+                        : signal.status === 'history-only'
+                          ? 'Earlier buy'
+                          : 'Checks failed when scored'}
                   </AppText>
                 </View>
                 <AppText type="title" style={{ fontSize: 40, lineHeight: 48, fontVariant: ['tabular-nums'] }}>
@@ -148,13 +151,32 @@ export function SignalDetailScreen() {
                 <View style={{ height: '100%', width: `${signal.score}%`, backgroundColor: ink }} />
               </View>
               <View style={{ borderTopWidth: 1, borderTopColor: border, paddingTop: 14, gap: 4 }}>
-                <AppText type="defaultSemiBold" style={{ color: blocked ? danger : ink, fontSize: 14 }}>
-                  {blocked ? 'Copy unavailable' : 'Ready for quote review'}
+                <AppText
+                  type="defaultSemiBold"
+                  style={{ color: blocked && signal.status !== 'history-only' ? danger : ink, fontSize: 14 }}
+                >
+                  {blocked ? 'Trade unavailable' : 'Trade this token'}
                 </AppText>
                 <AppText style={{ color: muted, fontSize: 13, lineHeight: 21 }}>
-                  {blocked ?? 'Prepare a fresh quote before trading.'}
+                  {blocked ??
+                    (selectedCluster.id === 'solana:devnet'
+                      ? 'Use test SOL on Devnet. Each trade checks the current token and pool first.'
+                      : 'Practice with a paper trade, or buy with SOL from your wallet. Both check current conditions first.')}
                 </AppText>
               </View>
+              {!blocked ? (
+                <View style={{ gap: 10 }}>
+                  <AppButton
+                    title="Try paper trade"
+                    onPress={() => router.push({ pathname: '/paper/[id]', params: { id } })}
+                  />
+                  <AppButton
+                    title="Buy with wallet"
+                    variant="secondary"
+                    onPress={() => router.push({ pathname: '/trade/[id]', params: { id } })}
+                  />
+                </View>
+              ) : null}
             </AppCard>
 
             <AppCard style={{ gap: 16 }}>
@@ -168,13 +190,14 @@ export function SignalDetailScreen() {
               ) : null}
               <CopyableValue key={signal.walletAddress} label="Wallet address" value={signal.walletAddress} />
               <CopyableValue key={signal.mintAddress} label="Token address" value={signal.mintAddress} />
+              <DetailRow label="Network" value={selectedCluster.name} />
               <DetailRow
                 label="Source"
                 value={signal.sourceProgramId === PUMP_SWAP_PROGRAM_ID ? 'PumpSwap' : 'Other program'}
               />
               <DetailRow label="Transaction time" value={dateLabel(assessment?.transactionAt)} />
               <DetailRow label="Detected" value={dateLabel(signal.observedAt)} />
-              <AppExternalLink href={`https://explorer.solana.com/tx/${signal.signature}`} asChild>
+              <AppExternalLink href={getExplorerUrl(`tx/${signal.signature}`)} asChild>
                 <Pressable
                   accessibilityRole="link"
                   style={{
@@ -283,12 +306,7 @@ export function SignalDetailScreen() {
               </View>
               <AppCard>
                 <DetailRow label="Token evidence" value={signalEvidenceLabel(signal, 'mint', offline, now)} />
-                <DetailRow
-                  label="Token program"
-                  value={
-                    mint ? (mint.tokenProgramId === SPL_TOKEN_PROGRAM_ID ? 'SPL Token' : 'Unsupported') : 'Unknown'
-                  }
-                />
+                <DetailRow label="Token program" value={tokenProgramLabel(mint?.tokenProgramId)} />
                 <DetailRow label="Decimals" value={mint?.decimals === undefined ? 'Unknown' : String(mint.decimals)} />
                 <DetailRow
                   label="Mint authority"
@@ -341,21 +359,6 @@ export function SignalDetailScreen() {
                 </View>
               ))}
             </AppCard>
-
-            <View style={{ gap: 10 }}>
-              <AppButton
-                title={blocked ? 'Paper copy unavailable' : 'Review paper trade'}
-                disabled={!!blocked}
-                onPress={() => router.push({ pathname: '/paper/[id]', params: { id } })}
-              />
-              {!blocked ? (
-                <AppButton
-                  title="Review real trade"
-                  variant="secondary"
-                  onPress={() => router.push({ pathname: '/trade/[id]', params: { id } })}
-                />
-              ) : null}
-            </View>
           </>
         )}
       </ScrollView>

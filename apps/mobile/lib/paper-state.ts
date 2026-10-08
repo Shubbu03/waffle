@@ -21,7 +21,11 @@ export const formatTokens = (raw: string, decimals?: number) =>
   decimals === undefined ? `${raw} base units (decimals unknown)` : `${formatRaw(raw, decimals)} tokens`
 export function paperQuoteFresh(quote: PaperQuote, now: number): boolean {
   const age = now - Date.parse(quote.fetchedAt)
-  return age >= 0 && age < scorePolicyV1.freshness.quoteMs && now < Date.parse(quote.expiresAt)
+  return (
+    age >= 0 &&
+    age < (quote.network === 'devnet' ? 60_000 : scorePolicyV1.freshness.quoteMs) &&
+    now < Date.parse(quote.expiresAt)
+  )
 }
 export function paperReviewBlock(signal: SignalDetail | undefined, offline: boolean, now: number) {
   return signal ? copyBlockReason(signal, offline, now) : 'Refresh the signal before preparing a quote.'
@@ -33,6 +37,7 @@ type State = {
   quote: PaperQuote | null
   busy: boolean
   pending: PendingPaperFill | null
+  canStartOver: boolean
   position: PaperPositionWithFill | null
   error: string | null
 }
@@ -54,6 +59,7 @@ export class PaperTradeController {
     quote: null,
     busy: false,
     pending: null,
+    canStartOver: false,
     position: null,
     error: null,
   }
@@ -81,7 +87,11 @@ export class PaperTradeController {
     for (const listener of this.listeners) listener()
   }
   async restore() {
-    if (this.state.ready || this.restoring) return
+    if (this.restoring) return
+    if (this.state.ready) {
+      if (this.state.pending) await this.reconcile()
+      return
+    }
     this.restoring = true
     try {
       const pending = await this.dependencies.load()
@@ -133,6 +143,7 @@ export class PaperTradeController {
     const { quote, busy, pending, position } = this.state
     if (this.dependencies.canSubmit && !this.dependencies.canSubmit()) {
       this.invalidate()
+      this.update({ error: 'Review changed. Reconnect and request a fresh quote.' })
       return
     }
     if (!quote || busy || pending || position || !paperQuoteFresh(quote, this.now())) {
@@ -184,15 +195,33 @@ export class PaperTradeController {
   async reconcile() {
     const pending = this.state.pending
     if (!pending || this.state.busy) return
-    this.update({ busy: true })
+    this.update({ busy: true, canStartOver: false })
     try {
       const position = await this.dependencies.lookup(pending.quoteId)
       if (position) {
         this.update({ position, pending: null, error: null })
         await this.dependencies.clear().catch(() => {})
-      } else this.update({ error: 'No saved fill found yet. Status remains uncertain; check again shortly.' })
+      } else
+        this.update({
+          canStartOver: true,
+          error: 'No saved paper trade found yet. The earlier request could still finish.',
+        })
     } catch {
       this.update({ error: 'Unable to check fill status. Reconnect and check again.' })
+    } finally {
+      this.update({ busy: false })
+    }
+  }
+  /** Explicitly abandon local recovery for a simulation; never cancel or replay the old POST. */
+  async startOver() {
+    if (!this.state.pending || !this.state.canStartOver || this.state.busy || this.submitting) return
+    this.update({ busy: true, canStartOver: false })
+    try {
+      await this.dependencies.clear()
+      this.invalidate()
+      this.update({ pending: null, quote: null, error: null })
+    } catch {
+      this.update({ canStartOver: true, error: 'Unable to clear the saved review. Try again.' })
     } finally {
       this.update({ busy: false })
     }

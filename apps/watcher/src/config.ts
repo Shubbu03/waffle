@@ -1,6 +1,6 @@
+import { pythFeedMapSchema } from "@waffle/market-data/pyth";
 import { scorePolicyV1 } from "@waffle/shared";
 import { z } from "zod";
-import { pythFeedMapSchema } from "./pyth.ts";
 
 const rate = (maximum: number, fallback: string) =>
   z
@@ -27,7 +27,10 @@ export class WatcherConfigurationError extends Error {
 
 export function parseWatcherRpcEnv(env: Record<string, string | undefined>) {
   const result = envSchema.safeParse({
-    HELIUS_RPC_URL: env.HELIUS_RPC_URL,
+    HELIUS_RPC_URL:
+      env.SOLANA_NETWORK === "devnet"
+        ? (env.SOLANA_DEVNET_RPC_URL ?? "https://api.devnet.solana.com")
+        : env.HELIUS_RPC_URL,
     RPC_REQUESTS_PER_SECOND: env.RPC_REQUESTS_PER_SECOND,
     RPC_PROGRAM_ACCOUNTS_PER_SECOND: env.RPC_PROGRAM_ACCOUNTS_PER_SECOND,
   });
@@ -39,7 +42,8 @@ export function parseWatcherRpcEnv(env: Record<string, string | undefined>) {
 }
 
 const watcherEnvSchema = envSchema.extend({
-  JUPITER_API_KEY: z.string().trim().min(1).max(512),
+  SOLANA_NETWORK: z.enum(["mainnet", "devnet", "testnet"]).default("mainnet"),
+  JUPITER_API_KEY: z.string().trim().max(512).default(""),
   WATCHER_COPY_SIZE_LAMPORTS: z
     .string()
     .regex(/^[1-9]\d{0,8}$/)
@@ -72,12 +76,27 @@ const watcherEnvSchema = envSchema.extend({
 });
 
 export function parseWatcherEnv(env: Record<string, string | undefined>) {
+  const selected = {
+    ...env,
+    HELIUS_RPC_URL:
+      env.SOLANA_NETWORK === "devnet"
+        ? (env.SOLANA_DEVNET_RPC_URL ?? "https://api.devnet.solana.com")
+        : env.HELIUS_RPC_URL,
+    HELIUS_WSS_URL:
+      env.SOLANA_NETWORK === "devnet"
+        ? (env.SOLANA_DEVNET_WSS_URL ?? "wss://api.devnet.solana.com")
+        : env.HELIUS_WSS_URL,
+  };
   const result = watcherEnvSchema.safeParse(
-    Object.fromEntries(Object.keys(watcherEnvSchema.shape).map((key) => [key, env[key]])),
+    Object.fromEntries(Object.keys(watcherEnvSchema.shape).map((key) => [key, selected[key as keyof typeof selected]])),
   );
   if (!result.success) {
     const fields = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
     throw new WatcherConfigurationError(fields);
   }
+  if (result.data.SOLANA_NETWORK === "mainnet" && !result.data.JUPITER_API_KEY)
+    throw new WatcherConfigurationError(["JUPITER_API_KEY"]);
+  if (result.data.SOLANA_NETWORK === "testnet")
+    throw new WatcherConfigurationError(["SOLANA_NETWORK (PumpSwap is not deployed on Testnet; use Devnet)"]);
   return result.data;
 }

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { SignalWalletCard } from '@/components/signals/signal-wallet-card'
 import { useSignalClock, useSignalFeed } from '@/components/signals/use-signals'
 import { AppButton } from '@/components/ui/app-button'
@@ -16,6 +17,7 @@ import type { SignalView } from '@/lib/signal-state'
 import { signalWallets } from '@/lib/signal-wallets'
 
 export function SignalFeedScreen() {
+  const { selectedCluster } = useCluster()
   const params = useLocalSearchParams<{ view?: string }>()
   const view: SignalView = params.view === 'following' ? 'following' : 'all'
   const { session, status } = useAuth()
@@ -46,7 +48,16 @@ export function SignalFeedScreen() {
           )}
           ListHeaderComponent={
             <View style={{ gap: 12, paddingBottom: 4 }}>
-              <ScreenHeading title="Signals" />
+              <ScreenHeading
+                title="Signals"
+                subtitle={
+                  selectedCluster.id === 'solana:mainnet'
+                    ? undefined
+                    : selectedCluster.id === 'solana:devnet'
+                      ? 'Devnet · test tokens and test SOL'
+                      : 'Testnet · PumpSwap trading is unavailable'
+                }
+              />
               <View style={{ paddingHorizontal: 20, gap: 14 }}>
                 <View style={{ flexDirection: 'row', padding: 4, gap: 4, borderRadius: 17, backgroundColor: surface }}>
                   {(['all', 'following'] as const).map((item) => (

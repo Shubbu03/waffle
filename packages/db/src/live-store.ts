@@ -3,7 +3,7 @@ import type { DatabaseExecutor } from "./database.ts";
 import { signalEvents, signals, userWalletSubscriptions, watchedWallets } from "./schema/index.ts";
 
 /** Read through the API role, and through an authenticated transaction for Following. */
-export function createLiveReadStore(db: DatabaseExecutor) {
+export function createLiveReadStore(db: DatabaseExecutor, network: import("@waffle/shared").SolanaNetwork = "mainnet") {
   return {
     async page(cursor: string | null, ownerId?: string) {
       const bounds = db.$with("bounds").as(
@@ -25,6 +25,7 @@ export function createLiveReadStore(db: DatabaseExecutor) {
         .innerJoin(watchedWallets, eq(watchedWallets.id, signals.walletId))
         .where(
           and(
+            eq(watchedWallets.network, network),
             cursor ? gt(signalEvents.id, BigInt(cursor)) : undefined,
             ownerId
               ? exists(

@@ -14,7 +14,7 @@ const goodOrder = () => ({
   gasless: false,
   inputAmountLamports: '10000000',
   expiresAt: new Date(NOW + 60_000).toISOString(),
-  fetchedAt: new Date(NOW - 10_000).toISOString(),
+  fetchedAt: new Date(NOW - 1000).toISOString(),
 })
 
 describe('checkRealOrder', () => {
@@ -63,9 +63,33 @@ describe('checkRealOrder', () => {
     expect(checkRealOrder({ ...goodOrder(), expiresAt: new Date(NOW - 1000).toISOString() }, TAKER, NOW).ok).toBe(false)
   })
 
+  test('rejects future and aged quotes even with a later expiry', () => {
+    expect(checkRealOrder({ ...goodOrder(), fetchedAt: new Date(NOW + 1).toISOString() }, TAKER, NOW).ok).toBe(false)
+    expect(checkRealOrder({ ...goodOrder(), fetchedAt: new Date(NOW - 10000).toISOString() }, TAKER, NOW).ok).toBe(
+      false,
+    )
+  })
+
   test('rejects garbage input', () => {
     expect(checkRealOrder(null, TAKER, NOW).ok).toBe(false)
     expect(checkRealOrder('order', TAKER, NOW).ok).toBe(false)
     expect(checkRealOrder({}, TAKER, NOW).ok).toBe(false)
   })
+})
+
+test('Devnet orders stay on Devnet and use their own freshness window', () => {
+  const order = {
+    ...goodOrder(),
+    network: 'devnet',
+    router: 'pumpswap',
+    fetchedAt: new Date(NOW - 15_000).toISOString(),
+  }
+  expect(checkRealOrder(order, TAKER, NOW, 'devnet').ok).toBe(true)
+  expect(checkRealOrder(order, TAKER, NOW, 'mainnet').ok).toBe(false)
+  expect(checkRealOrder(goodOrder(), TAKER, NOW, 'devnet').ok).toBe(false)
+  expect(checkRealOrder({ ...order, router: 'metis' }, TAKER, NOW, 'devnet').ok).toBe(false)
+  expect(checkRealOrder({ ...order, fetchedAt: new Date(NOW - 60_000).toISOString() }, TAKER, NOW, 'devnet').ok).toBe(
+    false,
+  )
+  expect(checkRealOrder({ ...order, network: 'testnet' }, TAKER, NOW, 'testnet').ok).toBe(false)
 })

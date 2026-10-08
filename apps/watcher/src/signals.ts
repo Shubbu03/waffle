@@ -1,8 +1,8 @@
 import type { SignalWriteResult } from "@waffle/db";
+import { classifyPumpSwapBuy } from "@waffle/market-data/classify";
+import { type TokenChecks, type TokenEvidenceCollector, toScoreEvidence } from "@waffle/market-data/evidence";
+import { type Evidence, freshness } from "@waffle/market-data/evidence-cache";
 import { type ScoredSignal, scoredSignalSchema, scoreSignal } from "@waffle/shared";
-import { classifyPumpSwapBuy } from "./classify.ts";
-import { type TokenChecks, type TokenEvidenceCollector, toScoreEvidence } from "./evidence.ts";
-import { type Evidence, freshness } from "./evidence-cache.ts";
 import type { WatcherEvent } from "./watcher.ts";
 
 type Dependencies = {

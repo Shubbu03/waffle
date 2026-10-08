@@ -5,12 +5,14 @@ import { AccessibilityInfo, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppButton } from '@/components/ui/app-button'
 import { UiIconSymbol, type UiIconSymbolName } from '@/components/ui/ui-icon-symbol'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { ellipsify } from '@/utils/ellipsify'
 
 export function HomeWalletMenu() {
+  const { selectedCluster } = useCluster()
   const { session, status } = useAuth()
   const accent = useThemeColor({}, 'accent')
   const accentText = useThemeColor({}, 'accentText')
@@ -37,6 +39,11 @@ export function HomeWalletMenu() {
         AccessibilityInfo.announceForAccessibility('Wallet address copied')
       },
     },
+    {
+      title: `${selectedCluster.name}${selectedCluster.id === 'solana:mainnet' ? '' : ' · test network'}`,
+      icon: 'gearshape.fill',
+      onPress: () => router.push('/settings'),
+    },
     { title: 'My account', icon: 'person.crop.circle', onPress: () => router.push('/account') },
     { title: 'Paper positions', icon: 'chart.bar', onPress: () => router.push('/paper/positions') },
   ]
@@ -57,6 +64,7 @@ export function HomeWalletMenu() {
       >
         <UiIconSymbol name="wallet.pass.fill" size={18} color={accentText} />
         <AppText numberOfLines={1} style={{ color: accentText, fontSize: 13, flexShrink: 1 }}>
+          {selectedCluster.id !== 'solana:mainnet' ? `${selectedCluster.name} · ` : ''}
           {ellipsify(session.walletAddress)}
         </AppText>
         <UiIconSymbol name="chevron.down" size={14} color={accentText} />

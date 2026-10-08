@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { PublicKey } from "@solana/web3.js";
 import type { HttpTransport } from "@waffle/http";
+import { type OptionalTokenData, TokenEvidenceCollector, toScoreEvidence } from "@waffle/market-data/evidence";
+import { type Evidence, EvidenceCache } from "@waffle/market-data/evidence-cache";
+import { type PythPrice, PythPrices } from "@waffle/market-data/pyth";
 import {
   type PaperQuote,
   PUMP_SWAP_PROGRAM_ID,
@@ -10,9 +13,6 @@ import {
   WRAPPED_SOL_MINT,
 } from "@waffle/shared";
 import { parseWatcherEnv } from "../src/config.ts";
-import { type OptionalTokenData, TokenEvidenceCollector, toScoreEvidence } from "../src/evidence.ts";
-import { type Evidence, EvidenceCache } from "../src/evidence-cache.ts";
-import { type PythPrice, PythPrices } from "../src/pyth.ts";
 
 const address = (byte: number) => new PublicKey(new Uint8Array(32).fill(byte)).toBase58();
 const mint = address(7);

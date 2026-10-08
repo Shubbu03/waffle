@@ -1,4 +1,17 @@
-import { type SignalDetail, scorePolicyV1, WRAPPED_SOL_MINT } from '@waffle/shared'
+import {
+  type SignalDetail,
+  SPL_TOKEN_PROGRAM_ID,
+  scorePolicyV1,
+  TOKEN_2022_PROGRAM_ID,
+  WRAPPED_SOL_MINT,
+} from '@waffle/shared'
+
+export function tokenProgramLabel(programId: string | undefined): string {
+  if (!programId) return 'Unknown'
+  if (programId === SPL_TOKEN_PROGRAM_ID) return 'SPL Token'
+  if (programId === TOKEN_2022_PROGRAM_ID) return 'Token-2022'
+  return 'Unsupported'
+}
 
 export type EvidenceKey = keyof NonNullable<SignalDetail['snapshot']['assessment']>['evidence']
 export type EvidenceLabel = 'Fresh' | 'Expired' | 'Unknown' | 'Unavailable'

@@ -36,7 +36,7 @@ export class CursorExpiredError extends Error {
 }
 
 /** Public reads use the API login; Following must receive the authenticated transaction and owner. */
-export function createReadStore(db: DatabaseExecutor) {
+export function createReadStore(db: DatabaseExecutor, network: import("@waffle/shared").SolanaNetwork = "mainnet") {
   return {
     async wallets() {
       const rows = await db
@@ -50,6 +50,7 @@ export function createReadStore(db: DatabaseExecutor) {
           recentSupportedActivityAt: watchedWallets.recentSupportedActivityAt,
         })
         .from(watchedWallets)
+        .where(eq(watchedWallets.network, network))
         .orderBy(watchedWallets.label, watchedWallets.id)
         .limit(101);
       return walletCatalogResponseSchema.parse({
@@ -70,6 +71,7 @@ export function createReadStore(db: DatabaseExecutor) {
         .innerJoin(watchedWallets, eq(watchedWallets.id, signals.walletId))
         .where(
           and(
+            eq(watchedWallets.network, network),
             input.cursor ? compare(signalEvents.id, BigInt(input.cursor)) : undefined,
             input.walletId ? eq(signals.walletId, input.walletId) : undefined,
             // The public All feed stays curated: user-added wallets surface only via Following.
@@ -126,7 +128,7 @@ export function createReadStore(db: DatabaseExecutor) {
         .from(signalEvents)
         .innerJoin(signals, eq(signals.id, signalEvents.signalId))
         .innerJoin(watchedWallets, eq(watchedWallets.id, signals.walletId))
-        .where(eq(signals.id, id));
+        .where(and(eq(signals.id, id), eq(watchedWallets.network, network)));
       return row ? signalDetailSchema.parse(serializeSignal(row)) : null;
     },
   };

@@ -12,19 +12,21 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { bearerToken, hashSecret } from "./auth.ts";
 import { apiError } from "./errors.ts";
-import type { JupiterService } from "./jupiter.ts";
-import { createTradeAttemptService, TradeAttemptError } from "./trade-attempts.ts";
+import { TradeAssessmentError, type TradeAssessor } from "./trade-assessment.ts";
+import { createTradeAttemptService, TradeAttemptError, type TradeOrderProvider } from "./trade-attempts.ts";
 import type { AppEnv } from "./types.ts";
 import { validateJson, validateParams, validateQuery } from "./validation.ts";
 
 export function createTradeAttemptRoutes(
   auth: AuthStore,
-  jupiter?: Pick<JupiterService, "getRealOrder" | "execute">,
+  jupiter?: TradeOrderProvider,
   now?: () => number,
   logger: Logger = createLogger({ service: "api" }),
+  assessor?: TradeAssessor,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
 ) {
   const app = new Hono<AppEnv>();
-  const service = createTradeAttemptService(auth, jupiter, now);
+  const service = createTradeAttemptService(auth, jupiter, now, assessor, network);
   app.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     const token = bearerToken(c.req.header("Authorization"));
@@ -81,7 +83,7 @@ export function createTradeAttemptRoutes(
       ),
   );
   app.onError((error, c) => {
-    if (!(error instanceof TradeAttemptError)) throw error;
+    if (!(error instanceof TradeAttemptError || error instanceof TradeAssessmentError)) throw error;
     if (error.status >= 500) c.set("failure", error);
     if (error.status === 401) c.header("WWW-Authenticate", "Bearer");
     return apiError(c, error.status, error.code, error.message);

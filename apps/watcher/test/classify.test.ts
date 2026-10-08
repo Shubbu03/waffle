@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { classifyPumpSwapBuy } from "@waffle/market-data/classify";
 import { PUMP_SWAP_PROGRAM_ID, WRAPPED_SOL_MINT } from "@waffle/shared";
-import { classifyPumpSwapBuy } from "../src/classify.ts";
 
 const ROOT = new URL("../../../tests/fixtures/", import.meta.url);
 const manifest = (await Bun.file(new URL("manifest.json", ROOT)).json()) as {

@@ -50,12 +50,16 @@ const walletColumns = {
 };
 
 /** Use only the authenticated transaction and user ID supplied by the API owner operation. */
-export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) {
+export function createWalletTrackingStore(
+  tx: DatabaseExecutor,
+  userId: string,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   async function activeCount(): Promise<number> {
     const [row] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(watchedWallets)
-      .where(eq(watchedWallets.active, true));
+      .where(and(eq(watchedWallets.active, true), eq(watchedWallets.network, network)));
     return row?.count ?? 0;
   }
 
@@ -63,7 +67,8 @@ export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) 
     const [row] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(userTrackedWallets)
-      .where(eq(userTrackedWallets.userId, userId));
+      .innerJoin(watchedWallets, eq(watchedWallets.id, userTrackedWallets.watchedWalletId))
+      .where(and(eq(userTrackedWallets.userId, userId), eq(watchedWallets.network, network)));
     return row?.count ?? 0;
   }
 
@@ -75,7 +80,10 @@ export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) 
   }
 
   async function add(address: string, label?: string): Promise<AddTrackedWalletResult> {
-    const [existing] = await tx.select(walletColumns).from(watchedWallets).where(eq(watchedWallets.address, address));
+    const [existing] = await tx
+      .select(walletColumns)
+      .from(watchedWallets)
+      .where(and(eq(watchedWallets.address, address), eq(watchedWallets.network, network)));
 
     if (existing) {
       if (existing.source === "catalog") {
@@ -114,6 +122,7 @@ export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) 
       .insert(watchedWallets)
       .values({
         address,
+        network,
         label: label?.trim() ? label.trim() : `Tracked · ${abbreviate(address)}`,
         active: true,
         source: "user",
@@ -123,7 +132,10 @@ export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) 
       .returning(walletColumns);
     if (!inserted) {
       // Lost a race on the unique address; the winning row now exists.
-      const [winner] = await tx.select(walletColumns).from(watchedWallets).where(eq(watchedWallets.address, address));
+      const [winner] = await tx
+        .select(walletColumns)
+        .from(watchedWallets)
+        .where(and(eq(watchedWallets.address, address), eq(watchedWallets.network, network)));
       if (!winner) return { status: "catalog-limit" };
       if ((await userCount()) >= MAX_TRACKED_PER_USER) return { status: "user-limit" };
       await tx.insert(userTrackedWallets).values({ userId, watchedWalletId: winner.id }).onConflictDoNothing();
@@ -136,6 +148,11 @@ export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) 
   }
 
   async function remove(walletId: string): Promise<RemoveTrackedWalletResult> {
+    const [scoped] = await tx
+      .select({ id: watchedWallets.id })
+      .from(watchedWallets)
+      .where(and(eq(watchedWallets.id, walletId), eq(watchedWallets.network, network)));
+    if (!scoped) return { status: "not-tracked" };
     const removed = await tx
       .delete(userTrackedWallets)
       .where(and(eq(userTrackedWallets.userId, userId), eq(userTrackedWallets.watchedWalletId, walletId)))
@@ -165,7 +182,8 @@ export function createWalletTrackingStore(tx: DatabaseExecutor, userId: string) 
     const rows = await tx
       .select({ walletId: userTrackedWallets.watchedWalletId })
       .from(userTrackedWallets)
-      .where(eq(userTrackedWallets.userId, userId))
+      .innerJoin(watchedWallets, eq(watchedWallets.id, userTrackedWallets.watchedWalletId))
+      .where(and(eq(userTrackedWallets.userId, userId), eq(watchedWallets.network, network)))
       .limit(101);
     return rows.map((row) => row.walletId);
   }

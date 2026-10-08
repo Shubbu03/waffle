@@ -2,7 +2,13 @@ import { scorePolicyV1, signalDetailSchema } from "@waffle/shared";
 import type { signals } from "./schema/index.ts";
 
 /** Check stored eligibility plus original transaction age; never renew freshness at dispatch. */
-export function pushSignal(row: typeof signals.$inferSelect, walletAddress: string, eventId: bigint, now: number) {
+export function pushSignal(
+  row: typeof signals.$inferSelect,
+  walletAddress: string,
+  eventId: bigint,
+  now: number,
+  network: import("@waffle/shared").SolanaNetwork = "mainnet",
+) {
   const parsed = signalDetailSchema.safeParse({
     ...row,
     walletAddress,
@@ -50,6 +56,7 @@ export function pushSignal(row: typeof signals.$inferSelect, walletAddress: stri
   return {
     expiresAt,
     data: {
+      ...(network === "mainnet" ? {} : { network }),
       id: signal.id,
       eventId: eventId.toString(),
       score: String(signal.score),

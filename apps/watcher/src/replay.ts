@@ -1,5 +1,5 @@
+import { classifyPumpSwapBuy } from "@waffle/market-data/classify";
 import { z } from "zod";
-import { classifyPumpSwapBuy } from "./classify.ts";
 
 const ROOT = new URL("../../../tests/fixtures/", import.meta.url);
 const manifestSchema = z.object({

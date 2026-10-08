@@ -20,27 +20,23 @@ describe('signal presentation and copy safety', () => {
     expect(signal.snapshot.holders).toBeNull()
     expect(copyBlockReason(signal, false, now)).toBeNull()
   })
-  test('offline, expired transaction and future timestamps block copying', () => {
+  test('offline and unsupported transactions block review', () => {
     expect(copyBlockReason(signalFixture(undefined, now), true, now)).toContain('Reconnect')
-    expect(copyBlockReason(signalFixture(undefined, now - 90_001), false, now)).toContain('stale')
-    expect(copyBlockReason(signalFixture(undefined, now + 1000), false, now)).toContain('stale')
-  })
-  test('pool expiry, missing assessment and degraded transport block copying', () => {
     const signal = signalFixture(undefined, now)
-    expect(copyBlockReason(signal, false, now + 15_000)).toContain('refreshing')
+    signal.reasons = signal.reasons.map((r) =>
+      r.code === 'supported_buy' ? { code: 'unsupported_or_failed_transaction', points: 0 } : r,
+    )
+    expect(copyBlockReason(signal, false, now)).toContain('not a confirmed supported buy')
+  })
+  test('historical, suppressed and expired snapshots may request current server checks', () => {
+    const signal = signalFixture(undefined, now - 86400_000)
+    for (const status of ['eligible', 'suppressed', 'history-only'] as const) {
+      expect(copyBlockReason({ ...signal, status }, false, now)).toBeNull()
+    }
     signal.snapshot.assessment = undefined
-    expect(copyBlockReason(signal, false, now)).toContain('unknown')
-    const degraded = signalFixture(undefined, now)
-    if (degraded.snapshot.assessment) degraded.snapshot.assessment.streamStale = true
-    expect(copyBlockReason(degraded, false, now)).toContain('degraded')
-  })
-  test('unknown data and suppressed/history signals are never actionable', () => {
-    const signal = signalFixture(undefined, now)
-    expect(copyBlockReason({ ...signal, dataStatus: 'unknown' }, false, now)).toContain('unknown')
-    expect(copyBlockReason({ ...signal, status: 'suppressed' }, false, now)).toContain('blocked')
-    expect(copyBlockReason({ ...signal, status: 'history-only' }, false, now)).toContain('history')
+    expect(copyBlockReason(signal, false, now)).toBeNull()
     expect(signalDataLabel(signal, true, now)).toBe('Cached · stale')
-    expect(signalDataLabel({ ...signal, dataStatus: 'unknown' }, false, now)).toBe('Unknown data')
+    expect(signalDataLabel(signal, false, now)).toBe('Earlier buy')
   })
   test('age uses explicit unknown states', () => {
     expect(ageLabel(null, now)).toBe('Age unknown')

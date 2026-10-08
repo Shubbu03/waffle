@@ -3,9 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { AppState } from 'react-native'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { useCatalogWallets, useWalletSubscriptions } from '@/components/wallets/use-wallets'
-import { AppConfig } from '@/constants/app-config'
-import { apiBaseUrl, reportUnauthorized } from '@/lib/api-client'
+import { reportUnauthorized } from '@/lib/api-client'
 import { feedCacheKey } from '@/lib/signal-cache'
 import { type LiveSocket, SignalFeed } from '@/lib/signal-feed'
 import type { SignalView } from '@/lib/signal-state'
@@ -13,6 +13,7 @@ import { loadDetail, loadFeed, saveDetail, saveFeed } from '@/lib/signal-storage
 import { getSignal, listSignals } from '@/lib/signals-api'
 
 export function useSignalFeed(view: SignalView, walletId?: string) {
+  const { apiUrl: origin } = useCluster()
   const { session, serverLinked } = useAuth()
   const subscriptions = useWalletSubscriptions()
   const catalog = useCatalogWallets()
@@ -25,7 +26,7 @@ export function useSignalFeed(view: SignalView, walletId?: string) {
       : null
   const networkEnabled = view === 'all' || (serverLinked && subscriptions.isSuccess)
   const controller = useMemo(() => {
-    const key = view === 'following' && !owner ? null : feedCacheKey(AppConfig.apiUrl, view, owner, walletId)
+    const key = view === 'following' && !owner ? null : feedCacheKey(origin, view, owner, walletId)
     return new SignalFeed({
       view,
       walletId,
@@ -37,18 +38,18 @@ export function useSignalFeed(view: SignalView, walletId?: string) {
         const cached = await loadFeed(key)
         if (cached || !walletId) return cached
         // Preserve already-saved browsing when opening a wallet offline for the first time.
-        const shared = await loadFeed(feedCacheKey(AppConfig.apiUrl, view, owner))
+        const shared = await loadFeed(feedCacheKey(origin, view, owner))
         return shared ? { ...shared, items: shared.items.filter((item) => item.walletId === walletId) } : null
       },
       save: (cache) => (key ? saveFeed(key, cache) : Promise.resolve()),
       list: (cursor, signal) => listSignals({ view, walletId, cursor }, token, signal),
       detail: async (id, signal) => {
         const detail = await getSignal(id, signal)
-        await saveDetail({ signal: detail, fetchedAt: Date.now() }).catch(() => {})
+        await saveDetail({ signal: detail, fetchedAt: Date.now() }, origin).catch(() => {})
         return detail
       },
       socket: () => {
-        const url = new URL(`${apiBaseUrl()}/live`)
+        const url = new URL(`${origin}/live`)
         url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
         const native = new WebSocket(url.href)
         const socket: LiveSocket = {
@@ -69,7 +70,7 @@ export function useSignalFeed(view: SignalView, walletId?: string) {
         if (token) reportUnauthorized(token)
       },
     })
-  }, [view, walletId, token, owner, subscriptionKey, networkEnabled])
+  }, [view, walletId, token, owner, subscriptionKey, networkEnabled, origin])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   useEffect(() => {
     if (!focused) return
@@ -112,13 +113,14 @@ export function useSignalDetail(id: string) {
   const client = useQueryClient()
   const focused = useIsFocused()
   const [foreground, setForeground] = useState(AppState.currentState === 'active')
-  const key = useMemo(() => ['signal-detail', AppConfig.apiUrl, id], [id])
+  const { apiUrl: origin } = useCluster()
+  const key = useMemo(() => ['signal-detail', origin, id], [id, origin])
   const query = useQuery({
     queryKey: key,
     queryFn: async ({ signal }) => {
       const detail = await getSignal(id, signal)
       const data = { signal: detail, fetchedAt: Date.now(), fromCache: false }
-      await saveDetail(data).catch(() => {})
+      await saveDetail(data, origin).catch(() => {})
       return data
     },
     enabled: focused && foreground,
@@ -128,7 +130,7 @@ export function useSignalDetail(id: string) {
   })
   useEffect(() => {
     let cancelled = false
-    void loadDetail(id)
+    void loadDetail(id, origin)
       .then((cached) => {
         if (!cancelled && cached && !client.getQueryData(key)) {
           client.setQueryData(key, { ...cached, fromCache: true })
@@ -138,7 +140,7 @@ export function useSignalDetail(id: string) {
     return () => {
       cancelled = true
     }
-  }, [id, client, key])
+  }, [id, client, key, origin])
   useEffect(() => {
     const listener = AppState.addEventListener('change', (next) => {
       setForeground(next === 'active')

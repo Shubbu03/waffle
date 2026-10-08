@@ -2,11 +2,13 @@ export * from "./contracts/api.ts";
 export * from "./contracts/auth.ts";
 export * from "./contracts/jupiter.ts";
 export * from "./contracts/live.ts";
+export * from "./contracts/network.ts";
 export * from "./contracts/position.ts";
 export * from "./contracts/primitives.ts";
 export * from "./contracts/quote.ts";
 export * from "./contracts/signal.ts";
 export * from "./contracts/trade.ts";
+export * from "./contracts/trade-assessment.ts";
 export * from "./contracts/wallet.ts";
 export {
   PROGRAM_IDS,

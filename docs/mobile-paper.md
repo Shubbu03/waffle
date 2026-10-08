@@ -1,17 +1,21 @@
 # Mobile paper trading (#25)
 
-The signal detail opens **Review paper copy** when persisted signal, mint, pool and stream checks are fresh. Sign in with a verified Mainnet account before trading. Home or Settings → **Paper positions** opens the owner-only list; it is also available from the wallet account screen; a successful fill also links to its position detail.
+Network support, configuration and Devnet testing: [Solana networks](networks.md).
+
+The signal detail opens **Try paper trade** for a confirmed supported buy while connected. The review explains that the purchase is simulated and needs no wallet signature. Both trade reviews have a native back header with a signal-detail fallback for direct links, safe content spacing, and matching theme controls. Sign in with a verified Mainnet account before trading. Home or Settings → **Paper positions** opens the owner-only list; it is also available from the wallet account screen; a successful fill also links to its position detail.
 
 ## Review and fill
 
-- Enter 0 < size ≤ 0.1 SOL, with at most nine decimal places, or choose 0.01 / 0.05 / 0.1 SOL. Amounts remain decimal strings and BigInts throughout; token quantities never pass through floating-point numbers.
+- Enter 0 < size ≤ 0.1 SOL, with at most nine decimal places, or choose 0.01 / 0.025 / 0.1 SOL. Amounts remain decimal strings and BigInts throughout; token quantities never pass through floating-point numbers.
 - Get a new quote from the API. Review expected and minimum token output, slippage, signed price impact, router/platform fees, signature/priority/rent fees, total entry cost and expiry. Router/platform fees are already included in output and are not subtracted twice.
 - Mint decimals come from the watcher's verified mint account evidence and are saved with the entry quote. Older signals/positions without decimals explicitly display base units; the app never assumes six decimals.
 - Quotes last at most ten seconds. Editing size, refreshing the signal, leaving the review, backgrounding, or changing accounts invalidates the prepared quote. Confirmation independently checks expiry and current session/readiness, including after saving pending state.
-- A fresh quote does not refresh the original pool evidence. The existing 15-second pool gate and server-side recheck remain in force. Refreshing an unchanged stored signal cannot make it eligible again.
+- Each quote request runs current server-side token and pool checks, then obtains a size-specific quote. The saved score stays historical. Review shows current liquidity; confirmation checks the new assessment deadline and quote expiry. Historical or originally suppressed market checks can be reassessed, while unsupported/failed source transactions cannot.
 - Confirm records a simulated fill only. No wallet signing, transaction broadcast, SOL debit, token transfer, or position sale occurs.
 
-Before sending a fill, AsyncStorage saves its quote ID, signal ID and size under the API origin, account and signal. It stores no bearer token. Repeated taps cannot submit twice. A timeout, malformed success response or server error is uncertain: the app looks up the exact quote ID rather than scanning one page or replaying the POST. Restarting the app restores this check. A missing lookup is **not** proof of failure; the review stays locked and offers manual status checks until a saved fill is found. If the request never reached the API, that old signal's review can remain unresolved; other signals and saved positions remain accessible. A definitive 4xx rejection requires a new quote.
+Before sending a fill, AsyncStorage saves its quote ID, signal ID and size under the API origin, account and signal. It stores no bearer token. Repeated taps cannot submit twice. A timeout, malformed success response or server error is uncertain: the app looks up the exact quote ID rather than scanning one page or replaying the POST. Restarting the app restores this check. A missing lookup is **not** proof of failure; the review offers manual status checks. After a successful empty lookup, the user may explicitly **Start a new paper trade**. Its confirmation explains that the original simulation might still appear later; it clears only local recovery and requires a new quote, never replays/cancels the old POST. This escape is limited to simulated trading. A definitive 4xx rejection requires a new quote.
+
+Returning to a mounted review also resumes the pending lookup. Local session/preflight refusals before POST clear pending state and explain the refusal instead of pretending the fill is uncertain. Quote, pending, error, and saved-position transitions scroll into view; users can leave through the header during checks. A successful confirmation shows **Paper trade saved** and **View paper position**.
 
 ## Positions and valuation
 
@@ -41,7 +45,7 @@ The Android static export checks bundling only. Automated checks do not verify l
 
 1. Sign in, open a newly eligible signal and enter 0.1 SOL. Check the quote's fees, minimum output and expiry, then confirm. Repeat on a second fresh signal; both positions must show **simulated**, the size and timestamp.
 2. Edit the size after quoting; confirmation must disappear. Let a quote expire, background the app, or navigate away and return; request a new quote before confirming. Old pool evidence must still block copying.
-3. Tap confirm repeatedly; only one position should be created for that quote. Interrupt the response after submission or restart during a fill; check that the exact saved fill is recovered without another POST. If no saved fill is found, check that the review stays uncertain and locked.
+3. Tap confirm repeatedly; only one position should be created for that quote. Interrupt the response after submission or restart during a fill; check that the exact saved fill is recovered without another POST. If no saved fill is found, check that the review stays uncertain until the user checks status again or explicitly confirms starting a new simulation. A failed status lookup must not offer a restart.
 4. Open Home or Settings → Paper positions, refresh and page through disposable seeded positions. Open a detail; compare exact entry amounts/fees and refresh its SOL exit valuation. Wait past expiry; the value must become unavailable. Exercise an unsupported route/API failure and check the visible error state.
 5. Sign out and switch accounts; the previous owner's positions and valuations must disappear. Directly opening a foreign position ID must fail without revealing its holding or accessing Jupiter.
 6. Disconnect networking; no quote/fill should proceed. Recover connectivity, verify the session and refresh the signal. Review keyboard layout, scrolling, accessibility labels and readable amounts on your Android device.

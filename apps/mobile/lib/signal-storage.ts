@@ -9,13 +9,15 @@ export async function loadFeed(key: string) {
 export async function saveFeed(key: string, cache: FeedCache) {
   await AsyncStorage.setItem(key, JSON.stringify(cache))
 }
-const detailPrefix = `waffle.signal-detail.v1:${encodeURIComponent(AppConfig.apiUrl)}:`
+const prefix = (origin: string) => `waffle.signal-detail.v1:${encodeURIComponent(origin)}:`
 let detailWrites: Promise<void> = Promise.resolve()
-export async function loadDetail(id: string) {
+export async function loadDetail(id: string, origin = AppConfig.apiUrl) {
+  const detailPrefix = prefix(origin)
   const cached = parseCachedDetail(await AsyncStorage.getItem(`${detailPrefix}${id}`))
   return cached?.signal.id === id ? cached : null
 }
-export function saveDetail(detail: CachedDetail): Promise<void> {
+export function saveDetail(detail: CachedDetail, origin = AppConfig.apiUrl): Promise<void> {
+  const detailPrefix = prefix(origin)
   const write = detailWrites.then(async () => {
     const indexKey = `${detailPrefix}index`
     const raw = await AsyncStorage.getItem(indexKey)

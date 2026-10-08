@@ -20,6 +20,7 @@ function harness() {
   let creates = 0
   let prepares = 0
   let lookupResult: PaperPositionWithFill | null = null
+  let lookupError: Error | null = null
   let create = async (pending: PendingPaperFill) =>
     paperPositionFixture({ ...paperQuoteFixture(now, pending.sizeLamports), id: pending.quoteId }, now)
   let prepare = async (size: string) => paperQuoteFixture(now, size)
@@ -41,7 +42,10 @@ function harness() {
       creates++
       return create(pending)
     },
-    lookup: async () => lookupResult,
+    lookup: async () => {
+      if (lookupError) throw lookupError
+      return lookupResult
+    },
   })
   return {
     controller,
@@ -72,8 +76,41 @@ function harness() {
     set lookup(value: PaperPositionWithFill | null) {
       lookupResult = value
     },
+    set lookupError(value: Error | null) {
+      lookupError = value
+    },
   }
 }
+test('a confirmation blocked before sending stays recoverable and explains why', async () => {
+  const h = harness()
+  h.create = async () => {
+    throw new ApiError(409, 'REVIEW_CHANGED', 'Session changed before sending. Request a fresh quote.')
+  }
+  await h.controller.restore()
+  await h.controller.prepare()
+  await h.controller.confirm()
+  expect(h.controller.getSnapshot().pending).toBeNull()
+  expect(h.controller.getSnapshot().busy).toBe(false)
+})
+test('confirmation tells the user when availability changed instead of silently removing the quote', async () => {
+  const controller = new PaperTradeController(PAPER_TEST_SIGNAL, {
+    now: () => start,
+    load: async () => null,
+    save: async () => {},
+    clear: async () => {},
+    prepare: async () => paperQuoteFixture(start),
+    create: async () => {
+      throw new Error('Must not submit')
+    },
+    lookup: async () => null,
+    canSubmit: () => false,
+  })
+  await controller.restore()
+  await controller.prepare()
+  await controller.confirm()
+  expect(controller.getSnapshot().error).toContain('Review changed')
+  expect(controller.getSnapshot().quote).toBeNull()
+})
 test('sizes and quantities preserve integer precision, boundaries, and verified decimals', () => {
   expect(parsePaperSize('0.000000001')).toBe('1')
   expect(parsePaperSize('0.100000000')).toBe('100000000')
@@ -83,10 +120,10 @@ test('sizes and quantities preserve integer precision, boundaries, and verified 
   expect(formatTokens('123', undefined)).toContain('decimals unknown')
   expect(formatSol('-100000001')).toBe('-0.100000001 SOL')
 })
-test('preparing a new quote does not renew old pool evidence', () => {
+test('manual review allows historical evidence while requiring a live connection', () => {
   const signal = signalFixture(undefined, start)
   expect(paperReviewBlock(signal, false, start + 11_000)).toBeNull()
-  expect(paperReviewBlock(signal, false, start + 16_000)).toContain('refreshing')
+  expect(paperReviewBlock(signal, false, start + 86400_000)).toBeNull()
   expect(paperReviewBlock(signal, true, start)).toContain('Reconnect')
 })
 test('size changes invalidate a quote and an expired quote cannot submit', async () => {
@@ -200,7 +237,42 @@ test('an absent lookup cannot prove an in-flight fill failed and blocks another 
   await h.controller.prepare()
   await h.controller.confirm()
   expect(h.creates).toBe(1)
-  expect(h.controller.getSnapshot().error).toContain('uncertain')
+  expect(h.controller.getSnapshot().error).toContain('could still finish')
+})
+test('only an explicit restart after an empty lookup can leave an uncertain paper review', async () => {
+  const h = harness()
+  h.create = async () => {
+    throw new Error('Response lost')
+  }
+  await h.controller.restore()
+  await h.controller.prepare()
+  await h.controller.confirm()
+  expect(h.controller.getSnapshot().canStartOver).toBe(true)
+  await h.controller.prepare()
+  expect(h.controller.getSnapshot().quote).toBeNull()
+  await h.controller.startOver()
+  expect(h.saved).toBeNull()
+  expect(h.controller.getSnapshot().pending).toBeNull()
+  expect(h.controller.getSnapshot().canStartOver).toBe(false)
+  expect(h.creates).toBe(1)
+  await h.controller.prepare()
+  expect(h.controller.getSnapshot().quote).not.toBeNull()
+})
+test('a failed status lookup cannot unlock a new simulation', async () => {
+  const h = harness()
+  h.create = async () => {
+    throw new Error('Response lost')
+  }
+  h.lookupError = new Error('Offline')
+  await h.controller.restore()
+  await h.controller.prepare()
+  await h.controller.confirm()
+  const pending = h.controller.getSnapshot().pending
+  expect(pending).not.toBeNull()
+  expect(h.controller.getSnapshot().canStartOver).toBe(false)
+  await h.controller.startOver()
+  expect(h.controller.getSnapshot().pending).toEqual(pending)
+  expect(h.creates).toBe(1)
 })
 test('restart restores an expired pending quote for lookup, without replaying create', async () => {
   const h = harness()
@@ -211,6 +283,24 @@ test('restart restores an expired pending quote for lookup, without replaying cr
   await h.controller.restore()
   expect(h.creates).toBe(0)
   expect(h.controller.getSnapshot().position?.entryQuote.id).toBe(q.id)
+})
+test('returning to an already mounted review resumes a pending lookup without another fill', async () => {
+  const h = harness()
+  h.create = async () => {
+    throw new Error('Response lost')
+  }
+  await h.controller.restore()
+  await h.controller.prepare()
+  const quote = h.controller.getSnapshot().quote
+  if (!quote) throw new Error('Expected quote')
+  await h.controller.confirm()
+  expect(h.controller.getSnapshot().pending).not.toBeNull()
+  h.controller.invalidate()
+  h.lookup = paperPositionFixture(quote)
+  await h.controller.restore()
+  expect(h.controller.getSnapshot().position?.entryQuote.id).toBe(quote.id)
+  expect(h.controller.getSnapshot().pending).toBeNull()
+  expect(h.creates).toBe(1)
 })
 test('definitive rejection clears pending state and requires a new quote', async () => {
   const h = harness()
