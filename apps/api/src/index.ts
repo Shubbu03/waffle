@@ -29,15 +29,21 @@ async function main() {
   if (fcm && !env.DELIVERY_DATABASE_URL) throw new Error("FCM requires DELIVERY_DATABASE_URL");
   const database = createApiDatabase(env.DATABASE_URL);
   const delivery = env.DELIVERY_DATABASE_URL ? createDeliveryDatabase(env.DELIVERY_DATABASE_URL) : undefined;
+  let databaseVariable = "DATABASE_URL";
   try {
     await waitForDatabase(
       async () => {
+        databaseVariable = "DATABASE_URL";
         await database.assertRestrictedLogin();
-        await delivery?.assertRestrictedLogin();
+        if (delivery) {
+          databaseVariable = "DELIVERY_DATABASE_URL";
+          await delivery.assertRestrictedLogin();
+        }
       },
       { onRetry: (status) => logger.warn("api.database.waiting", status) },
     );
   } catch (error) {
+    logger.error("api.database.login.failed", { reason: databaseVariable, error });
     await delivery?.close();
     await database.close();
     throw new Error("API database login verification failed", { cause: error });
