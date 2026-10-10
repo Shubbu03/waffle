@@ -1,89 +1,64 @@
 # waffle
 
-An Android Solana app for watching curated whale wallets, understanding scored buy signals, and trying paper trades before wallet-approved real trades.
+An Android Solana app for watching wallets, reviewing scored buy signals, and trying paper trades before wallet-approved real trades.
 
 ## Setup
 
-Use Bun 1.3.13 (the version recorded in package.json):
+Use Bun 1.3.13 from the repository root:
 
 ```sh
 bun install --frozen-lockfile
 bun run lint
 bun run typecheck
-bun run test:shared
-bun run test:db
-bun run test:api
-bun run test:watcher
-bun run test:observability
+bun run test
 ```
 
-Biome checks formatting, imports, and lint rules through `bun run lint`. Run `bun run lint:fix` to apply safe fixes.
+`bun run test` runs all workspace suites. Wire tests need permission to start local HTTP/WebSocket servers. Tests and their helpers live in each workspace's `tests/` folder; saved transaction fixtures live in the root `tests/fixtures/` folder.
 
-`bun install` also runs `prepare` to enable the checked-in `.githooks` for this clone. Both `pre-commit` and `pre-push` run `bun run lint:fix` from the repository root. Lint failures block the operation. If lint fixes tracked files, the hook also stops so you can review and stage the fixes before retrying; it never stages files automatically. Run `bun run prepare` to enable the hooks in an existing checkout or after installing with scripts disabled. Bun must be available in the environment used by Git, including Git GUI clients.
-
-Run one workspace's check:
+Copy the environment examples for the services you run:
 
 ```sh
-bun run --filter '@waffle/shared' typecheck
+cp apps/api/.env.example apps/api/.env
+cp apps/watcher/.env.example apps/watcher/.env
+cp apps/mobile/.env.example apps/mobile/.env
+cp packages/db/.env.example packages/db/.env
 ```
 
-All apps depend on `@waffle/shared` through `workspace:*`. Shared code must remain platform-independent. Bun manages packages and is the selected watcher/API runtime; the mobile app will use React Native's native runtime and tooling. The Hono, Postgres, wallet auth, and live delivery choices are recorded in the [backend architecture decision](docs/backend-architecture.md).
+Keep migration-owner credentials in `packages/db/.env`. The API, watcher, and delivery worker use separate restricted database logins. Run `bun run db:check` to check migration history and `bun run db:migrate` to apply migrations using the configured migration connection. Never put database or provider credentials in the mobile environment.
 
-### Mobile wallet configuration
+For mobile, configure `EXPO_PUBLIC_WAFFLE_API_URL` and `EXPO_PUBLIC_WAFFLE_APP_URI` with public HTTPS URLs. The app identity needs Android Digital Asset Links for the signing key. Public RPC URLs bundled into the app must not contain secrets. Wallet sign-in requires an Android development build and a compatible Solana wallet; Expo Go and iOS do not support the MWA flow. Push notifications need the local, gitignored `apps/mobile/google-services.json` file.
 
-The mobile app uses Solana mainnet. Signed-out launches show a welcome screen; verified sessions open Home. The only bottom tabs are **Home, Signals, Settings**. Wallet discovery and account screens are reached from Home and Settings. Copy `apps/mobile/.env.example` to `apps/mobile/.env` and set `EXPO_PUBLIC_WAFFLE_APP_URI` to the public HTTPS URL you control. Configure its Android Digital Asset Links file for the app signing key so wallets can verify the MWA identity. The app shows a sign-in error until this URL is set. `EXPO_PUBLIC_SOLANA_MAINNET_RPC_URL` is optional; without it, the app uses Solana's public mainnet RPC, which is suitable only for light development use. Both variables are bundled into the mobile app, so never put a secret RPC key or server credential in either one.
+Start the configured services:
 
-MWA sign-in is connected to the stateless SIWS API. Only a verified API token creates an authenticated session; sessions are stored in SecureStore, checked on foreground/expiry, and cleared on logout, wallet changes, or rejected tokens. Public All signals, signal details, and the wallet catalog remain available without sign-in. Set `EXPO_PUBLIC_WAFFLE_API_URL` to the public API origin (HTTP is accepted only in development). Devnet and testnet remain available in Settings for wallet testing; API sign-in accepts mainnet only. Test the wallet flow on an Android development build with an MWA-compatible wallet; Expo Go and iOS do not support this MWA flow.
+```sh
+bun run start:api
+bun run start:watcher
+bun run --filter '@waffle/mobile' android
+```
 
 ## Layout
 
 ```text
 apps/
-  mobile/           Expo Android app, wallet sign-in, catalog, signal feed/detail
-  api/              Bun/Hono API foundation
-  watcher/          Catalog ingestion, recovery, evidence, scored signal persistence
+  api/              Bun/Hono auth, feeds, live/push delivery, and trade routes
+  mobile/           Expo Android app and Mobile Wallet Adapter
+  watcher/          Wallet subscriptions, recovery, evidence, and signal persistence
 packages/
-  shared/           Validated API/live schemas, score policy, program IDs
-  db/               Typed Postgres schema, migrations, tests
-  jupiter/          Server-only quote, price, and execution service
-  observability/    Shared structured logging and dependency failure reporting
-tests/
-  fixtures/         Redacted transaction fixtures (pending)
-docs/
-  backend-architecture.md
-  scoring-policy.md
-  wallet-selection.md
-  shared-contracts.md
-  database.md
-  api.md
-  watcher-rpc.md
+  db/               Drizzle schema, migrations, and database stores
+  http/             Xior clients, deadlines, and response limits
+  jupiter/          Server-side quote, price, and execution service
+  market-data/      RPC scheduling, swap classification, evidence, and Devnet trading
+  observability/    Structured backend logging
+  shared/           Validated contracts and scoring policy
+tests/fixtures/    Saved transaction fixtures
 ```
 
-Local typechecks and tests need no credentials. Applying migrations to a disposable Neon branch needs the server-side `packages/db/.env` described in the [database workflow](docs/database.md). The API provides health, wallet authentication, catalog, follows and alert preferences, paginated All/Following signal reads, paper positions, and foreground WebSocket delivery; see the [API runtime guide](docs/api.md). Run the catalog watcher with `bun run start:watcher` after configuring `apps/watcher/.env`; see the [watcher RPC guide](docs/watcher-rpc.md). Never put database or provider secrets in the mobile app.
+Outbound HTTP uses `@waffle/http`. Application database queries use Drizzle's typed query builder. Shared code stays platform-independent.
 
-## Product decisions and plan
+## Development checks
 
-* [Wallet selection](docs/wallet-selection.md): curated catalog, personal follows, separate opt-in alerts.
-* [Backend architecture](docs/backend-architecture.md): runtime, migrations, SIWS sessions, durable live delivery, retries, reconnects, and demo budget.
-* [Database workflow](docs/database.md): schema, roles, migrations, and local checks.
-* [API runtime](docs/api.md): local environment, restricted database login, and health check.
-* [Backend logging](docs/observability.md): important failures, request correlation, secret omission, and log levels.
-* [Push alerts](docs/push-alerts.md): owner-bound device registration, FCM setup, eligibility, retry, and device acceptance.
-* [Live delivery](docs/live-delivery.md): delivery credentials, WebSocket frames, cursor recovery, limits, and verification.
-* [Watcher RPC](docs/watcher-rpc.md): catalog subscriptions, reconnect recovery, rate limits, and health status.
-* [Watcher evidence](docs/watcher-evidence.md): mint and pool validation, quote probes, optional data, and freshness.
-* [Watcher signals](docs/watcher-signals.md): score assessment, suppression, atomic outbox writes, and deduplication.
-* [Scoring policy](docs/scoring-policy.md): versioned weights, critical checks, freshness windows, liquidity floors, and trade caps.
-* [Shared contracts](docs/shared-contracts.md): validated API and live payloads, cursors, errors, and program IDs.
-* [Build specification](AGENT.md): architecture, unresolved decisions, and chapter acceptance gates.
-* [Milestones](MILESTONE.md): deliverables and progress.
-* [Schedule](PLAN.md): planned daily work; future commands become available as chapters are implemented.
-* [References](DOC.md): provider documentation and integration references.
+Biome checks formatting, imports, and lint rules. Mobile console calls are limited to warnings and errors. `bun run lint:fix` applies safe fixes.
 
-The initial setup used `bun init --yes --minimal`, `mkdir -p` for the planned directories, workspace manifests, and `bun add --dev --exact typescript`. Install dependencies from the root so all packages share one bun.lock. Package management follows the [Bun workspace documentation](https://bun.sh/docs/pm/workspaces).
+Installing dependencies enables `.githooks`. Pre-commit and pre-push run `bun run lint:fix`; if tracked files change, the hook stops for review and staging. Hooks never stage files automatically.
 
-Home previews real signals and curated wallets. The mobile Signals tab supports All/Following, cursor pagination, foreground WebSocket recovery, and bounded offline caches. Details show original score reasons, evidence timestamps, unknown data, and copy blockers; paper review, simulated fills, owner-only positions and fresh SOL exit valuations are implemented. See [signal acceptance steps](docs/mobile-signals.md) and [paper trading acceptance steps](docs/mobile-paper.md). Wallet-approved real execution remains a separate mobile issue.
-
-Outbound HTTP requests use shared Xior policies with clients for mobile, RPC, Pyth, Jupiter, FCM, and catalog verification. See [HTTP clients](docs/http-clients.md).
-
-UI and device acceptance checks are performed manually by the user. Suggested commit checkpoints in the plans do not authorize staging, committing, or pushing.
+UI and Android device checks are performed manually. Local tests do not verify live provider behavior or Neon pool concurrency. Real trades require wallet approval and are never automatically replayed. Multiple API instances require shared validated-order state; the current order cache is process-local.

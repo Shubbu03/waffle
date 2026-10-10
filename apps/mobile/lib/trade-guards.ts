@@ -1,4 +1,4 @@
-/** Client-side real-trade guards for issue #27 (no native imports — bun-testable).
+/** Client-side real-trade guards.
  *
  * The server already enforces these in contract; the app re-checks every one
  * BEFORE asking the wallet to sign. Any failure renders `paper only` — never sign.
@@ -25,7 +25,6 @@ type RealOrderLike = {
 }
 
 function fail(reason: string): GuardResult {
-  console.log(`[trade-guard] REJECT: ${reason}`)
   return { ok: false, reason }
 }
 
@@ -36,7 +35,6 @@ export function checkRealOrder(
   nowMs: number = Date.now(),
   network: 'mainnet' | 'devnet' | 'testnet' = 'mainnet',
 ): GuardResult {
-  console.log('[trade-guard] checkRealOrder: evaluating gates')
   if (order === null || typeof order !== 'object') return fail('order missing')
   const o = order as RealOrderLike
   if (o.kind !== 'real') return fail(`kind=${String(o.kind)} (expected real)`)
@@ -60,6 +58,5 @@ export function checkRealOrder(
     return fail('quote expired')
   const expires = typeof o.expiresAt === 'string' ? Date.parse(o.expiresAt) : NaN
   if (!Number.isFinite(expires) || expires <= nowMs) return fail('quote expired')
-  console.log('[trade-guard] checkRealOrder: all gates pass')
   return { ok: true }
 }

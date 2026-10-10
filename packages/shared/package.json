@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test test"
+    "test": "bun test tests"
   },
   "exports": {
     ".": "./src/index.ts"

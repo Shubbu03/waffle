@@ -27,13 +27,7 @@ export function AccountFeatureAirdrop({ back }: { back: () => void }) {
         <Button
           disabled={requestAirdrop.isPending}
           onPress={() => {
-            requestAirdrop
-              .mutateAsync(amount)
-              .then(() => {
-                console.log(`Requested airdrop of ${amount} SOL to ${account?.address}`)
-                back()
-              })
-              .catch((err) => console.log(`Error requesting airdrop: ${err}`, err))
+            requestAirdrop.mutate(amount, { onSuccess: back })
           }}
           variant="filled"
         >

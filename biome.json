@@ -55,6 +55,18 @@
   "overrides": [
     {
       "includes": ["apps/mobile/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": {
+              "level": "error",
+              "options": {
+                "allow": ["warn", "error"]
+              }
+            }
+          }
+        }
+      },
       "javascript": {
         "formatter": {
           "quoteStyle": "single",

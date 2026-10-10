@@ -1,6 +1,6 @@
-/** Pure catalog/subscription merge for issue #22 (no RN imports — bun-testable).
+/** Pure catalog/subscription merge.
  *
- * Rules (from docs/wallet-selection.md):
+ * Subscription rules:
  * - New follows default to alerts OFF; omission preserves the existing preference.
  * - Paused wallets reject new follows/alerts; existing follows can be removed or muted.
  * - Unfollow never deletes shared history (client just drops the row).
@@ -22,7 +22,6 @@ export function mergeCatalog(
   subscriptions: WalletSubscription[],
   trackedIds: string[] = [],
 ): WalletRow[] {
-  console.log(`[wallets-state] mergeCatalog: ${wallets.length} wallets, ${subscriptions.length} follows`)
   const byId = new Map(subscriptions.map((s) => [s.walletId, s]))
   const tracked = new Set(trackedIds)
   return wallets.map((wallet) => {

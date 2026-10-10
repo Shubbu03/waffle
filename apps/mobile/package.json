@@ -35,7 +35,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "start": "expo start",
-    "test": "bun test lib",
+    "test": "bun test tests",
     "typecheck": "tsc --noEmit",
     "web": "expo start --web"
   },

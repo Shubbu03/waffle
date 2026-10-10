@@ -27,10 +27,9 @@ export function buildSignInInput(
   now: number = Date.now(),
   chainId: SignInInput['chainId'] = 'solana:mainnet',
 ): SignInInput {
-  console.log('[sign-in-input] buildSignInInput: constructing local input')
   const url = new URL(uri)
   if (url.protocol !== 'https:') throw new Error('SIWS URI must use HTTPS')
-  const input: SignInInput = {
+  return {
     domain: url.host,
     statement: SIGN_IN_STATEMENT,
     uri: url.href,
@@ -40,6 +39,4 @@ export function buildSignInInput(
     issuedAt: new Date(now).toISOString(),
     expirationTime: new Date(now + 5 * 60_000).toISOString(),
   }
-  console.log(`[sign-in-input] buildSignInInput: domain=${input.domain} issued=${input.issuedAt}`)
-  return input
 }

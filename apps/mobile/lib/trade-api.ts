@@ -1,5 +1,3 @@
-/** Real-trade API for issue #27. Logs paths, never keys or bytes. */
-
 import { tradeAttemptOrderResponseSchema, tradeAttemptSchema } from '@waffle/shared'
 
 export type { RealOrder, TradeAttempt } from '@waffle/shared'
@@ -14,7 +12,6 @@ export async function createTradeAttempt(
   signalId: string,
   inputAmountLamports: string,
 ): Promise<{ order: RealOrder; attempt: TradeAttempt }> {
-  console.log(`[trade-api] createTradeAttempt: signal=${signalId.slice(0, 8)}... amount=${inputAmountLamports}`)
   const response = await apiRequest(
     '/trade-attempts',
     { method: 'POST', data: { signalId, inputAmountLamports }, timeoutMs: 30_000 },
@@ -33,9 +30,6 @@ export async function createTradeAttempt(
     payload.attempt.inputAmountLamports !== inputAmountLamports
   )
     throw new ApiError(0, 'BAD_RESPONSE', 'Order does not match this trade review')
-  console.log(
-    `[trade-api] createTradeAttempt: attempt=${payload.attempt.id.slice(0, 8)}... router=${payload.order.router}`,
-  )
   return payload
 }
 
@@ -45,9 +39,6 @@ export async function executeTradeAttempt(
   attemptId: string,
   body: { signedTransactionBase64: string; requestId: string; quoteId: string },
 ): Promise<TradeAttempt> {
-  console.log(
-    `[trade-api] executeTradeAttempt: ${attemptId.slice(0, 8)}... (${body.signedTransactionBase64.length}B signed)`,
-  )
   // Jupiter can spend 20 seconds landing an order; don't time out before the server.
   const response = await apiRequest(
     `/trade-attempts/${attemptId}/execute`,
@@ -62,11 +53,7 @@ export async function executeTradeAttempt(
     parsed.data.requestId !== body.requestId
   )
     throw new ApiError(0, 'BAD_RESPONSE', 'Malformed execution response')
-  const payload = parsed.data
-  console.log(
-    `[trade-api] executeTradeAttempt: status=${payload.status} code=${payload.executeCode} sig=${payload.signature?.slice(0, 8) ?? 'none'}...`,
-  )
-  return payload
+  return parsed.data
 }
 
 /** Read the saved outcome after a lost execution response. Never replays execution. */
@@ -84,7 +71,5 @@ export async function rejectTradeAttempt(
   attemptId: string,
   body: { quoteId: string; requestId: string; reason: 'WALLET_REJECTED' | 'USER_CANCELLED' },
 ): Promise<void> {
-  console.log(`[trade-api] rejectTradeAttempt: ${attemptId.slice(0, 8)}... (${body.reason})`)
   await apiRequest(`/trade-attempts/${attemptId}/wallet-rejection`, { method: 'POST', data: body }, token)
-  console.log('[trade-api] rejectTradeAttempt: recorded')
 }

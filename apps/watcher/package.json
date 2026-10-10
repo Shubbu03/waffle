@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test test",
+    "test": "bun test tests",
     "replay": "bun src/replay.ts",
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts"

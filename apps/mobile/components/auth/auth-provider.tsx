@@ -109,8 +109,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
         const verified = await postVerify({
           accountAddress: output.account.address.toString(),
-          signedMessageBase64: toWireBase64(output.signedMessage, 'msg'),
-          signatureBase64: toWireBase64(output.signature, 'sig'),
+          signedMessageBase64: toWireBase64(output.signedMessage),
+          signatureBase64: toWireBase64(output.signature),
         })
         return { ...verified.session, accessToken: verified.accessToken }
       })

@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "bun run --filter '@waffle/*' typecheck",
+    "test": "bun run --filter '@waffle/*' test",
     "test:shared": "bun run --filter '@waffle/shared' test",
     "test:db": "bun run --filter '@waffle/db' test",
     "test:api": "bun run --filter '@waffle/api' test",
