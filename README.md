@@ -1,64 +1,46 @@
 # waffle
 
-An Android Solana app for watching wallets, reviewing scored buy signals, and trying paper trades before wallet-approved real trades.
+Follow Solana wallets, review scored PumpSwap buys, and copy trades on Android. Try simulated paper trades or approve real trades with your connected wallet.
+
+Built with Expo, React Native, Bun, Hono, and PostgreSQL.
 
 ## Setup
 
-Use Bun 1.3.13 from the repository root:
+Requires Bun 1.3.13, PostgreSQL, Android development tools, and an MWA-compatible Solana wallet. Wallet sign-in requires a native Android build.
 
 ```sh
 bun install --frozen-lockfile
-bun run lint
-bun run typecheck
-bun run test
-```
 
-`bun run test` runs all workspace suites. Wire tests need permission to start local HTTP/WebSocket servers. Tests and their helpers live in each workspace's `tests/` folder; saved transaction fixtures live in the root `tests/fixtures/` folder.
-
-Copy the environment examples for the services you run:
-
-```sh
 cp apps/api/.env.example apps/api/.env
 cp apps/watcher/.env.example apps/watcher/.env
 cp apps/mobile/.env.example apps/mobile/.env
 cp packages/db/.env.example packages/db/.env
 ```
 
-Keep migration-owner credentials in `packages/db/.env`. The API, watcher, and delivery worker use separate restricted database logins. Run `bun run db:check` to check migration history and `bun run db:migrate` to apply migrations using the configured migration connection. Never put database or provider credentials in the mobile environment.
+Fill in the database and provider settings described in each environment example. Use separate restricted API/watcher database logins; keep the migration-owner connection in `packages/db/.env`.
 
-For mobile, configure `EXPO_PUBLIC_WAFFLE_API_URL` and `EXPO_PUBLIC_WAFFLE_APP_URI` with public HTTPS URLs. The app identity needs Android Digital Asset Links for the signing key. Public RPC URLs bundled into the app must not contain secrets. Wallet sign-in requires an Android development build and a compatible Solana wallet; Expo Go and iOS do not support the MWA flow. Push notifications need the local, gitignored `apps/mobile/google-services.json` file.
-
-Start the configured services:
+Set the mobile API URL and app identity URL. The API's `AUTH_URI` must match `EXPO_PUBLIC_WAFFLE_APP_URI`. For push notifications, configure Firebase and add `apps/mobile/google-services.json`.
 
 ```sh
-bun run start:api
-bun run start:watcher
+bun run db:migrate
+```
+
+## Run
+
+Run each app in a separate terminal:
+
+```sh
+bun run dev:api
+bun run dev:watcher
 bun run --filter '@waffle/mobile' android
 ```
 
-## Layout
+## Checks
 
-```text
-apps/
-  api/              Bun/Hono auth, feeds, live/push delivery, and trade routes
-  mobile/           Expo Android app and Mobile Wallet Adapter
-  watcher/          Wallet subscriptions, recovery, evidence, and signal persistence
-packages/
-  db/               Drizzle schema, migrations, and database stores
-  http/             Xior clients, deadlines, and response limits
-  jupiter/          Server-side quote, price, and execution service
-  market-data/      RPC scheduling, swap classification, evidence, and Devnet trading
-  observability/    Structured backend logging
-  shared/           Validated contracts and scoring policy
-tests/fixtures/    Saved transaction fixtures
+```sh
+bun run lint
+bun run typecheck
+bun run test
 ```
 
-Outbound HTTP uses `@waffle/http`. Application database queries use Drizzle's typed query builder. Shared code stays platform-independent.
-
-## Development checks
-
-Biome checks formatting, imports, and lint rules. Mobile console calls are limited to warnings and errors. `bun run lint:fix` applies safe fixes.
-
-Installing dependencies enables `.githooks`. Pre-commit and pre-push run `bun run lint:fix`; if tracked files change, the hook stops for review and staging. Hooks never stage files automatically.
-
-UI and Android device checks are performed manually. Local tests do not verify live provider behavior or Neon pool concurrency. Real trades require wallet approval and are never automatically replayed. Multiple API instances require shared validated-order state; the current order cache is process-local.
+Deploy a single API instance while prepared order state remains process-local.
