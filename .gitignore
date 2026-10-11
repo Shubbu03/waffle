@@ -10,6 +10,7 @@ coverage/
 google-services.json
 *.keystore
 *.jks
+apps/mobile/.release/
 web-build/
 expo-env.d.ts
 .metro-health-check*

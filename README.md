@@ -4,6 +4,30 @@ Follow Solana wallets, review scored PumpSwap buys, and copy trades on Android. 
 
 Built with Expo, React Native, Bun, Hono, and PostgreSQL.
 
+[![Download APK](https://img.shields.io/badge/Download-Android_APK-9bea72?logo=android&logoColor=black)](https://github.com/Shubbu03/waffle/releases/latest/download/waffle.apk)
+
+The download becomes available once the first GitHub Release with a `waffle.apk` asset is published.
+
+## Android releases
+
+App versions live in `apps/mobile/app.json`:
+
+- `expo.version`: the version users see, currently `1.0.0`. Use `1.0.1` for a fix, `1.1.0` for a feature release, and `2.0.0` for a major release.
+- `expo.android.versionCode`: the Android build number, currently `1`. Increase it for each new release (`2`, `3`, ...), including rebuilds published under the same visible version.
+
+Local Gradle builds read both values from this file. Settings displays the bundled app version. Reuse the same release signing key for updates.
+
+Build the release APK using your configured Android SDK and JDK 17:
+
+```sh
+cd apps/mobile/android
+NODE_ENV=production ./gradlew :app:assembleRelease --no-daemon --max-workers=2 --no-parallel
+```
+
+After testing the APK, copy `apps/mobile/android/app/build/outputs/apk/release/app-release.apk` to a file named `waffle.apk`. On GitHub, open **Releases → Draft a new release**, choose the matching tag (for example, `v1.0.0`) on the commit used for the build, attach `waffle.apk`, and publish it as the latest release.
+
+Keep the asset filename `waffle.apk` on every release so the README download button always points to the latest APK. Renaming the file does not change its internal version, package name, or signing certificate. A public repository allows anyone to download it.
+
 ## Setup
 
 Requires Bun 1.3.13, PostgreSQL, Android development tools, and an MWA-compatible Solana wallet. Wallet sign-in requires a native Android build.

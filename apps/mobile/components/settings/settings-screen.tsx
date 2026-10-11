@@ -1,3 +1,4 @@
+import Constants from 'expo-constants'
 import { Platform, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
@@ -43,6 +44,7 @@ export function SettingsScreen() {
             </SettingsRow>
             {Platform.OS === 'android' ? <SettingsUiNotifications /> : null}
           </SettingsGroup>
+          {Constants.expoConfig?.version ? <AppText>Version {Constants.expoConfig.version}</AppText> : null}
         </ScrollView>
       </SafeAreaView>
     </AppView>

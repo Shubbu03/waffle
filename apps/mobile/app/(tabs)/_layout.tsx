@@ -1,10 +1,12 @@
 import { Tabs } from 'expo-router'
 import { View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { UiIconSymbol, type UiIconSymbolName } from '@/components/ui/ui-icon-symbol'
 import { FontFamily } from '@/constants/fonts'
 import { useThemeColor } from '@/hooks/use-theme-color'
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets()
   const surface = useThemeColor({}, 'surface')
   const border = useThemeColor({}, 'border')
   const active = useThemeColor({}, 'tabIconSelected')
@@ -29,6 +31,7 @@ export default function TabLayout() {
   return (
     <Tabs
       initialRouteName="home"
+      safeAreaInsets={{ bottom: insets.bottom + 6 }}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: active,
