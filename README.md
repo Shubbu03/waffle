@@ -4,9 +4,7 @@ Follow Solana wallets, review scored PumpSwap buys, and copy trades on Android. 
 
 Built with Expo, React Native, Bun, Hono, and PostgreSQL.
 
-[![Download APK](https://img.shields.io/badge/Download-Android_APK-9bea72?logo=android&logoColor=black)](https://github.com/Shubbu03/waffle/releases/latest/download/waffle.apk)
-
-The download becomes available once the first GitHub Release with a `waffle.apk` asset is published.
+[![Download APK](https://img.shields.io/badge/Download-Android_APK-9bea72?logo=android&logoColor=black)](https://github.com/Shubbu03/waffle/releases/download/v1.0.0/waffle-v1.0.0.apk)
 
 ## Android releases
 
@@ -24,9 +22,9 @@ cd apps/mobile/android
 NODE_ENV=production ./gradlew :app:assembleRelease --no-daemon --max-workers=2 --no-parallel
 ```
 
-After testing the APK, copy `apps/mobile/android/app/build/outputs/apk/release/app-release.apk` to a file named `waffle.apk`. On GitHub, open **Releases → Draft a new release**, choose the matching tag (for example, `v1.0.0`) on the commit used for the build, attach `waffle.apk`, and publish it as the latest release.
+After testing the APK, copy `apps/mobile/android/app/build/outputs/apk/release/app-release.apk` to a versioned filename (for example, `waffle-v1.0.0.apk`). On GitHub, open **Releases → Draft a new release**, choose the matching tag (for example, `v1.0.0`) on the commit used for the build, attach the APK, and publish it as the latest release.
 
-Keep the asset filename `waffle.apk` on every release so the README download button always points to the latest APK. Renaming the file does not change its internal version, package name, or signing certificate. A public repository allows anyone to download it.
+After publishing, update the APK links in `README.md` and `apps/web/index.html` to the uploaded asset's direct download URL. The filename in each link must exactly match the uploaded filename. The current v1.0.0 asset is `waffle-v1.0.0.apk`. Renaming the file does not change its internal version, package name, or signing certificate. A public repository allows anyone to download it.
 
 ## Setup
 
@@ -58,6 +56,8 @@ bun run dev:api
 bun run dev:watcher
 bun run --filter '@waffle/mobile' android
 ```
+
+The product website lives in `apps/web`. Run `bun run dev:web` for local development and `bun run build:web` to generate the static site in `apps/web/dist`.
 
 ## Checks
 
