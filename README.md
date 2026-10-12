@@ -1,10 +1,12 @@
 # waffle
 
+Follow the Whales. Trade with Signal. Not noise.
+
 Follow Solana wallets, review scored PumpSwap buys, and copy trades on Android. Try simulated paper trades or approve real trades with your connected wallet.
 
 Built with Expo, React Native, Bun, Hono, and PostgreSQL.
 
-[![Download APK](https://img.shields.io/badge/Download-Android_APK-9bea72?logo=android&logoColor=black)](https://github.com/Shubbu03/waffle/releases/download/v1.0.0/waffle-v1.0.0.apk)
+Android release: coming soon.
 
 ## Android releases
 
@@ -24,7 +26,7 @@ NODE_ENV=production ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -
 
 After testing the APK, copy `apps/mobile/android/app/build/outputs/apk/release/app-release.apk` to a versioned filename (for example, `waffle-v1.0.0.apk`). On GitHub, open **Releases → Draft a new release**, choose the matching tag (for example, `v1.0.0`) on the commit used for the build, attach the APK, and publish it as the latest release.
 
-After publishing, update the APK links in `README.md` and `apps/web/src/lib/site.ts` to the uploaded asset's direct download URL. The filename in each link must exactly match the uploaded filename. The current v1.0.0 asset is `waffle-v1.0.0.apk`. Renaming the file does not change its internal version, package name, or signing certificate. A public repository allows anyone to download it.
+Keep website and README download links hidden until the service is ready.
 
 ## Setup
 

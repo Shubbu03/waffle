@@ -75,7 +75,7 @@
   --container-artwork: 32.5rem;
   --spacing-hero-art-mobile: clamp(11rem, 30svh, 17rem);
   --text-wordmark: 1.625rem;
-  --text-hero: clamp(2.5rem, 5.1vw, 4.25rem);
+  --text-hero: clamp(2rem, 4.8vw, 4rem);
   --text-section: clamp(1.875rem, 3.1vw, 2.625rem);
   --text-footer: clamp(1.6875rem, 2.8vw, 2.25rem);
   --radius-card: 1.375rem;
