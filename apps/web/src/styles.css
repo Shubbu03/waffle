@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@font-face {
+  font-family: Poppins;
+  src: url("/fonts/Poppins-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: Poppins;
+  src: url("/fonts/Poppins-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: PlaywriteZA;
+  src: url("/fonts/PlaywriteZA-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --background: #f6f7f3;
+  --surface: #ffffff;
+  --surface-muted: #eceee7;
+  --border: #e1e5da;
+  --foreground: #171a16;
+  --muted: #697060;
+  --accent: #e4ff97;
+  --accent-soft: #f2ffc7;
+  --accent-ink: #171a16;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #11140f;
+  --surface: #1b2018;
+  --surface-muted: #272d23;
+  --border: #333b2d;
+  --foreground: #f2f5ed;
+  --muted: #a6af9e;
+  --accent-soft: #29351d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --background: #11140f;
+    --surface: #1b2018;
+    --surface-muted: #272d23;
+    --border: #333b2d;
+    --foreground: #f2f5ed;
+    --muted: #a6af9e;
+    --accent-soft: #29351d;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+}
+@theme {
+  --font-sans: Poppins, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-wordmark: PlaywriteZA, cursive;
+  --container-site: 80rem;
+  --container-artwork: 32.5rem;
+  --spacing-hero-art-mobile: clamp(11rem, 30svh, 17rem);
+  --text-wordmark: 1.625rem;
+  --text-hero: clamp(2.5rem, 5.1vw, 4.25rem);
+  --text-section: clamp(1.875rem, 3.1vw, 2.625rem);
+  --text-footer: clamp(1.6875rem, 2.8vw, 2.25rem);
+  --radius-card: 1.375rem;
+  --radius-artwork: 2.375rem;
+  --animate-mascot-in: mascot-in 800ms ease both;
+  @keyframes mascot-in {
+    from {
+      opacity: 0;
+      transform: translateY(15px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+@utility grid-cols-footer {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 2rem;
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  svg {
+    flex-shrink: 0;
+  }
+  :focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 5px;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+}
+/* The mascot's decorative grid is the only custom illustration styling. */
+.art-grid {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black, transparent 75%);
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

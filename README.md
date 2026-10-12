@@ -24,7 +24,7 @@ NODE_ENV=production ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -
 
 After testing the APK, copy `apps/mobile/android/app/build/outputs/apk/release/app-release.apk` to a versioned filename (for example, `waffle-v1.0.0.apk`). On GitHub, open **Releases → Draft a new release**, choose the matching tag (for example, `v1.0.0`) on the commit used for the build, attach the APK, and publish it as the latest release.
 
-After publishing, update the APK links in `README.md` and `apps/web/index.html` to the uploaded asset's direct download URL. The filename in each link must exactly match the uploaded filename. The current v1.0.0 asset is `waffle-v1.0.0.apk`. Renaming the file does not change its internal version, package name, or signing certificate. A public repository allows anyone to download it.
+After publishing, update the APK links in `README.md` and `apps/web/src/lib/site.ts` to the uploaded asset's direct download URL. The filename in each link must exactly match the uploaded filename. The current v1.0.0 asset is `waffle-v1.0.0.apk`. Renaming the file does not change its internal version, package name, or signing certificate. A public repository allows anyone to download it.
 
 ## Setup
 
