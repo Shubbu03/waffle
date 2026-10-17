@@ -9,10 +9,11 @@ import {
 
 export function assessmentFixture(signal: SignalDetail, mode: TradeMode, size: string, now: number): TradeAssessment {
   return {
+    inputMint: WRAPPED_SOL_MINT,
     policyVersion: 1,
     signalId: signal.id,
     mode,
-    inputAmountLamports: size,
+    inputAmountRaw: size,
     checkedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + 10_000).toISOString(),
     mint: {

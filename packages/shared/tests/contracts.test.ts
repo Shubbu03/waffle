@@ -41,7 +41,7 @@ const paperQuote = {
   signalId: otherId,
   inputMint: WRAPPED_SOL_MINT,
   outputMint: PUMP_SWAP_PROGRAM_ID,
-  inputAmountLamports: "100000000",
+  inputAmountRaw: "100000000",
   outputAmountRaw: "1000",
   minOutputAmountRaw: "950",
   requestId: "jupiter-request",
@@ -249,21 +249,21 @@ describe("signals, quotes, and positions", () => {
 
   test("paper quotes and positions reject excess size or inconsistent output", () => {
     expect(paperQuoteSchema.safeParse(paperQuote).success).toBe(true);
-    expect(paperQuoteSchema.safeParse({ ...paperQuote, inputAmountLamports: "100000001" }).success).toBe(false);
-    expect(paperQuoteSchema.safeParse({ ...paperQuote, inputAmountLamports: "bad" }).success).toBe(false);
+    expect(paperQuoteSchema.safeParse({ ...paperQuote, inputAmountRaw: "100000001" }).success).toBe(false);
+    expect(paperQuoteSchema.safeParse({ ...paperQuote, inputAmountRaw: "bad" }).success).toBe(false);
     expect(paperQuoteSchema.safeParse({ ...paperQuote, minOutputAmountRaw: "1001" }).success).toBe(false);
     expect(
       createPaperPositionRequestSchema.safeParse({
         signalId: otherId,
         quoteId: id,
-        sizeLamports: "100000000",
+        sizeRaw: "100000000",
       }).success,
     ).toBe(true);
     expect(
       paperPositionSchema.safeParse({
         id,
         signalId: otherId,
-        sizeLamports: "100000000",
+        sizeRaw: "100000000",
         entryQuote: paperQuote,
         simulated: true,
         status: "open",
@@ -275,7 +275,7 @@ describe("signals, quotes, and positions", () => {
       paperPositionSchema.safeParse({
         id,
         signalId: otherId,
-        sizeLamports: "100000000",
+        sizeRaw: "100000000",
         entryQuote: paperQuote,
         simulated: false,
         status: "open",
@@ -290,7 +290,7 @@ describe("signals, quotes, and positions", () => {
     const order = {
       ...baseQuote,
       kind: "real",
-      inputAmountLamports: "50000000",
+      inputAmountRaw: "50000000",
       taker: address,
       signatureFeePayer: address,
       prioritizationFeePayer: address,
@@ -306,12 +306,12 @@ describe("signals, quotes, and positions", () => {
     expect(realOrderSchema.safeParse({ ...order, router: "jupiterz" }).success).toBe(false);
     expect(realOrderSchema.safeParse({ ...order, signatureFeePayer: PUMP_SWAP_PROGRAM_ID }).success).toBe(false);
     expect(realOrderSchema.safeParse({ ...order, requiredSignatures: 2 }).success).toBe(false);
-    expect(realOrderSchema.safeParse({ ...order, inputAmountLamports: "50000001" }).success).toBe(false);
+    expect(realOrderSchema.safeParse({ ...order, inputAmountRaw: "50000001" }).success).toBe(false);
     expect(
       createTradeAttemptRequestSchema.safeParse({
         signalId: id,
         quoteId: otherId,
-        inputAmountLamports: "50000001",
+        inputAmountRaw: "50000001",
       }).success,
     ).toBe(false);
   });
@@ -324,7 +324,7 @@ describe("signals, quotes, and positions", () => {
       requestId: "jupiter-request",
       taker: address,
       router: "metis",
-      inputAmountLamports: "50000000",
+      inputAmountRaw: "50000000",
       status: "confirmed",
       signature: null,
       executeCode: 0,

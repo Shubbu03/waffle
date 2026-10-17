@@ -1,13 +1,25 @@
-import { type PaperPositionWithFill, type PaperQuote, type SignalDetail, scorePolicyV1 } from '@waffle/shared'
+import {
+  formatPayment,
+  type PaperPositionWithFill,
+  type PaperQuote,
+  type PaymentAsset,
+  type PaymentMint,
+  parseAssetAmount,
+  paymentAssets,
+  paymentSizeAllowed,
+  type SignalDetail,
+  scorePolicyV1,
+} from '@waffle/shared'
 import { ApiError } from './api-error'
 import { copyBlockReason } from './signal-state'
 
-export function parsePaperSize(text: string): string | null {
-  if (!/^(0|[1-9]\d*)(\.\d{1,9})?$/.test(text) || text.length > 12) return null
-  const [whole = '0', fraction = ''] = text.split('.')
-  const raw = BigInt(whole) * 1_000_000_000n + BigInt(fraction.padEnd(9, '0'))
-  return raw > 0n && raw <= scorePolicyV1.sizeLamports.paperMax ? raw.toString() : null
+export function parsePaperSize(text: string, asset: PaymentAsset = 'SOL'): string | null {
+  const a = paymentAssets[asset]
+  const raw = parseAssetAmount(text, a.decimals)
+  return raw && paymentSizeAllowed(a.mint, raw, 'paper') ? raw : null
 }
+export const formatPaperCost = (position: PaperPositionWithFill) =>
+  `${formatPayment(position.fill.totalDebitRaw, position.entryQuote.inputMint)}${position.entryQuote.inputMint === paymentAssets.USDC.mint ? ` + ${formatSol(position.entryQuote.feeLamports)} fees` : ''}`
 export function formatRaw(raw: string, decimals: number): string {
   const value = BigInt(raw)
   const sign = value < 0n ? '-' : ''
@@ -30,10 +42,11 @@ export function paperQuoteFresh(quote: PaperQuote, now: number): boolean {
 export function paperReviewBlock(signal: SignalDetail | undefined, offline: boolean, now: number) {
   return signal ? copyBlockReason(signal, offline, now) : 'Refresh the signal before preparing a quote.'
 }
-export type PendingPaperFill = { quoteId: string; signalId: string; sizeLamports: string }
+export type PendingPaperFill = { quoteId: string; signalId: string; sizeRaw: string; inputMint?: PaymentMint }
 type State = {
   ready: boolean
   size: string
+  asset: PaymentAsset
   quote: PaperQuote | null
   busy: boolean
   pending: PendingPaperFill | null
@@ -45,7 +58,7 @@ type Dependencies = {
   load: () => Promise<PendingPaperFill | null>
   save: (pending: PendingPaperFill) => Promise<void>
   clear: () => Promise<void>
-  prepare: (size: string, signal: AbortSignal) => Promise<PaperQuote>
+  prepare: (size: string, signal: AbortSignal, inputMint: PaymentMint) => Promise<PaperQuote>
   create: (pending: PendingPaperFill) => Promise<PaperPositionWithFill>
   lookup: (quoteId: string) => Promise<PaperPositionWithFill | null>
   now?: () => number
@@ -56,6 +69,7 @@ export class PaperTradeController {
   private state: State = {
     ready: false,
     size: '0.1',
+    asset: 'SOL',
     quote: null,
     busy: false,
     pending: null,
@@ -114,11 +128,18 @@ export class PaperTradeController {
     this.invalidate()
     this.update({ size, error: null })
   }
+  setAsset(asset: PaymentAsset) {
+    if (this.state.pending || this.state.busy || this.state.position) return
+    this.invalidate()
+    this.update({ asset, size: asset === 'SOL' ? '0.1' : '10', error: null })
+  }
   async prepare() {
     if (!this.state.ready || this.state.busy || this.state.pending || this.state.position) return
-    const size = parsePaperSize(this.state.size)
+    const size = parsePaperSize(this.state.size, this.state.asset)
     if (!size) {
-      this.update({ error: 'Enter up to 0.1 SOL with at most 9 decimal places.' })
+      this.update({
+        error: `Enter up to ${this.state.asset === 'SOL' ? '0.1 SOL (9 decimals)' : '10 USDC (6 decimals)'}.`,
+      })
       return
     }
     this.invalidate()
@@ -127,9 +148,14 @@ export class PaperTradeController {
     this.request = request
     this.update({ busy: true, error: null })
     try {
-      const quote = await this.dependencies.prepare(size, request.signal)
+      const quote = await this.dependencies.prepare(size, request.signal, paymentAssets[this.state.asset].mint)
       if (revision !== this.revision) return
-      if (quote.signalId !== this.signalId || quote.inputAmountLamports !== size || !paperQuoteFresh(quote, this.now()))
+      if (
+        quote.signalId !== this.signalId ||
+        quote.inputMint !== paymentAssets[this.state.asset].mint ||
+        quote.inputAmountRaw !== size ||
+        !paperQuoteFresh(quote, this.now())
+      )
         throw new Error('Quote expired or does not match. Request a fresh quote.')
       this.update({ quote })
     } catch (error) {
@@ -151,7 +177,12 @@ export class PaperTradeController {
         this.update({ quote: null, error: 'Quote expired. Request a fresh quote.' })
       return
     }
-    const record = { quoteId: quote.id, signalId: this.signalId, sizeLamports: quote.inputAmountLamports }
+    const record = {
+      inputMint: quote.inputMint,
+      quoteId: quote.id,
+      signalId: this.signalId,
+      sizeRaw: quote.inputAmountRaw,
+    }
     const revision = this.revision
     this.submitting = true
     this.update({ busy: true, error: null })

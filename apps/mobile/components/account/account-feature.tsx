@@ -16,6 +16,7 @@ import { AppCard } from '@/components/ui/app-card'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { ellipsify } from '@/utils/ellipsify'
 import { AccountUiButtons } from './account-ui-buttons'
+import { AccountUsdcBalance } from './account-usdc-balance'
 
 export function AccountFeature() {
   const { account } = useMobileWallet()
@@ -79,6 +80,7 @@ function WalletAccount({
       <AppCard>
         <AppText style={{ color: muted, fontSize: 12 }}>SOL BALANCE</AppText>
         <AccountUiBalance address={address} />
+        <AccountUsdcBalance address={address} />
         <AppText selectable style={{ color: muted, fontSize: 13 }}>
           {ellipsify(address.toBase58(), 8)}
         </AppText>
@@ -87,6 +89,7 @@ function WalletAccount({
         </AppText>
         {connected ? <AccountUiButtons /> : <WalletUiButtonConnect label="Reconnect wallet" />}
       </AppCard>
+      <AppButton title="Trade history →" onPress={() => router.push('/trade/history')} />
       <AppCard>
         <AppText type="subtitle">Practice before you copy.</AppText>
         <AppText style={{ color: muted, fontSize: 14 }}>

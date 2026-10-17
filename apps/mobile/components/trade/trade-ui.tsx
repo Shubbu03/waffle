@@ -1,17 +1,19 @@
 import { HeaderBackButton } from '@react-navigation/elements'
-import type { PaperQuote, RealOrder } from '@waffle/shared'
+import { formatPayment, type PaperQuote, type PaymentAsset, type RealOrder, WRAPPED_SOL_MINT } from '@waffle/shared'
 import { router, Stack } from 'expo-router'
 import type { PropsWithChildren, Ref } from 'react'
 import { Keyboard, ScrollView, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppText } from '@/components/app-text'
 import { AppView } from '@/components/app-view'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { DetailRow } from '@/components/signals/signal-detail-ui'
 import { AppButton } from '@/components/ui/app-button'
 import { AppCard } from '@/components/ui/app-card'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { formatSol, formatTokens } from '@/lib/paper-state'
 import { ellipsify } from '@/utils/ellipsify'
+import { PaymentAssetPicker } from './payment-asset-picker'
 
 export function returnToSignal(signalId: string) {
   if (router.canGoBack()) router.back()
@@ -75,10 +77,14 @@ export function TradeAmount({
   disabled,
   busy,
   onQuote,
+  asset = 'SOL',
+  onAssetChange,
 }: {
   value: string
   onChange: (value: string) => void
-  max: '0.05' | '0.1'
+  max: '0.05' | '0.1' | '5' | '10'
+  asset?: PaymentAsset
+  onAssetChange?: (asset: PaymentAsset) => void
   disabled: boolean
   busy: boolean
   onQuote: () => void
@@ -87,11 +93,17 @@ export function TradeAmount({
   const muted = useThemeColor({}, 'muted')
   const border = useThemeColor({}, 'border')
   const surface = useThemeColor({}, 'surfaceMuted')
+  const { selectedCluster } = useCluster()
+  const unsupported = asset === 'USDC' && selectedCluster.id !== 'solana:mainnet'
   return (
     <AppCard>
+      {onAssetChange ? <PaymentAssetPicker value={asset} onChange={onAssetChange} disabled={disabled || busy} /> : null}
+      {unsupported ? <AppText>USDC trading is available on Mainnet. Use test SOL on Devnet.</AppText> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <AppText type="defaultSemiBold">Amount</AppText>
-        <AppText style={{ color: muted, fontSize: 12 }}>Up to {max} SOL</AppText>
+        <AppText style={{ color: muted, fontSize: 12 }}>
+          Up to {max} {asset}
+        </AppText>
       </View>
       <View
         style={{
@@ -105,7 +117,7 @@ export function TradeAmount({
         }}
       >
         <TextInput
-          accessibilityLabel="Trade amount in SOL"
+          accessibilityLabel={`Trade amount in ${asset}`}
           value={value}
           onChangeText={onChange}
           editable={!disabled && !busy}
@@ -114,10 +126,10 @@ export function TradeAmount({
           placeholderTextColor={muted}
           style={{ flex: 1, minHeight: 60, paddingVertical: 14, color: ink, fontSize: 24 }}
         />
-        <AppText style={{ color: muted }}>SOL</AppText>
+        <AppText style={{ color: muted }}>{asset}</AppText>
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        {['0.01', '0.025', max].map((amount) => (
+        {(asset === 'SOL' ? ['0.01', '0.025', max] : ['1', '2.5', max]).map((amount) => (
           <AppButton
             key={amount}
             title={amount}
@@ -131,7 +143,7 @@ export function TradeAmount({
       <AppButton
         title={busy ? 'Checking token and quote…' : 'Get quote'}
         busy={busy}
-        disabled={disabled}
+        disabled={disabled || unsupported}
         onPress={() => {
           Keyboard.dismiss()
           onQuote()
@@ -146,13 +158,17 @@ export function TradeQuoteDetails({ quote }: { quote: PaperQuote | RealOrder }) 
   return (
     <View style={{ gap: 10 }}>
       <DetailRow label="Network" value={quote.network === 'devnet' ? 'Devnet · test SOL' : 'Mainnet'} />
-      <DetailRow label="Purchase" value={formatSol(quote.inputAmountLamports)} />
+      <DetailRow label="Purchase" value={formatPayment(quote.inputAmountRaw, quote.inputMint)} />
       <DetailRow label="Estimated received" value={formatTokens(quote.outputAmountRaw, decimals)} />
       <DetailRow label="Minimum received" value={formatTokens(quote.minOutputAmountRaw, decimals)} />
       <DetailRow label="Network fees & rent" value={formatSol(quote.feeLamports)} />
       <DetailRow
-        label="Total SOL"
-        value={formatSol((BigInt(quote.inputAmountLamports) + BigInt(quote.feeLamports)).toString())}
+        label="Estimated total debit"
+        value={
+          quote.inputMint === WRAPPED_SOL_MINT
+            ? formatSol((BigInt(quote.inputAmountRaw) + BigInt(quote.feeLamports)).toString())
+            : `${formatPayment(quote.inputAmountRaw, quote.inputMint)} + ${formatSol(quote.feeLamports)}`
+        }
       />
       <DetailRow label="Slippage / price impact" value={`${quote.slippageBps / 100}% / ${quote.priceImpactPct}%`} />
       <DetailRow label="Route fee (included)" value={`${quote.fees.totalBps / 100}%`} />

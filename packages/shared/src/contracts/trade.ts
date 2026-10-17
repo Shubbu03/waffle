@@ -1,23 +1,27 @@
 import { z } from "zod";
-import { scorePolicyV1 } from "../scoring/config.ts";
+import { paymentMintSchema, paymentSizeAllowed } from "../assets.ts";
+import { WRAPPED_SOL_MINT } from "../program-ids.ts";
 import { jupiterExecuteRequestSchema } from "./jupiter.ts";
 import {
   idSchema,
-  parseRawAmount,
   positiveRawAmountSchema,
+  rawAmountSchema,
   solanaAddressSchema,
   timestampSchema,
   transactionSignatureSchema,
 } from "./primitives.ts";
 import { realOrderSchema } from "./quote.ts";
 
-export const createTradeAttemptRequestSchema = z.strictObject({
-  signalId: idSchema,
-  inputAmountLamports: positiveRawAmountSchema.refine((value) => {
-    const amount = parseRawAmount(value);
-    return amount !== null && amount <= scorePolicyV1.sizeLamports.realMax;
-  }, "Real size exceeds 0.05 SOL"),
-});
+export const createTradeAttemptRequestSchema = z
+  .strictObject({
+    signalId: idSchema,
+    inputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+    inputAmountRaw: positiveRawAmountSchema,
+  })
+  .refine(
+    (value) => paymentSizeAllowed(value.inputMint, value.inputAmountRaw, "real"),
+    "Real size exceeds the asset limit",
+  );
 
 export const tradeAttemptSchema = z
   .strictObject({
@@ -27,8 +31,19 @@ export const tradeAttemptSchema = z
     requestId: z.string().min(1).max(200),
     taker: solanaAddressSchema,
     router: z.enum(["metis", "dflow", "okx", "pumpswap"]),
-    inputAmountLamports: positiveRawAmountSchema,
-    status: z.enum(["prepared", "wallet_rejected", "submitted", "confirmed", "failed"]),
+    inputAmountRaw: positiveRawAmountSchema,
+    inputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+    outputMint: solanaAddressSchema.nullable().default(null),
+    receipt: z
+      .strictObject({
+        inputAmountRaw: rawAmountSchema,
+        outputAmountRaw: rawAmountSchema,
+        feeLamports: rawAmountSchema.nullable(),
+        outputDecimals: z.number().int().min(0).max(255).nullable(),
+      })
+      .nullable()
+      .default(null),
+    status: z.enum(["prepared", "wallet_rejected", "submitted", "confirmed", "failed", "expired"]),
     signature: transactionSignatureSchema.nullable(),
     executeCode: z.number().int().min(-10_000).max(0).nullable(),
     failureReason: z.string().max(200).nullable(),
@@ -43,6 +58,7 @@ export const tradeAttemptSchema = z
         return attempt.signature === null && attempt.failureReason !== null;
       case "confirmed":
         return attempt.signature !== null && attempt.executeCode === 0 && attempt.failureReason === null;
+      case "expired":
       case "failed":
         return attempt.failureReason !== null || attempt.executeCode !== null;
       case "submitted":
@@ -64,6 +80,7 @@ export const rejectTradeAttemptRequestSchema = z.strictObject({
   reason: z.enum(["WALLET_REJECTED", "USER_CANCELLED"]),
 });
 export const getTradeAttemptsQuerySchema = z.strictObject({
+  signalId: idSchema.optional(),
   cursor: idSchema.optional(),
   limit: z
     .string()

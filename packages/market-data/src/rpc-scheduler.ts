@@ -12,7 +12,8 @@ export type RpcMethod =
   | "getFeeForMessage"
   | "simulateTransaction"
   | "sendTransaction"
-  | "getSignatureStatuses";
+  | "getSignatureStatuses"
+  | "getBlockHeight";
 
 export type RpcPriority = "provisional" | "evidence" | "backfill";
 

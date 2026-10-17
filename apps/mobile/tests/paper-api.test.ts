@@ -35,13 +35,13 @@ test('paper API carries only owner session and exact string amounts across quote
     bodies.push(await request.json())
     return Response.json(new URL(request.url).pathname.endsWith('/quote') ? quote : position)
   })
-  expect(await preparePaperQuote({ signalId: PAPER_TEST_SIGNAL, sizeLamports: '100000000' }, token)).toEqual(quote)
+  expect(await preparePaperQuote({ signalId: PAPER_TEST_SIGNAL, sizeRaw: '100000000' }, token)).toEqual(quote)
   expect(
-    await createPaperPosition({ signalId: PAPER_TEST_SIGNAL, quoteId: quote.id, sizeLamports: '100000000' }, token),
+    await createPaperPosition({ signalId: PAPER_TEST_SIGNAL, quoteId: quote.id, sizeRaw: '100000000' }, token),
   ).toEqual(position)
   expect(bodies).toEqual([
-    { signalId: PAPER_TEST_SIGNAL, sizeLamports: '100000000' },
-    { signalId: PAPER_TEST_SIGNAL, quoteId: quote.id, sizeLamports: '100000000' },
+    { signalId: PAPER_TEST_SIGNAL, sizeRaw: '100000000', inputMint: quote.inputMint },
+    { signalId: PAPER_TEST_SIGNAL, quoteId: quote.id, sizeRaw: '100000000', inputMint: quote.inputMint },
   ])
 })
 test('owner reads validate lookup, pagination, position, and unavailable valuation responses', async () => {
@@ -66,11 +66,11 @@ test('owner reads validate lookup, pagination, position, and unavailable valuati
 })
 test('malformed and mismatched paper responses never become accepted review or recovery data', async () => {
   const quote = paperQuoteFixture()
-  let payload: unknown = { ...quote, inputAmountLamports: '1' }
+  let payload: unknown = { ...quote, inputAmountRaw: '1' }
   api(() => Response.json(payload))
-  await expect(
-    preparePaperQuote({ signalId: PAPER_TEST_SIGNAL, sizeLamports: '100000000' }, token),
-  ).rejects.toMatchObject({ code: 'BAD_RESPONSE' })
+  await expect(preparePaperQuote({ signalId: PAPER_TEST_SIGNAL, sizeRaw: '100000000' }, token)).rejects.toMatchObject({
+    code: 'BAD_RESPONSE',
+  })
   payload = { items: [{ simulated: false }] }
   await expect(listPaperPositions(token)).rejects.toMatchObject({ code: 'BAD_RESPONSE' })
   payload = { position: paperPositionFixture() }

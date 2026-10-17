@@ -6,7 +6,7 @@ import { AppView } from '@/components/app-view'
 import { AppConfig } from '@/constants/app-config'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { listPaperPositions } from '@/lib/paper-api'
-import { formatSol, formatTokens } from '@/lib/paper-state'
+import { formatPaperCost, formatSol, formatTokens } from '@/lib/paper-state'
 import { PaperButton, PaperCard, PaperSignIn } from './paper-ui'
 import { PaperValue } from './paper-value'
 import { usePaperAvailability } from './use-paper'
@@ -78,7 +78,7 @@ export function PaperPositionsScreen() {
                 <AppText selectable>
                   {formatTokens(position.fill.outputAmountRaw, position.entryQuote.outputDecimals)}
                 </AppText>
-                <AppText>Entry cost: {formatSol(position.fill.totalDebitLamports)}</AppText>
+                <AppText>Entry cost: {formatPaperCost(position)}</AppText>
                 <AppText>Filled: {new Date(position.createdAt).toLocaleString()}</AppText>
                 <AppText>Entry network fees: {formatSol(position.entryQuote.feeLamports)}</AppText>
                 <PaperValue position={position} automatic={false} />

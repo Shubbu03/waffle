@@ -1,13 +1,18 @@
 import type { PublicKey } from '@solana/web3.js'
+import { usdcMintForNetwork } from '@waffle/shared'
 import { ActivityIndicator, View } from 'react-native'
 import { useGetTokenAccounts } from '@/components/account/use-get-token-accounts'
 import { AppText } from '@/components/app-text'
+import { useCluster } from '@/components/cluster/cluster-provider'
 import { AppButton } from '@/components/ui/app-button'
 import { AppCard } from '@/components/ui/app-card'
+import { AppConfig } from '@/constants/app-config'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { ellipsify } from '@/utils/ellipsify'
 
 export function AccountUiTokenAccounts({ address }: { address: PublicKey }) {
+  useCluster()
+  const usdcMint = usdcMintForNetwork(AppConfig.network)
   const query = useGetTokenAccounts({ address })
   const muted = useThemeColor({}, 'muted')
   return (
@@ -35,7 +40,7 @@ export function AccountUiTokenAccounts({ address }: { address: PublicKey }) {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
             <View style={{ flex: 1, gap: 4 }}>
               <AppText type="defaultSemiBold" style={{ fontSize: 14 }}>
-                Token
+                {item.account.data.parsed.info.mint === usdcMint ? 'USDC' : 'Token'}
               </AppText>
               <AppText selectable style={{ color: muted, fontSize: 12 }}>
                 {ellipsify(item.account.data.parsed.info.mint, 6)}

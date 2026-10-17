@@ -113,7 +113,7 @@ export class DevnetPumpSwap {
       policyVersion: 1,
       signalId: signal.id,
       mode,
-      inputAmountLamports: size,
+      inputAmountRaw: size,
       checkedAt: at,
       expiresAt: new Date(verified.at + TTL).toISOString(),
       mint: {
@@ -221,7 +221,7 @@ export class DevnetPumpSwap {
       signalId,
       inputMint: WRAPPED_SOL_MINT,
       outputMint: mint,
-      inputAmountLamports: size,
+      inputAmountRaw: size,
       outputAmountRaw: price.output.toString(),
       minOutputAmountRaw: price.minimum.toString(),
       requestId: crypto.randomUUID(),
@@ -244,11 +244,12 @@ export class DevnetPumpSwap {
   }
   async getPaperQuote(input: unknown): Promise<PaperQuote> {
     const request = jupiterPaperQuoteRequestSchema.parse(input);
+    if (request.inputMint !== WRAPPED_SOL_MINT) throw new JupiterServiceError("UNSUPPORTED_ORDER");
     const at = this.now();
     // A quote-only request never needs a taker or a funded account.
     const state = await this.state(request.signalId, request.outputMint, PublicKey.default);
     return paperQuoteSchema.parse({
-      ...this.fields(request.signalId, request.outputMint, request.inputAmountLamports, state, at),
+      ...this.fields(request.signalId, request.outputMint, request.inputAmountRaw, state, at),
       kind: "paper",
       providerQuoteId: null,
       outputDecimals: state.baseMintAccount.decimals,
@@ -286,8 +287,8 @@ export class DevnetPumpSwap {
       inputMint: request.inputMint,
       outputMint: WRAPPED_SOL_MINT,
       inputAmountRaw: request.inputAmountRaw,
-      outputLamports: price.uiQuote.toString(),
-      minOutputLamports: price.minQuote.toString(),
+      outputAmountRaw: price.uiQuote.toString(),
+      minOutputAmountRaw: price.minQuote.toString(),
       feeLamports: "0",
       slippageBps: 100,
       priceImpactPct: Math.min(
@@ -300,15 +301,16 @@ export class DevnetPumpSwap {
   }
   async getRealOrder(input: unknown, connectedWallet: string): Promise<RealOrder> {
     const request = jupiterRealOrderRequestSchema.parse(input);
+    if (request.inputMint !== WRAPPED_SOL_MINT) throw new JupiterServiceError("UNSUPPORTED_ORDER");
     if (request.taker !== connectedWallet) throw new JupiterServiceError("INVALID_REQUEST");
     const at = this.now();
     const state = await this.state(request.signalId, request.outputMint, new PublicKey(connectedWallet));
-    const fields = this.fields(request.signalId, request.outputMint, request.inputAmountLamports, state, at);
+    const fields = this.fields(request.signalId, request.outputMint, request.inputAmountRaw, state, at);
     // Fix the minimum base output and cap the SOL input exactly at the reviewed amount.
     const instructions = await PUMP_AMM_SDK.buyInstructions(
       state,
       new BN(fields.minOutputAmountRaw),
-      new BN(request.inputAmountLamports),
+      new BN(request.inputAmountRaw),
     );
     const block = z
       .object({ value: z.object({ blockhash: z.string(), lastValidBlockHeight: z.number().int().positive() }) })
@@ -363,7 +365,7 @@ export class DevnetPumpSwap {
     const balance = z
       .object({ value: z.number().int().nonnegative() })
       .parse(await this.rpc.call("getBalance", [connectedWallet, { commitment: "confirmed" }]));
-    if (BigInt(balance.value) < BigInt(request.inputAmountLamports) + BigInt(fee.value + rent))
+    if (BigInt(balance.value) < BigInt(request.inputAmountRaw) + BigInt(fee.value + rent))
       throw new JupiterServiceError("INSUFFICIENT_FUNDS");
     await this.simulate(encoded);
     const order = realOrderSchema.parse({
@@ -399,11 +401,26 @@ export class DevnetPumpSwap {
     input: unknown,
     connectedWallet: string,
     onValidated?: (signature: Uint8Array) => Promise<void>,
+    restoredOrder?: RealOrder,
   ): Promise<JupiterExecutionResult> {
     const request = jupiterExecuteRequestSchema.parse(input);
-    const pending = this.pending.get(request.orderId);
-    if (!pending || pending.order.requestId !== request.requestId || pending.order.taker !== connectedWallet)
+    const pending = restoredOrder
+      ? {
+          order: realOrderSchema.parse(restoredOrder),
+          message: VersionedTransaction.deserialize(
+            Buffer.from(restoredOrder.transactionBase64, "base64"),
+          ).message.serialize(),
+        }
+      : this.pending.get(request.orderId);
+    if (
+      !pending ||
+      pending.order.id !== request.orderId ||
+      pending.order.requestId !== request.requestId ||
+      pending.order.taker !== connectedWallet
+    )
       throw new JupiterServiceError("INVALID_ORDER");
+    if (pending.order.network !== "devnet" || pending.order.inputMint !== WRAPPED_SOL_MINT)
+      throw new JupiterServiceError("UNSUPPORTED_ORDER");
     if (this.now() >= Date.parse(pending.order.expiresAt)) throw new JupiterServiceError("STALE_ORDER");
     const transaction = VersionedTransaction.deserialize(Buffer.from(request.signedTransactionBase64, "base64"));
     const message = transaction.message.serialize();
@@ -430,7 +447,13 @@ export class DevnetPumpSwap {
       if (sent !== expected) throw new JupiterServiceError("EXECUTION_UNKNOWN");
       // Bounded read-only confirmation. A timeout never replays the broadcast.
       for (let i = 0; i < 8; i++) {
-        const result = await this.getExecution(expected, request.requestId, connectedWallet, pending.order.outputMint);
+        const result = await this.getExecution(
+          expected,
+          request.requestId,
+          connectedWallet,
+          pending.order.outputMint,
+          pending.order,
+        );
         if (result) return result;
         await new Promise((resolve) => setTimeout(resolve, 750));
       }
@@ -445,6 +468,7 @@ export class DevnetPumpSwap {
     requestId: string,
     taker: string,
     mint: string,
+    order?: RealOrder,
   ): Promise<JupiterExecutionResult | null> {
     await this.assertNetwork();
     const result = statusSchema.parse(
@@ -452,7 +476,22 @@ export class DevnetPumpSwap {
     );
     const status = result.value[0];
     if (status?.err !== null && status?.err !== undefined) return { status: "failed", requestId, code: -1, signature };
-    if (status?.confirmationStatus !== "confirmed" && status?.confirmationStatus !== "finalized") return null;
+    if (status?.confirmationStatus !== "confirmed" && status?.confirmationStatus !== "finalized") {
+      if (!status && order) {
+        const height = z
+          .number()
+          .int()
+          .nonnegative()
+          .parse(await this.rpc.call("getBlockHeight", [{ commitment: "finalized" }]));
+        if (BigInt(height) > BigInt(order.lastValidBlockHeight)) {
+          const again = statusSchema.parse(
+            await this.rpc.call("getSignatureStatuses", [[signature], { searchTransactionHistory: true }]),
+          );
+          if (!again.value[0]) return { status: "expired", requestId, code: -9999, signature };
+        }
+      }
+      return null;
+    }
     const tx = await this.rpc.getTransaction(signature);
     const buy = classifyPumpSwapBuy(tx, taker, signature);
     if (buy.status !== "buy" || buy.buy.mintAddress !== mint) throw new JupiterServiceError("EXECUTION_UNKNOWN");
@@ -467,6 +506,16 @@ export class DevnetPumpSwap {
     const details = z
       .object({
         meta: z.object({
+          fee: z.number().int().nonnegative().safe().optional(),
+          postTokenBalances: z
+            .array(
+              z.object({
+                mint: z.string(),
+                owner: z.string().optional(),
+                uiTokenAmount: z.object({ decimals: z.number().int().min(0).max(255) }),
+              }),
+            )
+            .optional(),
           innerInstructions: z.array(
             z.object({
               instructions: z.array(
@@ -517,6 +566,9 @@ export class DevnetPumpSwap {
       inputAmountResultRaw: spent.toString(),
       totalOutputAmountRaw: buy.buy.baseAmountRaw,
       outputAmountResultRaw: buy.buy.baseAmountRaw,
+      ...(details.meta.fee === undefined ? {} : { feeLamports: String(details.meta.fee) }),
+      outputDecimals: details.meta.postTokenBalances?.find((b) => b.mint === mint && b.owner === taker)?.uiTokenAmount
+        .decimals,
     };
   }
   /** Watcher evidence has no fabricated USD price for test SOL. Manual trades use the reserve policy. */
@@ -529,7 +581,7 @@ export class DevnetPumpSwap {
       const quote = await this.getPaperQuote({
         signalId: id,
         outputMint: input.mintAddress,
-        inputAmountLamports: "50000000",
+        inputAmountRaw: "50000000",
       });
       return {
         mint: { status: "fresh", value: checked.mint, fetchedAtMs: checked.at, expiresAtMs: checked.at + 60_000 },

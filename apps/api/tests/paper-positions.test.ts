@@ -36,7 +36,7 @@ const walletId = "33333333-3333-4333-8333-333333333333";
 const signalId = "44444444-4444-4444-8444-444444444444";
 const tokenA = "a".repeat(43);
 const tokenB = "b".repeat(43);
-const sizeLamports = "100000000";
+const sizeRaw = "100000000";
 const transaction: DatabaseTransaction = (run) =>
   drizzle(pg).transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL ROLE paper_test_login`);
@@ -150,7 +150,7 @@ beforeEach(async () => {
   upstream = {
     inputMint: WRAPPED_SOL_MINT,
     outputMint: PUMP_SWAP_PROGRAM_ID,
-    inAmount: sizeLamports,
+    inAmount: sizeRaw,
     outAmount: "9007199254740993123",
     otherAmountThreshold: "8556839292003943467",
     requestId: "provider-request",
@@ -192,12 +192,12 @@ function request(method: string, path: string, body?: unknown, token: string | n
   });
 }
 async function quote(token = tokenA) {
-  const response = await request("POST", "/quote", { signalId, sizeLamports }, token);
+  const response = await request("POST", "/quote", { signalId, sizeRaw }, token);
   expect(response.status).toBe(200);
   return paperQuoteSchema.parse(await response.json());
 }
 async function fill(quoteId: string, token = tokenA) {
-  return request("POST", "", { signalId, quoteId, sizeLamports }, token);
+  return request("POST", "", { signalId, quoteId, sizeRaw }, token);
 }
 async function error(response: Response, status: number, code: ApiErrorCode) {
   expect(response.status).toBe(status);
@@ -220,12 +220,12 @@ test("creates an exact simulated fill from a server quote and persists evidence 
   expect(position).toMatchObject({
     simulated: true,
     status: "open",
-    sizeLamports,
+    sizeRaw,
     entryQuote: q,
     fill: {
       outputAmountRaw: upstream.outAmount,
       minOutputAmountRaw: upstream.otherAmountThreshold,
-      totalDebitLamports: "100008000",
+      totalDebitRaw: "100008000",
       quoteAgeMs: 1234,
     },
   });
@@ -240,7 +240,7 @@ test("creates an exact simulated fill from a server quote and persists evidence 
 
 test("requires valid sessions before provider access and isolates quotes and positions by owner", async () => {
   for (const token of [null, "bad", "c".repeat(43)]) {
-    await error(await request("POST", "/quote", { signalId, sizeLamports }, token), 401, "UNAUTHORIZED");
+    await error(await request("POST", "/quote", { signalId, sizeRaw }, token), 401, "UNAUTHORIZED");
     await error(await request("GET", "", undefined, token), 401, "UNAUTHORIZED");
   }
   expect(calls).toHaveLength(0);
@@ -263,12 +263,8 @@ test("requires valid sessions before provider access and isolates quotes and pos
 test("rejects stale or missing quotes, size/signal mismatches, and duplicate concurrent fills", async () => {
   await error(await fill(crypto.randomUUID()), 409, "QUOTE_UNAVAILABLE");
   const q = await quote();
-  await error(await request("POST", "", { signalId, quoteId: q.id, sizeLamports: "1" }), 409, "CONFLICT");
-  await error(
-    await request("POST", "", { signalId: crypto.randomUUID(), quoteId: q.id, sizeLamports }),
-    409,
-    "CONFLICT",
-  );
+  await error(await request("POST", "", { signalId, quoteId: q.id, sizeRaw: "1" }), 409, "CONFLICT");
+  await error(await request("POST", "", { signalId: crypto.randomUUID(), quoteId: q.id, sizeRaw }), 409, "CONFLICT");
   const results = await Promise.all([fill(q.id), fill(q.id)]);
   expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
   const stale = await quote();
@@ -293,7 +289,7 @@ test("logout during quote acquisition prevents issuance and revoked/expired sess
   afterFetch = async () => {
     await auth.logout(hashSecret(tokenA));
   };
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 401, "UNAUTHORIZED");
+  await error(await request("POST", "/quote", { signalId, sizeRaw }), 401, "UNAUTHORIZED");
   await error(await fill(q.id), 401, "UNAUTHORIZED");
   await drizzle(pg)
     .update(sessions)
@@ -305,23 +301,19 @@ test("logout during quote acquisition prevents issuance and revoked/expired sess
 
 test("rejects untrusted owner, quote, fill, amount, and query fields", async () => {
   for (const body of [
-    { signalId, sizeLamports: "100000001" },
-    { signalId, sizeLamports: "0" },
-    { signalId, sizeLamports: "-1" },
-    { signalId, sizeLamports: 1 },
-    { signalId: "' OR 1=1--", sizeLamports },
-    { signalId, sizeLamports, userId: ownerB },
-    { signalId, sizeLamports, outputMint: WRAPPED_SOL_MINT },
+    { signalId, sizeRaw: "100000001" },
+    { signalId, sizeRaw: "0" },
+    { signalId, sizeRaw: "-1" },
+    { signalId, sizeRaw: 1 },
+    { signalId: "' OR 1=1--", sizeRaw },
+    { signalId, sizeRaw, userId: ownerB },
+    { signalId, sizeRaw, outputMint: WRAPPED_SOL_MINT },
   ]) {
     await error(await request("POST", "/quote", body), 400, "VALIDATION_ERROR");
   }
   const q = await quote();
   for (const extra of [{ userId: ownerB }, { entryQuote: q }, { simulated: false }, { fill: {} }]) {
-    await error(
-      await request("POST", "", { signalId, sizeLamports, quoteId: q.id, ...extra }),
-      400,
-      "VALIDATION_ERROR",
-    );
+    await error(await request("POST", "", { signalId, sizeRaw, quoteId: q.id, ...extra }), 400, "VALIDATION_ERROR");
   }
   for (const path of ["?limit=51", "?limit=0", "?limit=1&limit=2", `?userId=${ownerB}`, "?cursor=bad"]) {
     await error(await request("GET", path), 400, "VALIDATION_ERROR");
@@ -347,7 +339,7 @@ test("malformed upstream quotes and missing provider configuration fail without 
   ]) {
     const original = { ...upstream };
     Object.assign(upstream, update);
-    await error(await request("POST", "/quote", { signalId, sizeLamports }), 503, "QUOTE_UNAVAILABLE");
+    await error(await request("POST", "/quote", { signalId, sizeRaw }), 503, "QUOTE_UNAVAILABLE");
     upstream = original;
   }
   const noProvider = createApp(
@@ -359,7 +351,7 @@ test("malformed upstream quotes and missing provider configuration fail without 
     await noProvider.request("/paper-positions/quote", {
       method: "POST",
       headers: { authorization: `Bearer ${tokenA}`, "content-type": "application/json" },
-      body: JSON.stringify({ signalId, sizeLamports }),
+      body: JSON.stringify({ signalId, sizeRaw }),
     }),
     503,
     "SERVICE_UNAVAILABLE",
@@ -408,8 +400,8 @@ test("fill checks the new assessment deadline, independent of the historical sna
   const snapshot = structuredClone(row.snapshot);
   delete snapshot.assessment;
   await drizzle(pg).update(signals).set({ snapshot }).where(eq(signals.id, signalId));
-  expect((await request("POST", "/quote", { signalId, sizeLamports })).status).toBe(200);
-  await error(await request("POST", "/quote", { signalId: crypto.randomUUID(), sizeLamports }), 404, "NOT_FOUND");
+  expect((await request("POST", "/quote", { signalId, sizeRaw })).status).toBe(200);
+  await error(await request("POST", "/quote", { signalId: crypto.randomUUID(), sizeRaw }), 404, "NOT_FOUND");
 });
 
 test("current low liquidity, mismatched token, and expiry during quote I/O prevent issuance", async () => {
@@ -418,13 +410,13 @@ test("current low liquidity, mismatched token, and expiry during quote I/O preve
     a.pool.liquidityUsd = 24999;
     return a;
   };
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "LIMIT_EXCEEDED");
+  await error(await request("POST", "/quote", { signalId, sizeRaw }), 409, "LIMIT_EXCEEDED");
   expect(calls).toHaveLength(0);
   assess = async (signal, mode, size) => ({
     ...assessmentFixture(signal, mode, size, clock),
     signalId: crypto.randomUUID(),
   });
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "CONFLICT");
+  await error(await request("POST", "/quote", { signalId, sizeRaw }), 409, "CONFLICT");
   expect(calls).toHaveLength(0);
   assess = async (signal, mode, size) => ({
     ...assessmentFixture(signal, mode, size, clock),
@@ -433,7 +425,7 @@ test("current low liquidity, mismatched token, and expiry during quote I/O preve
   afterFetch = async () => {
     clock += 2000;
   };
-  await error(await request("POST", "/quote", { signalId, sizeLamports }), 409, "QUOTE_UNAVAILABLE");
+  await error(await request("POST", "/quote", { signalId, sizeRaw }), 409, "QUOTE_UNAVAILABLE");
   expect(await count()).toBe(0);
 });
 
@@ -474,8 +466,8 @@ test("valuation quotes the exact held amount back to SOL without a taker, even a
     positionId: position.id,
     quote: {
       inputAmountRaw: "9007199254740993123",
-      outputLamports: "110000000",
-      minOutputLamports: "104500000",
+      outputAmountRaw: "110000000",
+      minOutputAmountRaw: "104500000",
       feeLamports: "8000",
     },
   });
@@ -534,4 +526,30 @@ test("paper quotes use newly verified mint decimals, ignoring old snapshot decim
   const q = await quote();
   expect(q.outputDecimals).toBe(6);
   expect(paperPositionWithFillSchema.parse(await (await fill(q.id)).json()).entryQuote.outputDecimals).toBe(6);
+});
+
+test("USDC simulations preserve entry currency and value the holding back into USDC", async () => {
+  const { USDC_MINT, paperValuationSchema } = await import("@waffle/shared");
+  assess = async (signal, mode, size) => ({ ...assessmentFixture(signal, mode, size, clock), inputMint: USDC_MINT });
+  upstream = { ...upstream, inputMint: USDC_MINT, inAmount: "10000000" };
+  const quoted = await request("POST", "/quote", { signalId, inputMint: USDC_MINT, sizeRaw: "10000000" });
+  expect(quoted.status).toBe(200);
+  const entry = paperQuoteSchema.parse(await quoted.json());
+  const filled = await request("POST", "", { signalId, inputMint: USDC_MINT, sizeRaw: "10000000", quoteId: entry.id });
+  expect(filled.status).toBe(201);
+  const position = paperPositionWithFillSchema.parse(await filled.json());
+  expect(position.fill.totalDebitRaw).toBe("10000000");
+  expect(position.fill.networkFeeLamports).toBe("8000");
+  upstream = {
+    ...upstream,
+    inputMint: PUMP_SWAP_PROGRAM_ID,
+    inAmount: position.fill.outputAmountRaw,
+    outputMint: USDC_MINT,
+    outAmount: "11000000",
+    otherAmountThreshold: "10900000",
+  };
+  const response = await request("GET", `/${position.id}/valuation`);
+  const value = paperValuationSchema.parse(await response.json());
+  expect(value).toMatchObject({ status: "available", quote: { outputMint: USDC_MINT, outputAmountRaw: "11000000" } });
+  expect(calls.at(-1)?.searchParams.get("outputMint")).toBe(USDC_MINT);
 });

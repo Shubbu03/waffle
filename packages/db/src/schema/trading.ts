@@ -1,4 +1,5 @@
-import type { PaperQuote } from "@waffle/shared";
+import type { PaperQuote, RealOrder, TradeAttempt } from "@waffle/shared";
+import { WRAPPED_SOL_MINT } from "@waffle/shared";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -28,7 +29,8 @@ export const paperPositions = pgTable(
     signalId: uuid("signal_id")
       .notNull()
       .references(() => signals.id, { onDelete: "restrict" }),
-    sizeLamports: bigint("size_lamports", { mode: "bigint" }).notNull(),
+    inputMint: varchar("input_mint", { length: 44 }).default(WRAPPED_SOL_MINT).notNull(),
+    sizeRaw: bigint("size_raw", { mode: "bigint" }).notNull(),
     entryQuote: jsonb("entry_quote").$type<PaperQuote>().notNull(),
     simulated: boolean("simulated").default(true).notNull(),
     status: varchar("status", { length: 16 }).default("open").notNull(),
@@ -37,7 +39,10 @@ export const paperPositions = pgTable(
   },
   (table) => [
     index("paper_positions_user_created_idx").on(table.userId, table.createdAt),
-    check("paper_positions_size_check", sql`${table.sizeLamports} > 0 AND ${table.sizeLamports} <= 100000000`),
+    check(
+      "paper_positions_size_check",
+      sql`${table.sizeRaw} > 0 AND ((${table.inputMint} = 'So11111111111111111111111111111111111111112' AND ${table.sizeRaw} <= 100000000) OR (${table.network} = 'mainnet' AND ${table.inputMint} = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' AND ${table.sizeRaw} <= 10000000))`,
+    ),
     check("paper_positions_simulated_check", sql`${table.simulated} = true`),
     check(
       "paper_positions_status_check",
@@ -61,7 +66,11 @@ export const tradeAttempts = pgTable(
     requestId: varchar("request_id", { length: 200 }).notNull(),
     taker: varchar("taker", { length: 44 }).notNull(),
     router: varchar("router", { length: 16 }).notNull(),
-    inputAmountLamports: bigint("input_amount_lamports", { mode: "bigint" }).notNull(),
+    inputMint: varchar("input_mint", { length: 44 }).default(WRAPPED_SOL_MINT).notNull(),
+    outputMint: varchar("output_mint", { length: 44 }),
+    review: jsonb("review").$type<RealOrder>(),
+    receipt: jsonb("receipt").$type<TradeAttempt["receipt"]>(),
+    inputAmountRaw: bigint("input_amount_raw", { mode: "bigint" }).notNull(),
     status: varchar("status", { length: 20 }).default("prepared").notNull(),
     signature: varchar("signature", { length: 88 }),
     executeCode: integer("execute_code"),
@@ -74,12 +83,12 @@ export const tradeAttempts = pgTable(
     index("trade_attempts_user_created_idx").on(table.userId, table.createdAt),
     check(
       "trade_attempts_size_check",
-      sql`${table.inputAmountLamports} > 0 AND ${table.inputAmountLamports} <= 50000000`,
+      sql`${table.inputAmountRaw} > 0 AND ((${table.inputMint} = 'So11111111111111111111111111111111111111112' AND ${table.inputAmountRaw} <= 50000000) OR (${table.network} = 'mainnet' AND ${table.inputMint} = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' AND ${table.inputAmountRaw} <= 5000000))`,
     ),
     check("trade_attempts_router_check", sql`${table.router} IN ('metis', 'dflow', 'okx', 'pumpswap')`),
     check(
       "trade_attempts_status_check",
-      sql`${table.status} IN ('prepared', 'wallet_rejected', 'submitted', 'confirmed', 'failed')`,
+      sql`${table.status} IN ('prepared', 'wallet_rejected', 'submitted', 'confirmed', 'failed', 'expired')`,
     ),
     check(
       "trade_attempts_confirmed_check",

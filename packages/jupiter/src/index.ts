@@ -10,10 +10,12 @@ import {
   type PaperQuote,
   paperQuoteSchema,
   paperValuationQuoteSchema,
+  paymentMintSchema,
   positiveRawAmountSchema,
   type RealOrder,
   rawAmountSchema,
   realOrderSchema,
+  realTradePolicy,
   scorePolicyV1,
   solanaAddressSchema,
   transactionSignatureSchema,
@@ -22,6 +24,7 @@ import {
 import * as nacl from "tweetnacl";
 import { z } from "zod";
 import { createJupiterClient } from "./client.ts";
+import { type ExecutionRpc, reconcileExecution } from "./execution.ts";
 
 const BASE_URL = "https://api.jup.ag/swap/v2";
 const MAX_PENDING = 256;
@@ -106,6 +109,7 @@ export class JupiterService {
     private readonly apiKey: string,
     transport?: HttpTransport,
     private readonly now: () => number = Date.now,
+    private readonly rpc?: ExecutionRpc,
   ) {
     this.client = createJupiterClient(transport);
     if (!apiKey.trim()) throw new JupiterServiceError("INVALID_REQUEST");
@@ -116,11 +120,11 @@ export class JupiterService {
     if (!parsed.success) throw new JupiterServiceError("INVALID_REQUEST");
     const request = parsed.data;
     const requestedAt = this.now();
-    const response = await this.fetchOrder(request.outputMint, request.inputAmountLamports);
+    const response = await this.fetchOrder(request.outputMint, request.inputAmountRaw, undefined, request.inputMint);
     if (
-      response.inputMint !== WRAPPED_SOL_MINT ||
+      response.inputMint !== request.inputMint ||
       response.outputMint !== request.outputMint ||
-      response.inAmount !== request.inputAmountLamports ||
+      response.inAmount !== request.inputAmountRaw ||
       response.taker != null ||
       response.transaction !== null
     ) {
@@ -141,15 +145,21 @@ export class JupiterService {
 
   async getPaperValuation(input: unknown) {
     const parsed = z
-      .strictObject({ positionId: idSchema, inputMint: solanaAddressSchema, inputAmountRaw: positiveRawAmountSchema })
+      .strictObject({
+        positionId: idSchema,
+        inputMint: solanaAddressSchema,
+        inputAmountRaw: positiveRawAmountSchema,
+        outputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+      })
       .safeParse(input);
-    if (!parsed.success || parsed.data.inputMint === WRAPPED_SOL_MINT) throw new JupiterServiceError("INVALID_REQUEST");
+    if (!parsed.success || parsed.data.inputMint === parsed.data.outputMint)
+      throw new JupiterServiceError("INVALID_REQUEST");
     const request = parsed.data;
     const requestedAt = this.now();
-    const response = await this.fetchOrder(WRAPPED_SOL_MINT, request.inputAmountRaw, undefined, request.inputMint);
+    const response = await this.fetchOrder(request.outputMint, request.inputAmountRaw, undefined, request.inputMint);
     if (
       response.inputMint !== request.inputMint ||
-      response.outputMint !== WRAPPED_SOL_MINT ||
+      response.outputMint !== request.outputMint ||
       response.inAmount !== request.inputAmountRaw ||
       response.taker != null ||
       response.transaction !== null
@@ -161,8 +171,8 @@ export class JupiterService {
       inputMint: response.inputMint,
       outputMint: response.outputMint,
       inputAmountRaw: response.inAmount,
-      outputLamports: response.outAmount,
-      minOutputLamports: response.otherAmountThreshold,
+      outputAmountRaw: response.outAmount,
+      minOutputAmountRaw: response.otherAmountThreshold,
       feeLamports: (
         BigInt(response.signatureFeeLamports) +
         BigInt(response.prioritizationFeeLamports) +
@@ -224,11 +234,16 @@ export class JupiterService {
       throw new JupiterServiceError("INVALID_REQUEST");
     const request = parsed.data;
     const requestedAt = this.now();
-    const response = await this.fetchOrder(request.outputMint, request.inputAmountLamports, request.taker);
+    const response = await this.fetchOrder(
+      request.outputMint,
+      request.inputAmountRaw,
+      request.taker,
+      request.inputMint,
+    );
     if (
-      response.inputMint !== WRAPPED_SOL_MINT ||
+      response.inputMint !== request.inputMint ||
       response.outputMint !== request.outputMint ||
-      response.inAmount !== request.inputAmountLamports ||
+      response.inAmount !== request.inputAmountRaw ||
       response.taker !== request.taker
     ) {
       throw new JupiterServiceError("UPSTREAM_INVALID");
@@ -268,7 +283,7 @@ export class JupiterService {
     }
 
     const order = realOrderSchema.safeParse({
-      ...this.commonQuote(response, request.signalId, requestedAt),
+      ...this.commonQuote(response, request.signalId, requestedAt, true),
       kind: "real",
       taker: request.taker,
       signatureFeePayer: response.signatureFeePayer,
@@ -281,6 +296,17 @@ export class JupiterService {
     });
     if (!order.success) throw new JupiterServiceError("UPSTREAM_INVALID");
     this.assertFresh(order.data.expiresAt);
+    if (this.rpc) {
+      const simulation = z
+        .object({ value: z.object({ err: z.unknown() }) })
+        .parse(
+          await this.rpc.call("simulateTransaction", [
+            response.transaction,
+            { encoding: "base64", commitment: "confirmed", sigVerify: false },
+          ]),
+        );
+      if (simulation.value.err !== null) throw new JupiterServiceError("ORDER_BUILD_FAILED");
+    }
     this.remember(this.pendingOrders, order.data.id, {
       expiresAt: order.data.expiresAt,
       order: order.data,
@@ -293,14 +319,29 @@ export class JupiterService {
     input: unknown,
     connectedWallet: string,
     onValidated?: (signature: Uint8Array) => Promise<void>,
+    restoredOrder?: RealOrder,
   ): Promise<JupiterExecutionResult> {
     const parsed = jupiterExecuteRequestSchema.safeParse(input);
     if (!parsed.success) throw new JupiterServiceError("INVALID_REQUEST");
     const request = parsed.data;
-    const pending = this.pendingOrders.get(request.orderId);
-    if (!pending || pending.order.requestId !== request.requestId || pending.order.taker !== connectedWallet) {
+    const restored = restoredOrder ? realOrderSchema.parse(restoredOrder) : undefined;
+    const pending = restored
+      ? {
+          order: restored,
+          expiresAt: restored.expiresAt,
+          message: this.decodeTransaction(restored.transactionBase64).message.serialize(),
+        }
+      : this.pendingOrders.get(request.orderId);
+    if (
+      !pending ||
+      pending.order.id !== request.orderId ||
+      pending.order.requestId !== request.requestId ||
+      pending.order.taker !== connectedWallet
+    ) {
       throw new JupiterServiceError("INVALID_ORDER");
     }
+    if ((pending.order.network ?? "mainnet") !== "mainnet" || pending.order.router === "pumpswap")
+      throw new JupiterServiceError("UNSUPPORTED_ORDER");
     this.assertFresh(pending.order.expiresAt);
     const transaction = this.decodeTransaction(request.signedTransactionBase64, "INVALID_ORDER");
     const message = transaction.message.serialize();
@@ -314,6 +355,18 @@ export class JupiterService {
       !nacl.sign.detached.verify(message, signature, new PublicKey(connectedWallet).toBytes())
     ) {
       throw new JupiterServiceError("INVALID_ORDER");
+    }
+
+    if (this.rpc) {
+      const simulation = z
+        .object({ value: z.object({ err: z.unknown() }) })
+        .parse(
+          await this.rpc.call("simulateTransaction", [
+            request.signedTransactionBase64,
+            { encoding: "base64", commitment: "confirmed", sigVerify: true },
+          ]),
+        );
+      if (simulation.value.err !== null) throw new JupiterServiceError("ORDER_BUILD_FAILED");
     }
 
     // Persist a validated, owner-bound submission before any network broadcast.
@@ -375,9 +428,19 @@ export class JupiterService {
     throw new JupiterServiceError("EXECUTION_UNKNOWN");
   }
 
-  private commonQuote(response: z.infer<typeof orderResponseSchema>, signalId: string, requestedAt: number) {
+  async getExecution(signature: string, requestId: string, taker: string, mint: string, order?: RealOrder) {
+    if (!this.rpc) return null;
+    return reconcileExecution(this.rpc, signature, requestId, taker, mint, order);
+  }
+
+  private commonQuote(
+    response: z.infer<typeof orderResponseSchema>,
+    signalId: string,
+    requestedAt: number,
+    real = false,
+  ) {
     const expiresAt = Math.min(
-      requestedAt + scorePolicyV1.freshness.quoteMs,
+      requestedAt + (real ? realTradePolicy.quoteMs : scorePolicyV1.freshness.quoteMs),
       response.expireAt ? Date.parse(response.expireAt) : Infinity,
     );
     const signature = BigInt(response.signatureFeeLamports);
@@ -388,7 +451,7 @@ export class JupiterService {
       signalId,
       inputMint: response.inputMint,
       outputMint: response.outputMint,
-      inputAmountLamports: response.inAmount,
+      inputAmountRaw: response.inAmount,
       outputAmountRaw: response.outAmount,
       minOutputAmountRaw: response.otherAmountThreshold,
       requestId: response.requestId,
@@ -489,6 +552,6 @@ export class JupiterService {
   }
 }
 
-export function createJupiterServiceFromEnv(env: { JUPITER_API_KEY?: string }): JupiterService {
-  return new JupiterService(env.JUPITER_API_KEY ?? "");
+export function createJupiterServiceFromEnv(env: { JUPITER_API_KEY?: string }, rpc?: ExecutionRpc): JupiterService {
+  return new JupiterService(env.JUPITER_API_KEY ?? "", undefined, Date.now, rpc);
 }

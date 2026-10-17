@@ -158,3 +158,62 @@ describe("initial migration", () => {
     }
   });
 });
+
+test("payment migration upgrades persisted SOL quotes and restores forced owner isolation", async () => {
+  const { mkdtemp, mkdir, readFile, writeFile, copyFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const folder = await mkdtemp(join(tmpdir(), "waffle-migration-"));
+  const old = new PGlite();
+  try {
+    await mkdir(join(folder, "meta"));
+    const journal = JSON.parse(await readFile("./migrations/meta/_journal.json", "utf8"));
+    const before = { ...journal, entries: journal.entries.filter((entry: { idx: number }) => entry.idx < 5) };
+    await writeFile(join(folder, "meta/_journal.json"), JSON.stringify(before));
+    for (const entry of before.entries)
+      await copyFile(`./migrations/${entry.tag}.sql`, join(folder, `${entry.tag}.sql`));
+    await migrate(drizzle(old), { migrationsFolder: folder });
+    await old.query("INSERT INTO users (id, wallet_address) VALUES ($1, $2)", [userA, watchedAddress]);
+    await old.query(
+      "INSERT INTO watched_wallets (id,address,label,inclusion_reason) VALUES ($1,$2,'Legacy','Legacy')",
+      [walletA, watchedAddress],
+    );
+    await old.query(
+      "INSERT INTO signals (id,signature,wallet_id,mint_address,source_program_id,slot,observed_at,score_version,score,status,data_status,reasons,snapshot) VALUES ($1,$2,$3,$4,$5,1,now(),1,0,'suppressed','unknown','[]','{}')",
+      [signalA, "1".repeat(64), walletA, otherAddress, watchedAddress],
+    );
+    const legacy = {
+      id: crypto.randomUUID(),
+      inputMint: watchedAddress,
+      inputAmountLamports: "100000000",
+      assessment: { inputAmountLamports: "100000000", policyVersion: 1 },
+    };
+    await old.query(
+      "INSERT INTO paper_positions (user_id,signal_id,size_lamports,entry_quote) VALUES ($1,$2,100000000,$3)",
+      [userA, signalA, JSON.stringify(legacy)],
+    );
+    await migrate(drizzle(old), { migrationsFolder: "./migrations" });
+    const migrated = await old.query<{
+      entry_quote: {
+        inputAmountRaw: string;
+        inputAmountLamports?: string;
+        assessment: { inputAmountRaw: string; inputMint: string };
+      };
+      input_mint: string;
+    }>("SELECT entry_quote,input_mint FROM paper_positions");
+    expect(migrated.rows[0]?.input_mint).toBe(watchedAddress);
+    expect(migrated.rows[0]?.entry_quote.inputAmountRaw).toBe("100000000");
+    expect(migrated.rows[0]?.entry_quote.inputAmountLamports).toBeUndefined();
+    expect(migrated.rows[0]?.entry_quote.assessment).toMatchObject({
+      inputMint: watchedAddress,
+      inputAmountRaw: "100000000",
+    });
+    const isolation = await old.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
+      "SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE relname IN ('paper_positions','trade_attempts')",
+    );
+    expect(isolation.rows.every((row) => row.relrowsecurity && row.relforcerowsecurity)).toBe(true);
+  } finally {
+    await old.close();
+    await rm(folder, { recursive: true, force: true });
+  }
+});

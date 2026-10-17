@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { PaperPositionWithFill } from '@waffle/shared'
+import { formatPayment, WRAPPED_SOL_MINT } from '@waffle/shared'
 import { AppText } from '@/components/app-text'
 import { useSignalClock } from '@/components/signals/use-signals'
 import { AppConfig } from '@/constants/app-config'
@@ -27,26 +28,29 @@ export function PaperValue({ position, automatic }: { position: PaperPositionWit
     now < Date.parse(quote.expiresAt) &&
     now - Date.parse(quote.fetchedAt) < 10_000
   const matches =
-    quote?.inputMint === position.entryQuote.outputMint && quote?.inputAmountRaw === position.fill.outputAmountRaw
+    quote?.outputMint === position.entryQuote.inputMint &&
+    quote?.inputMint === position.entryQuote.outputMint &&
+    quote?.inputAmountRaw === position.fill.outputAmountRaw
   return (
     <>
       <AppText type="defaultSemiBold">
         {fresh && matches && quote
-          ? `Current exit value: ${formatSol(quote.outputLamports)}`
+          ? `Current exit value: ${formatPayment(quote.outputAmountRaw, quote.outputMint)}`
           : 'Current value unavailable'}
       </AppText>
       {fresh && matches && quote ? (
         <>
-          <AppText>Minimum exit value: {formatSol(quote.minOutputLamports)}</AppText>
+          <AppText>Minimum exit value: {formatPayment(quote.minOutputAmountRaw, quote.outputMint)}</AppText>
           <AppText>Exit network fees: {formatSol(quote.feeLamports)} (not deducted above)</AppText>
           <AppText>
-            Indicative change after exit fees:{' '}
-            {formatSol(
+            Indicative change {quote.outputMint === WRAPPED_SOL_MINT ? 'after exit fees' : 'before SOL network fees'}:{' '}
+            {formatPayment(
               (
-                BigInt(quote.outputLamports) -
-                BigInt(quote.feeLamports) -
-                BigInt(position.fill.totalDebitLamports)
+                BigInt(quote.outputAmountRaw) -
+                (quote.outputMint === WRAPPED_SOL_MINT ? BigInt(quote.feeLamports) : 0n) -
+                BigInt(position.fill.totalDebitRaw)
               ).toString(),
+              quote.outputMint,
             )}
           </AppText>
           <AppText>
@@ -68,7 +72,7 @@ export function PaperValue({ position, automatic }: { position: PaperPositionWit
         onPress={() => void query.refetch()}
       />
       <AppText style={{ fontSize: 13 }}>
-        Indicative SOL quote, including router fees. No sale or realized return is recorded.
+        Indicative quote in the entry currency, including router fees. No sale or realized return is recorded.
       </AppText>
     </>
   )

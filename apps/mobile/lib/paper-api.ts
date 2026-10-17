@@ -1,3 +1,4 @@
+import type { PaymentMint } from '@waffle/shared'
 import {
   type CreatePaperPositionRequest,
   type CreatePaperQuoteRequest,
@@ -22,17 +23,28 @@ function responseData<T>(
   return parsed.data
 }
 
-export async function preparePaperQuote(input: CreatePaperQuoteRequest, token: string, signal?: AbortSignal) {
+export async function preparePaperQuote(
+  input: Omit<CreatePaperQuoteRequest, 'inputMint'> & { inputMint?: PaymentMint },
+  token: string,
+  signal?: AbortSignal,
+) {
   const request = createPaperQuoteRequestSchema.parse(input)
   const quote = responseData(
     paperQuoteSchema,
     await apiRequest('/paper-positions/quote', { method: 'POST', data: request, signal, timeoutMs: 30_000 }, token),
   )
-  if (quote.signalId !== request.signalId || quote.inputAmountLamports !== request.sizeLamports)
+  if (
+    quote.inputMint !== request.inputMint ||
+    quote.signalId !== request.signalId ||
+    quote.inputAmountRaw !== request.sizeRaw
+  )
     throw new ApiError(0, 'BAD_RESPONSE', 'Quote does not match this review.')
   return quote
 }
-export async function createPaperPosition(input: CreatePaperPositionRequest, token: string) {
+export async function createPaperPosition(
+  input: Omit<CreatePaperPositionRequest, 'inputMint'> & { inputMint?: PaymentMint },
+  token: string,
+) {
   const request = createPaperPositionRequestSchema.parse(input)
   const position = responseData(
     paperPositionWithFillSchema,
@@ -41,7 +53,8 @@ export async function createPaperPosition(input: CreatePaperPositionRequest, tok
   if (
     position.entryQuote.id !== request.quoteId ||
     position.signalId !== request.signalId ||
-    position.sizeLamports !== request.sizeLamports
+    position.sizeRaw !== request.sizeRaw ||
+    position.entryQuote.inputMint !== request.inputMint
   )
     throw new ApiError(0, 'BAD_RESPONSE', 'Fill does not match this review.')
   return position

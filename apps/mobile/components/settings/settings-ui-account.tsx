@@ -65,6 +65,7 @@ export function SettingsUiAccount() {
       {session && !serverLinked ? (
         <SettingsAction title="Verify account" onPress={() => router.push('/sign-in')} />
       ) : null}
+      <SettingsAction title="Trade history" onPress={() => router.push('/trade/history')} />
       <SettingsAction title="Paper positions" onPress={() => router.push('/paper/positions')} />
       {session ? (
         <SettingsAction

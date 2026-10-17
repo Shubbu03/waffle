@@ -8,7 +8,12 @@ export function paperPendingStore(origin: string, owner: string, signalId: strin
     async load(): Promise<PendingPaperFill | null> {
       const stored = await AsyncStorage.getItem(key)
       if (!stored) return null
-      const pending = createPaperPositionRequestSchema.parse(JSON.parse(stored))
+      const value = JSON.parse(stored)
+      if (value && typeof value.sizeLamports === 'string' && value.sizeRaw === undefined) {
+        value.sizeRaw = value.sizeLamports
+        delete value.sizeLamports
+      }
+      const pending = createPaperPositionRequestSchema.parse(value)
       if (pending.signalId !== signalId) throw new Error('Saved fill signal mismatch')
       return pending
     },

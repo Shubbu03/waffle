@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paymentMintSchema } from "../assets.ts";
 import { SPL_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, WRAPPED_SOL_MINT } from "../program-ids.ts";
 import { idSchema, positiveRawAmountSchema, solanaAddressSchema, timestampSchema } from "./primitives.ts";
 
@@ -9,7 +10,8 @@ export const tradeAssessmentSchema = z
     policyVersion: z.literal(1),
     signalId: idSchema,
     mode: z.enum(["paper", "real"]),
-    inputAmountLamports: positiveRawAmountSchema,
+    inputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+    inputAmountRaw: positiveRawAmountSchema,
     checkedAt: timestampSchema,
     expiresAt: timestampSchema,
     mint: z.strictObject({

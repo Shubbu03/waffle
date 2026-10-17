@@ -100,7 +100,7 @@ const request = (method: string, path: string, body?: unknown, bearer = tokenA) 
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-const prepare = (body: unknown = { signalId, inputAmountLamports: amount }, bearer = tokenA) =>
+const prepare = (body: unknown = { signalId, inputAmountRaw: amount }, bearer = tokenA) =>
   request("POST", "", body, bearer);
 const prepared = async () => tradeAttemptOrderResponseSchema.parse(await (await prepare()).json());
 const execution = (
@@ -262,7 +262,7 @@ test("a real order is issued for the authenticated wallet and persisted before s
     requestId: order.requestId,
     taker: wallet.publicKey.toBase58(),
     router: "metis",
-    inputAmountLamports: amount,
+    inputAmountRaw: amount,
     status: "prepared",
   });
   expect(order).toMatchObject({ kind: "real", requiredSignatures: 1, signatureFeePayer: wallet.publicKey.toBase58() });
@@ -279,7 +279,7 @@ test("a real order is issued for the authenticated wallet and persisted before s
 test("empty Jupiter transactions explain funding or build failures and never prepare execution", async () => {
   for (const router of ["metis", "dflow", "okx"]) {
     for (const [errorCode, message] of [
-      [1, "enough SOL"],
+      [1, "selected currency"],
       [2, "network fees"],
       [3, "could not build"],
     ] as const) {
@@ -333,11 +333,11 @@ test("duplicate request IDs and mismatched provider orders cannot create a secon
 
 test("unsupported buys, current low liquidity, oversized and unknown signals cannot issue orders", async () => {
   const db = drizzle(pg);
-  expect((await prepare({ signalId: crypto.randomUUID(), inputAmountLamports: amount })).status).toBe(404);
-  expect((await prepare({ signalId, inputAmountLamports: "50000001" })).status).toBe(400);
-  expect(
-    (await prepare({ signalId, inputAmountLamports: amount, taker: otherWallet.publicKey.toBase58() })).status,
-  ).toBe(400);
+  expect((await prepare({ signalId: crypto.randomUUID(), inputAmountRaw: amount })).status).toBe(404);
+  expect((await prepare({ signalId, inputAmountRaw: "50000001" })).status).toBe(400);
+  expect((await prepare({ signalId, inputAmountRaw: amount, taker: otherWallet.publicKey.toBase58() })).status).toBe(
+    400,
+  );
   const [original] = await db.select().from(signals);
   if (!original) throw new Error("Missing test signal");
   await db.update(signals).set({
@@ -387,9 +387,10 @@ test("old and originally suppressed market checks can be reassessed for a real o
 });
 
 test("assessment expiry before signed execution prevents broadcast", async () => {
+  const assessedAt = clock;
   assess = async (signal, mode, size) => ({
-    ...assessmentFixture(signal, mode, size, clock),
-    expiresAt: new Date(clock + 2000).toISOString(),
+    ...assessmentFixture(signal, mode, size, assessedAt),
+    expiresAt: new Date(assessedAt + 2000).toISOString(),
   });
   const { attempt } = await prepared();
   clock += 2000;
@@ -517,6 +518,12 @@ test("execution timeout remains submitted and cannot rebroadcast; a mismatched s
   });
   expect((await execution(attempt)).status).toBe(409);
   expect(requests.filter((request) => request.url.pathname.endsWith("/execute"))).toHaveLength(1);
+  expect((await prepare()).status).toBe(409);
+  // A definitive failure resolves the first attempt before another purchase is allowed.
+  await drizzle(pg)
+    .update(tradeAttempts)
+    .set({ status: "failed", failureReason: "CHAIN_FAILURE" })
+    .where(eq(tradeAttempts.id, attempt.id));
   const second = await prepared();
   executionReply = () => ({
     status: "Success",
@@ -579,9 +586,10 @@ test("read-only status recovers a submitted Devnet signature without another bro
     signalId,
     quoteId,
     requestId: "recover-devnet",
+    outputMint: PUMP_SWAP_PROGRAM_ID,
     taker: wallet.publicKey.toBase58(),
     router: "pumpswap",
-    inputAmountLamports: 10_000_000n,
+    inputAmountRaw: 10_000_000n,
     status: "submitted",
     signature: signedSignature,
   });
@@ -614,4 +622,72 @@ test("read-only status recovers a submitted Devnet signature without another bro
   expect((await service.get(hashSecret(tokenA), id)).status).toBe("confirmed");
   expect((await service.get(hashSecret(tokenA), id)).status).toBe("confirmed");
   expect(checks).toBe(1);
+});
+
+test("USDC approval persists currency, validates identity, and stores a currency-correct receipt", async () => {
+  const { USDC_MINT } = await import("@waffle/shared");
+  assess = async (signal, mode, size, inputMint = WRAPPED_SOL_MINT) => ({
+    ...assessmentFixture(signal, mode, size, clock),
+    inputMint: inputMint as typeof USDC_MINT,
+  });
+  orderReply = () => upstreamOrder({ inputMint: USDC_MINT, inAmount: "5000000" });
+  executionReply = () => ({
+    status: "Success",
+    code: 0,
+    signature: signedSignature,
+    totalInputAmount: "5000000",
+    inputAmountResult: "5000000",
+    totalOutputAmount: "990",
+    outputAmountResult: "990",
+  });
+  const response = await prepare({ signalId, inputMint: USDC_MINT, inputAmountRaw: "5000000" });
+  expect(response.status).toBe(201);
+  const { order, attempt } = tradeAttemptOrderResponseSchema.parse(await response.json());
+  expect(order.inputMint).toBe(USDC_MINT);
+  const row = (await drizzle(pg).select().from(tradeAttempts))[0];
+  expect(row?.review?.inputMint).toBe(USDC_MINT);
+  expect(row?.inputAmountRaw).toBe(5_000_000n);
+  const filled = tradeAttemptSchema.parse(await (await execution(attempt)).json());
+  expect(filled).toMatchObject({
+    inputMint: USDC_MINT,
+    status: "confirmed",
+    receipt: { inputAmountRaw: "5000000", outputAmountRaw: "990" },
+  });
+});
+
+test("a durable review remains executable after the API and provider restart", async () => {
+  const { attempt } = await prepared();
+  clock += 20_000;
+  const transport = (async (url: string | URL | Request, init: RequestInit = {}) => {
+    const parsed = new URL(String(url));
+    requests.push({ url: parsed, init });
+    if (!parsed.pathname.endsWith("/execute")) throw new Error("Must use the stored review");
+    return Response.json(executionReply());
+  }) as HttpTransport;
+  const service = createTradeAttemptService(auth, new JupiterService("test", transport, () => clock), () => clock, {
+    assess: (...args) => assess(...args),
+  });
+  const result = await service.execute(hashSecret(tokenA), attempt.id, {
+    quoteId: attempt.quoteId,
+    requestId: attempt.requestId,
+    signedTransactionBase64: signedBase64,
+  });
+  expect(result.status).toBe("confirmed");
+  expect(requests.filter((r) => r.url.pathname.endsWith("/execute"))).toHaveLength(1);
+  await expect(
+    service.execute(hashSecret(tokenA), attempt.id, {
+      quoteId: attempt.quoteId,
+      requestId: attempt.requestId,
+      signedTransactionBase64: signedBase64,
+    }),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(requests.filter((r) => r.url.pathname.endsWith("/execute"))).toHaveLength(1);
+});
+
+test("overlapping execution requests broadcast one approved attempt at most once", async () => {
+  const { attempt } = await prepared();
+  const responses = await Promise.all([execution(attempt), execution(attempt)]);
+  expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+  expect(requests.filter((r) => r.url.pathname.endsWith("/execute"))).toHaveLength(1);
+  expect((await drizzle(pg).select().from(tradeAttempts))[0]?.status).toBe("confirmed");
 });

@@ -8,7 +8,7 @@ import { AppView } from '@/components/app-view'
 export function AccountFeatureReceive({ address }: { address: PublicKey }) {
   return (
     <AppView style={{ gap: 16 }}>
-      <AppText type="subtitle">Send assets to this address:</AppText>
+      <AppText type="subtitle">Receive SOL or USDC at this Solana address:</AppText>
       <AppView style={{ alignItems: 'center', gap: 16 }}>
         <AppText type="defaultSemiBold" style={{ textAlign: 'center' }}>
           {address.toString()}

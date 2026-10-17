@@ -5,7 +5,7 @@ import {
   tradeAttemptSchema,
   tradeAttemptsResponseSchema,
 } from "@waffle/shared";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "./database.ts";
 import { tradeAttempts } from "./schema/index.ts";
 
@@ -17,7 +17,10 @@ function serialize(row: typeof tradeAttempts.$inferSelect) {
     requestId: row.requestId,
     taker: row.taker,
     router: row.router,
-    inputAmountLamports: row.inputAmountLamports.toString(),
+    inputAmountRaw: row.inputAmountRaw.toString(),
+    inputMint: row.inputMint,
+    outputMint: row.outputMint,
+    receipt: row.receipt,
     status: row.status,
     signature: row.signature,
     executeCode: row.executeCode,
@@ -47,7 +50,10 @@ export function createTradeAttemptStore(
           requestId: order.requestId,
           taker: order.taker,
           router: order.router,
-          inputAmountLamports: BigInt(order.inputAmountLamports),
+          inputAmountRaw: BigInt(order.inputAmountRaw),
+          inputMint: order.inputMint,
+          outputMint: order.outputMint,
+          review: order,
           status: "prepared",
         })
         .onConflictDoNothing({ target: [tradeAttempts.userId, tradeAttempts.requestId] })
@@ -56,6 +62,33 @@ export function createTradeAttemptStore(
     },
     async get(id: string) {
       const [row] = await tx.select().from(tradeAttempts).where(owned(id));
+      return row ? serialize(row) : null;
+    },
+    async review(id: string) {
+      const [row] = await tx.select({ review: tradeAttempts.review }).from(tradeAttempts).where(owned(id));
+      return row?.review ?? null;
+    },
+    async hasPending(mint: string) {
+      const [row] = await tx
+        .select({ id: tradeAttempts.id })
+        .from(tradeAttempts)
+        .where(
+          and(
+            eq(tradeAttempts.userId, userId),
+            eq(tradeAttempts.network, network),
+            eq(tradeAttempts.outputMint, mint),
+            eq(tradeAttempts.status, "submitted"),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
+    },
+    async expire(id: string, prepared = false) {
+      const [row] = await tx
+        .update(tradeAttempts)
+        .set({ status: "expired", failureReason: "ORDER_EXPIRED", updatedAt: sql`clock_timestamp()` })
+        .where(and(owned(id), eq(tradeAttempts.status, prepared ? "prepared" : "submitted")))
+        .returning();
       return row ? serialize(row) : null;
     },
     async list(input: GetTradeAttemptsQuery) {
@@ -68,6 +101,7 @@ export function createTradeAttemptStore(
           and(
             eq(tradeAttempts.userId, userId),
             eq(tradeAttempts.network, network),
+            input.signalId ? eq(tradeAttempts.signalId, input.signalId) : undefined,
             cursor
               ? or(
                   lt(tradeAttempts.createdAt, cursor.createdAt),
@@ -85,6 +119,12 @@ export function createTradeAttemptStore(
       });
     },
     async markSubmitted(id: string, quoteId: string, requestId: string, signature: string) {
+      const [attempt] = await tx.select().from(tradeAttempts).where(owned(id));
+      if (!attempt) return null;
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${network}:${attempt.outputMint}`}, 0))`,
+      );
+      if (attempt.outputMint && (await this.hasPending(attempt.outputMint))) return null;
       const [row] = await tx
         .update(tradeAttempts)
         .set({
@@ -137,17 +177,35 @@ export function createTradeAttemptStore(
       signedSignature: string,
       result: JupiterExecutionResult,
     ) {
+      const review = await this.review(id);
       const confirmed = result.status === "confirmed" && result.signature === signedSignature;
       const [row] = await tx
         .update(tradeAttempts)
         .set({
-          status: confirmed ? "confirmed" : result.status === "failed" ? "failed" : "submitted",
-          executeCode: confirmed || result.status === "failed" ? result.code : null,
+          status: confirmed
+            ? "confirmed"
+            : result.status === "failed"
+              ? "failed"
+              : result.status === "expired"
+                ? "expired"
+                : "submitted",
+          executeCode: confirmed || result.status === "failed" || result.status === "expired" ? result.code : null,
+          receipt:
+            confirmed && result.status === "confirmed"
+              ? {
+                  inputAmountRaw: result.inputAmountResultRaw,
+                  outputAmountRaw: result.outputAmountResultRaw,
+                  feeLamports: result.feeLamports ?? null,
+                  outputDecimals: result.outputDecimals ?? review?.assessment?.mint.decimals ?? null,
+                }
+              : null,
           failureReason: confirmed
             ? null
             : result.status === "failed"
               ? "JUPITER_EXECUTION_FAILED"
-              : "SIGNATURE_MISMATCH",
+              : result.status === "expired"
+                ? "ORDER_EXPIRED"
+                : "SIGNATURE_MISMATCH",
           updatedAt: sql`clock_timestamp()`,
         })
         .where(
@@ -156,7 +214,9 @@ export function createTradeAttemptStore(
             eq(tradeAttempts.quoteId, quoteId),
             eq(tradeAttempts.requestId, requestId),
             eq(tradeAttempts.signature, signedSignature),
-            eq(tradeAttempts.status, "submitted"),
+            result.status === "confirmed"
+              ? inArray(tradeAttempts.status, ["submitted", "confirmed"])
+              : eq(tradeAttempts.status, "submitted"),
           ),
         )
         .returning();

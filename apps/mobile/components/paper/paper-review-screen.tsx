@@ -14,7 +14,7 @@ import {
 import { AppButton } from '@/components/ui/app-button'
 import { AppCard } from '@/components/ui/app-card'
 import { useThemeColor } from '@/hooks/use-theme-color'
-import { formatSol, formatTokens, paperQuoteFresh, paperReviewBlock } from '@/lib/paper-state'
+import { formatPaperCost, formatTokens, paperQuoteFresh, paperReviewBlock } from '@/lib/paper-state'
 import { PaperSignIn } from './paper-ui'
 import { usePaperTrade } from './use-paper'
 
@@ -42,7 +42,7 @@ export function PaperReviewScreen() {
     <TradePage title="Paper trade" signalId={signalId} scrollRef={scroll}>
       <TradeIdentity
         mint={detail.data?.signal.mintAddress}
-        description="Practice with a simulated purchase. No SOL is spent and no wallet approval is needed."
+        description="Practice with a simulated purchase. No funds are spent and no wallet approval is needed."
       />
       {trade.error ? <TradeError message={trade.error} /> : null}
       {!trade.isAuthenticated ? (
@@ -57,9 +57,7 @@ export function PaperReviewScreen() {
           <AppText selectable>
             {formatTokens(trade.position.fill.outputAmountRaw, trade.position.entryQuote.outputDecimals)}
           </AppText>
-          <AppText style={{ color: muted, fontSize: 13 }}>
-            Entry cost: {formatSol(trade.position.fill.totalDebitLamports)}
-          </AppText>
+          <AppText style={{ color: muted, fontSize: 13 }}>Entry cost: {formatPaperCost(trade.position)}</AppText>
           <AppButton
             title="View paper position"
             onPress={() =>
@@ -141,7 +139,9 @@ export function PaperReviewScreen() {
         <TradeAmount
           value={trade.size}
           onChange={(size) => trade.controller.setSize(size)}
-          max="0.1"
+          max={trade.asset === 'SOL' ? '0.1' : '10'}
+          asset={trade.asset}
+          onAssetChange={(asset) => trade.controller.setAsset(asset)}
           disabled={!trade.available || !trade.ready}
           busy={trade.busy}
           onQuote={() => void trade.controller.prepare()}

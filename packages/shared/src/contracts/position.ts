@@ -1,9 +1,8 @@
 import { z } from "zod";
+import { paymentMintSchema, paymentSizeAllowed } from "../assets.ts";
 import { WRAPPED_SOL_MINT } from "../program-ids.ts";
-import { scorePolicyV1 } from "../scoring/config.ts";
 import {
   idSchema,
-  parseRawAmount,
   positiveRawAmountSchema,
   rawAmountSchema,
   solanaAddressSchema,
@@ -11,15 +10,15 @@ import {
 } from "./primitives.ts";
 import { paperQuoteSchema } from "./quote.ts";
 
-export const createPaperQuoteRequestSchema = z.strictObject({
-  signalId: idSchema,
-  sizeLamports: positiveRawAmountSchema.refine((value) => {
-    const amount = parseRawAmount(value);
-    return amount !== null && amount <= scorePolicyV1.sizeLamports.paperMax;
-  }, "Paper size exceeds 0.1 SOL"),
-});
+export const createPaperQuoteRequestSchema = z
+  .strictObject({
+    signalId: idSchema,
+    inputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+    sizeRaw: positiveRawAmountSchema,
+  })
+  .refine((value) => paymentSizeAllowed(value.inputMint, value.sizeRaw, "paper"), "Paper size exceeds the asset limit");
 
-export const createPaperPositionRequestSchema = createPaperQuoteRequestSchema.extend({ quoteId: idSchema });
+export const createPaperPositionRequestSchema = createPaperQuoteRequestSchema.safeExtend({ quoteId: idSchema });
 
 export const getPaperPositionsQuerySchema = z.strictObject({
   cursor: idSchema.optional(),
@@ -34,7 +33,8 @@ export const getPaperPositionsQuerySchema = z.strictObject({
 export const paperFillSchema = z.strictObject({
   outputAmountRaw: positiveRawAmountSchema,
   minOutputAmountRaw: positiveRawAmountSchema,
-  totalDebitLamports: positiveRawAmountSchema,
+  totalDebitRaw: positiveRawAmountSchema,
+  networkFeeLamports: rawAmountSchema,
   quoteAgeMs: z.number().int().nonnegative(),
 });
 
@@ -42,7 +42,7 @@ export const paperPositionSchema = z
   .strictObject({
     id: idSchema,
     signalId: idSchema,
-    sizeLamports: positiveRawAmountSchema,
+    sizeRaw: positiveRawAmountSchema,
     entryQuote: paperQuoteSchema,
     simulated: z.literal(true),
     status: z.enum(["open", "closed"]),
@@ -52,7 +52,7 @@ export const paperPositionSchema = z
   .refine(
     (position) =>
       position.signalId === position.entryQuote.signalId &&
-      position.sizeLamports === position.entryQuote.inputAmountLamports &&
+      position.sizeRaw === position.entryQuote.inputAmountRaw &&
       (position.status === "closed") === (position.closedAt !== null),
     "Position and entry quote must agree",
   );
@@ -72,10 +72,10 @@ export const paperPositionLookupSchema = z.strictObject({ position: paperPositio
 export const paperValuationQuoteSchema = z
   .strictObject({
     inputMint: solanaAddressSchema,
-    outputMint: z.literal(WRAPPED_SOL_MINT),
+    outputMint: paymentMintSchema,
     inputAmountRaw: positiveRawAmountSchema,
-    outputLamports: positiveRawAmountSchema,
-    minOutputLamports: positiveRawAmountSchema,
+    outputAmountRaw: positiveRawAmountSchema,
+    minOutputAmountRaw: positiveRawAmountSchema,
     feeLamports: rawAmountSchema,
     slippageBps: z.number().int().min(0).max(5000),
     priceImpactPct: z.number().min(-100).max(100),
@@ -84,7 +84,7 @@ export const paperValuationQuoteSchema = z
   })
   .refine(
     (value) =>
-      BigInt(value.minOutputLamports) <= BigInt(value.outputLamports) &&
+      BigInt(value.minOutputAmountRaw) <= BigInt(value.outputAmountRaw) &&
       Date.parse(value.expiresAt) > Date.parse(value.fetchedAt),
     "Invalid valuation quote",
   );

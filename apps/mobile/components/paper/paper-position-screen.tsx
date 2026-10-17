@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { formatPayment } from '@waffle/shared'
 import { Link, Stack, useLocalSearchParams } from 'expo-router'
 import { RefreshControl, ScrollView } from 'react-native'
 import { AppText } from '@/components/app-text'
@@ -6,7 +7,7 @@ import { AppView } from '@/components/app-view'
 import { AppConfig } from '@/constants/app-config'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { getPaperPosition } from '@/lib/paper-api'
-import { formatSol, formatTokens } from '@/lib/paper-state'
+import { formatPaperCost, formatSol, formatTokens } from '@/lib/paper-state'
 import { PaperButton, PaperCard, PaperSignIn } from './paper-ui'
 import { PaperValue } from './paper-value'
 import { usePaperAvailability } from './use-paper'
@@ -66,9 +67,9 @@ export function PaperPositionScreen() {
               <AppText selectable>
                 Held: {formatTokens(position.fill.outputAmountRaw, position.entryQuote.outputDecimals)}
               </AppText>
-              <AppText>Size: {formatSol(position.sizeLamports)}</AppText>
+              <AppText>Size: {formatPayment(position.sizeRaw, position.entryQuote.inputMint)}</AppText>
               <AppText>Network fees: {formatSol(position.entryQuote.feeLamports)}</AppText>
-              <AppText type="defaultSemiBold">Entry cost: {formatSol(position.fill.totalDebitLamports)}</AppText>
+              <AppText type="defaultSemiBold">Entry cost: {formatPaperCost(position)}</AppText>
               <AppText>
                 Entry slippage: {position.entryQuote.slippageBps / 100}% · Impact: {position.entryQuote.priceImpactPct}%
               </AppText>

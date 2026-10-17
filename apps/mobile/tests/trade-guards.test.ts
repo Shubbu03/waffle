@@ -12,7 +12,7 @@ const goodOrder = () => ({
   signatureFeePayer: TAKER,
   requiredSignatures: 1,
   gasless: false,
-  inputAmountLamports: '10000000',
+  inputAmountRaw: '10000000',
   expiresAt: new Date(NOW + 60_000).toISOString(),
   fetchedAt: new Date(NOW - 1000).toISOString(),
 })
@@ -52,11 +52,11 @@ describe('checkRealOrder', () => {
 
   test('rejects paper kind and over-cap amounts', () => {
     expect(checkRealOrder({ ...goodOrder(), kind: 'paper' }, TAKER, NOW).ok).toBe(false)
-    expect(checkRealOrder({ ...goodOrder(), inputAmountLamports: '60000000' }, TAKER, NOW)).toEqual({
+    expect(checkRealOrder({ ...goodOrder(), inputAmountRaw: '60000000' }, TAKER, NOW)).toEqual({
       ok: false,
-      reason: 'exceeds 0.05 SOL demo cap (60000000 lamports)',
+      reason: 'Purchase exceeds the selected asset limit',
     })
-    expect(checkRealOrder({ ...goodOrder(), inputAmountLamports: 'not-a-number' }, TAKER, NOW).ok).toBe(false)
+    expect(checkRealOrder({ ...goodOrder(), inputAmountRaw: 'not-a-number' }, TAKER, NOW).ok).toBe(false)
   })
 
   test('rejects expired quotes', () => {
@@ -65,7 +65,7 @@ describe('checkRealOrder', () => {
 
   test('rejects future and aged quotes even with a later expiry', () => {
     expect(checkRealOrder({ ...goodOrder(), fetchedAt: new Date(NOW + 1).toISOString() }, TAKER, NOW).ok).toBe(false)
-    expect(checkRealOrder({ ...goodOrder(), fetchedAt: new Date(NOW - 10000).toISOString() }, TAKER, NOW).ok).toBe(
+    expect(checkRealOrder({ ...goodOrder(), fetchedAt: new Date(NOW - 45000).toISOString() }, TAKER, NOW).ok).toBe(
       false,
     )
   })

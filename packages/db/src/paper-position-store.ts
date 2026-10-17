@@ -13,7 +13,7 @@ function serialize(row: typeof paperPositions.$inferSelect) {
   return paperPositionWithFillSchema.parse({
     id: row.id,
     signalId: row.signalId,
-    sizeLamports: row.sizeLamports.toString(),
+    sizeRaw: row.sizeRaw.toString(),
     entryQuote: row.entryQuote,
     simulated: row.simulated,
     status: row.status,
@@ -58,7 +58,8 @@ export function createPaperPositionStore(
           userId,
           network,
           signalId: quote.signalId,
-          sizeLamports: BigInt(quote.inputAmountLamports),
+          sizeRaw: BigInt(quote.inputAmountRaw),
+          inputMint: quote.inputMint,
           entryQuote: quote,
           simulated: true,
           status: "open",
