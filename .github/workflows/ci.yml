@@ -5,7 +5,7 @@ on:
     branches: [staging, main]
     types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
-    branches: [staging, main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
