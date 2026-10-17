@@ -2,6 +2,7 @@
 
 - Never open a browser or GUI preview to verify UI changes. Ask the user to verify them manually.
 - Do not stage, commit, or push unless the user explicitly requests that exact Git action.
+- Use feature branches for changes, open feature PRs against `staging`, and promote tested changes through a `staging` → `main` release PR. Do not push changes directly to `main`.
 - Use Bun for workspace package management and server runtimes. Run commands from the repository root unless a workspace command requires otherwise.
 - Keep test files and helpers in each workspace's `tests/` folder. Keep saved transaction fixtures in the root `tests/fixtures/` folder.
 - Use Xior through `@waffle/http` for outbound HTTP requests. Native `fetch` and Axios are not allowed. Bun fetch handlers and Hono's `app.fetch` serve incoming requests.

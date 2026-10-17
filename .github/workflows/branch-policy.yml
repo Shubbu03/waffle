@@ -1,0 +1,29 @@
+name: Branch policy
+
+on:
+  pull_request_target:
+    branches: [staging, main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  branch-policy:
+    name: Branch policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      # This privileged event must never check out or execute the PR's code.
+      # Both the workflow and validator come from the trusted default branch.
+      - name: Check out trusted policy
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Validate PR source and target
+        run: python3 .github/scripts/branch_policy.py
