@@ -48,7 +48,7 @@ function fixture() {
     requestId: order.requestId,
     taker: order.taker,
     router: order.router,
-    inputAmountLamports: order.inputAmountLamports,
+    inputAmountRaw: order.inputAmountRaw,
     status: 'prepared',
     signature: null,
     executeCode: null,
@@ -63,7 +63,7 @@ test('real review rejects malformed or mismatched server orders before wallet si
   const good = fixture()
   let response: unknown = good
   api(() => response)
-  expect(await createTradeAttempt(token, good.order.signalId, good.order.inputAmountLamports)).toEqual(good)
+  expect(await createTradeAttempt(token, good.order.signalId, good.order.inputAmountRaw)).toEqual(good)
   for (const invalid of [
     null,
     { order: null, attempt: {} },
@@ -72,7 +72,7 @@ test('real review rejects malformed or mismatched server orders before wallet si
     { ...good, order: { ...good.order, signalId: crypto.randomUUID() } },
   ]) {
     response = invalid
-    await expect(createTradeAttempt(token, good.order.signalId, good.order.inputAmountLamports)).rejects.toMatchObject({
+    await expect(createTradeAttempt(token, good.order.signalId, good.order.inputAmountRaw)).rejects.toMatchObject({
       code: 'BAD_RESPONSE',
     })
   }

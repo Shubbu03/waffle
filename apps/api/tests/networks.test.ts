@@ -185,17 +185,17 @@ test("public reads, Following and live delivery exclude other networks; cross-ne
   const wrongTrade = await app.request("/networks/devnet/trade-attempts", {
     method: "POST",
     headers,
-    body: JSON.stringify({ signalId: mainSignal, inputAmountLamports: "10000000" }),
+    body: JSON.stringify({ signalId: mainSignal, inputAmountRaw: "10000000" }),
   });
   expect(wrongTrade.status).toBe(404);
   const position = crypto.randomUUID(),
     attempt = crypto.randomUUID();
   await pg.query(
-    "INSERT INTO paper_positions(id,user_id,signal_id,size_lamports,entry_quote) VALUES($1,$2,$3,10000000,'{}')",
+    "INSERT INTO paper_positions(id,user_id,signal_id,size_raw,entry_quote) VALUES($1,$2,$3,10000000,'{}')",
     [position, owner, mainSignal],
   );
   await pg.query(
-    "INSERT INTO trade_attempts(id,user_id,signal_id,quote_id,request_id,taker,router,input_amount_lamports) VALUES($1,$2,$3,$4,'network-test',$5,'metis',10000000)",
+    "INSERT INTO trade_attempts(id,user_id,signal_id,quote_id,request_id,taker,router,input_amount_raw) VALUES($1,$2,$3,$4,'network-test',$5,'metis',10000000)",
     [attempt, owner, mainSignal, crypto.randomUUID(), WRAPPED_SOL_MINT],
   );
   await auth.withSession(hashSecret(token), async (tx, session) => {

@@ -355,14 +355,14 @@ test("owner operations use authenticated identity, deny anonymous/cross-user acc
           .values({
             userId,
             signalId,
-            sizeLamports: 1000n,
+            sizeRaw: 1000n,
             entryQuote: sql`'{}'::jsonb`,
           })
           .returning({ userId: paperPositions.userId }),
       update: (tx: DatabaseExecutor, userId?: string) =>
         tx
           .update(paperPositions)
-          .set({ sizeLamports: 2000n })
+          .set({ sizeRaw: 2000n })
           .where(userId ? eq(paperPositions.userId, userId) : undefined)
           .returning({ userId: paperPositions.userId }),
     },
@@ -378,13 +378,13 @@ test("owner operations use authenticated identity, deny anonymous/cross-user acc
             requestId: crypto.randomUUID(),
             taker: address,
             router: "metis",
-            inputAmountLamports: 1000n,
+            inputAmountRaw: 1000n,
           })
           .returning({ userId: tradeAttempts.userId }),
       update: (tx: DatabaseExecutor, userId?: string) =>
         tx
           .update(tradeAttempts)
-          .set({ inputAmountLamports: 2000n })
+          .set({ inputAmountRaw: 2000n })
           .where(userId ? eq(tradeAttempts.userId, userId) : undefined)
           .returning({ userId: tradeAttempts.userId }),
     },

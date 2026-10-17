@@ -10,6 +10,7 @@ import {
   paperValuationQuoteSchema,
   type Session,
   scorePolicyV1,
+  WRAPPED_SOL_MINT,
 } from "@waffle/shared";
 import { type JupiterService, JupiterServiceError } from "./jupiter.ts";
 import {
@@ -63,13 +64,19 @@ export function createPaperPositionService(
   }
   return {
     async quote(tokenHash: string, input: CreatePaperQuoteRequest) {
+      if (network !== "mainnet" && input.inputMint !== WRAPPED_SOL_MINT)
+        throw new PaperPositionError(
+          "UNSUPPORTED_ROUTE",
+          409,
+          "USDC trading is available on Mainnet only. Use test SOL on Devnet.",
+        );
       const signal = await owner(tokenHash, (tx) => signalFor(tx, input));
       if (!assessor) throw new PaperPositionError("SERVICE_UNAVAILABLE", 503, "Current trade checks are unavailable");
       if (!jupiter) throw new PaperPositionError("SERVICE_UNAVAILABLE", 503, "Paper quotes are unavailable");
-      const assessment = await assessor.assess(signal, "paper", input.sizeLamports);
+      const assessment = await assessor.assess(signal, "paper", input.sizeRaw, input.inputMint);
       if ((assessment.network ?? "mainnet") !== network)
         throw new TradeAssessmentError("CONFLICT", 409, "Trade checks belong to another network.");
-      assertTradeAssessment(assessment, signal, "paper", input.sizeLamports, now());
+      assertTradeAssessment(assessment, signal, "paper", input.sizeRaw, now(), input.inputMint);
       let quote: PaperQuote;
       try {
         // Provider I/O runs outside the database transaction and never supplies a taker.
@@ -77,7 +84,8 @@ export function createPaperPositionService(
           await jupiter.getPaperQuote({
             signalId: signal.id,
             outputMint: signal.mintAddress,
-            inputAmountLamports: input.sizeLamports,
+            inputAmountRaw: input.sizeRaw,
+            inputMint: input.inputMint,
           }),
         );
       } catch (error) {
@@ -89,11 +97,12 @@ export function createPaperPositionService(
         (quote.network ?? "mainnet") !== network ||
         quote.signalId !== signal.id ||
         quote.outputMint !== signal.mintAddress ||
-        quote.inputAmountLamports !== input.sizeLamports
+        quote.inputMint !== input.inputMint ||
+        quote.inputAmountRaw !== input.sizeRaw
       ) {
         throw new PaperPositionError("QUOTE_UNAVAILABLE", 503, "Quote does not match the requested signal and size");
       }
-      assertTradeAssessment(assessment, signal, "paper", input.sizeLamports, now());
+      assertTradeAssessment(assessment, signal, "paper", input.sizeRaw, now(), input.inputMint);
       quote = paperQuoteSchema.parse({
         ...quote,
         assessment,
@@ -122,7 +131,11 @@ export function createPaperPositionService(
             throw new PaperPositionError("QUOTE_UNAVAILABLE", 409, "Request a fresh paper quote");
           }
           const quote = entry.quote;
-          if (quote.signalId !== input.signalId || quote.inputAmountLamports !== input.sizeLamports) {
+          if (
+            quote.signalId !== input.signalId ||
+            quote.inputMint !== input.inputMint ||
+            quote.inputAmountRaw !== input.sizeRaw
+          ) {
             throw new PaperPositionError("CONFLICT", 409, "Quote does not match the requested signal and size");
           }
           // Reserve before any await so overlapping requests cannot spend the same quote twice.
@@ -133,7 +146,7 @@ export function createPaperPositionService(
             throw new PaperPositionError("CONFLICT", 409, "Quote mint mismatch");
           const filledAt = now();
           if (!quote.assessment) throw new PaperPositionError("QUOTE_UNAVAILABLE", 409, "Request a fresh paper quote");
-          assertTradeAssessment(quote.assessment, signal, "paper", input.sizeLamports, filledAt);
+          assertTradeAssessment(quote.assessment, signal, "paper", input.sizeRaw, filledAt, input.inputMint);
           assertQuoteFresh(quote, filledAt);
           return createPaperPositionStore(tx, session.userId, network).create(quote, filledAt);
         });
@@ -171,18 +184,20 @@ export function createPaperPositionService(
           if (network === "devnet") {
             const signal = await owner(tokenHash, (tx) => createReadStore(tx, network).signal(position.signalId));
             if (!signal || !assessor) throw new JupiterServiceError("UPSTREAM_UNAVAILABLE");
-            await assessor.assess(signal, "paper", position.sizeLamports);
+            await assessor.assess(signal, "paper", position.sizeRaw);
           }
           const quote = paperValuationQuoteSchema.parse(
             await jupiter.getPaperValuation({
               positionId: id,
               ...(network === "devnet" ? { signalId: position.signalId } : {}),
               inputMint: position.entryQuote.outputMint,
+              ...(network === "mainnet" ? { outputMint: position.entryQuote.inputMint } : {}),
               inputAmountRaw: position.fill.outputAmountRaw,
             }),
           );
           const age = now() - Date.parse(quote.fetchedAt);
           if (
+            quote.outputMint === position.entryQuote.inputMint &&
             quote.inputMint === position.entryQuote.outputMint &&
             quote.inputAmountRaw === position.fill.outputAmountRaw &&
             age >= 0 &&

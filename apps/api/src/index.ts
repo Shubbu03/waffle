@@ -49,17 +49,17 @@ async function main() {
     throw new Error("API database login verification failed", { cause: error });
   }
 
+  const marketRpc = env.HELIUS_RPC_URL
+    ? new MarketRpc({ url: env.HELIUS_RPC_URL, requestsPerSecond: env.RPC_REQUESTS_PER_SECOND })
+    : undefined;
   const jupiter =
     process.env.JUPITER_API_KEY?.trim() && process.env.JUPITER_API_KEY !== "replace-me"
-      ? createJupiterServiceFromEnv({ JUPITER_API_KEY: process.env.JUPITER_API_KEY })
+      ? createJupiterServiceFromEnv({ JUPITER_API_KEY: process.env.JUPITER_API_KEY }, marketRpc)
       : undefined;
   const live = delivery
     ? new LiveDelivery({ auth: database.auth, reads: database.live, dispatch: delivery.live, logger })
     : undefined;
   const push = delivery && fcm ? new PushDelivery(delivery.push, fcm, logger) : undefined;
-  const marketRpc = env.HELIUS_RPC_URL
-    ? new MarketRpc({ url: env.HELIUS_RPC_URL, requestsPerSecond: env.RPC_REQUESTS_PER_SECOND })
-    : undefined;
   const assessor =
     marketRpc && jupiter
       ? createTradeAssessor({

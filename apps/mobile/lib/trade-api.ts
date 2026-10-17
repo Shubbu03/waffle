@@ -1,4 +1,11 @@
-import { tradeAttemptOrderResponseSchema, tradeAttemptSchema } from '@waffle/shared'
+import {
+  idSchema,
+  type PaymentMint,
+  tradeAttemptOrderResponseSchema,
+  tradeAttemptSchema,
+  tradeAttemptsResponseSchema,
+  WRAPPED_SOL_MINT,
+} from '@waffle/shared'
 
 export type { RealOrder, TradeAttempt } from '@waffle/shared'
 
@@ -10,11 +17,12 @@ import { ApiError } from './api-error'
 export async function createTradeAttempt(
   token: string,
   signalId: string,
-  inputAmountLamports: string,
+  inputAmountRaw: string,
+  inputMint: PaymentMint = WRAPPED_SOL_MINT,
 ): Promise<{ order: RealOrder; attempt: TradeAttempt }> {
   const response = await apiRequest(
     '/trade-attempts',
-    { method: 'POST', data: { signalId, inputAmountLamports }, timeoutMs: 30_000 },
+    { method: 'POST', data: { signalId, inputAmountRaw, inputMint }, timeoutMs: 30_000 },
     token,
   )
   const parsed = tradeAttemptOrderResponseSchema.safeParse(response)
@@ -22,12 +30,13 @@ export async function createTradeAttempt(
   const payload = parsed.data
   if (
     payload.order.signalId !== signalId ||
-    payload.order.inputAmountLamports !== inputAmountLamports ||
+    payload.order.inputMint !== inputMint ||
+    payload.order.inputAmountRaw !== inputAmountRaw ||
     payload.attempt.signalId !== signalId ||
     payload.attempt.quoteId !== payload.order.id ||
     payload.attempt.requestId !== payload.order.requestId ||
     payload.attempt.taker !== payload.order.taker ||
-    payload.attempt.inputAmountLamports !== inputAmountLamports
+    payload.attempt.inputAmountRaw !== inputAmountRaw
   )
     throw new ApiError(0, 'BAD_RESPONSE', 'Order does not match this trade review')
   return payload
@@ -72,4 +81,17 @@ export async function rejectTradeAttempt(
   body: { quoteId: string; requestId: string; reason: 'WALLET_REJECTED' | 'USER_CANCELLED' },
 ): Promise<void> {
   await apiRequest(`/trade-attempts/${attemptId}/wallet-rejection`, { method: 'POST', data: body }, token)
+}
+
+export async function listTradeAttempts(token: string, cursor?: string, signal?: AbortSignal, signalId?: string) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (cursor) params.set('cursor', idSchema.parse(cursor))
+  if (signalId) params.set('signalId', idSchema.parse(signalId))
+  const result = tradeAttemptsResponseSchema.safeParse(
+    await apiRequest(`/trade-attempts?${params}`, { signal, timeoutMs: 30_000 }, token),
+  )
+  if (!result.success) throw new ApiError(0, 'BAD_RESPONSE', 'Malformed trade history')
+  if (signalId && result.data.items.some((item) => item.signalId !== signalId))
+    throw new ApiError(0, 'BAD_RESPONSE', 'Trade history does not match this signal')
+  return result.data
 }

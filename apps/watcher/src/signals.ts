@@ -65,7 +65,7 @@ function snapshot(checks: TokenChecks, now: number) {
           : {
               inputMint: quote.value.inputMint,
               outputMint: quote.value.outputMint,
-              inputLamports: quote.value.inputAmountLamports,
+              inputLamports: quote.value.inputAmountRaw,
               outputAmountRaw: quote.value.outputAmountRaw,
               fetchedAt: iso(quote.fetchedAtMs),
             },

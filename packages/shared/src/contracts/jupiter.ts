@@ -1,20 +1,13 @@
 import { z } from "zod";
+import { paymentMintSchema, paymentSizeAllowed } from "../assets.ts";
 import { WRAPPED_SOL_MINT } from "../program-ids.ts";
-import { scorePolicyV1 } from "../scoring/config.ts";
 import {
   idSchema,
-  parseRawAmount,
   positiveRawAmountSchema,
   rawAmountSchema,
   solanaAddressSchema,
   transactionSignatureSchema,
 } from "./primitives.ts";
-
-const amountAtMost = (maximum: bigint) =>
-  positiveRawAmountSchema.refine(
-    (value) => (parseRawAmount(value) ?? 0n) <= maximum,
-    "Amount exceeds the allowed size",
-  );
 
 const quoteRequestFields = {
   signalId: idSchema,
@@ -24,17 +17,28 @@ const quoteRequestFields = {
 export const jupiterPaperQuoteRequestSchema = z
   .strictObject({
     ...quoteRequestFields,
-    inputAmountLamports: amountAtMost(scorePolicyV1.sizeLamports.paperMax),
+    inputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+    inputAmountRaw: positiveRawAmountSchema,
   })
-  .refine((request) => request.outputMint !== WRAPPED_SOL_MINT, "Output mint must differ from SOL");
+  .refine(
+    (request) =>
+      request.outputMint !== request.inputMint &&
+      paymentSizeAllowed(request.inputMint, request.inputAmountRaw, "paper"),
+    "Invalid input asset or size",
+  );
 
 export const jupiterRealOrderRequestSchema = z
   .strictObject({
     ...quoteRequestFields,
-    inputAmountLamports: amountAtMost(scorePolicyV1.sizeLamports.realMax),
+    inputMint: paymentMintSchema.default(WRAPPED_SOL_MINT),
+    inputAmountRaw: positiveRawAmountSchema,
     taker: solanaAddressSchema,
   })
-  .refine((request) => request.outputMint !== WRAPPED_SOL_MINT, "Output mint must differ from SOL");
+  .refine(
+    (request) =>
+      request.outputMint !== request.inputMint && paymentSizeAllowed(request.inputMint, request.inputAmountRaw, "real"),
+    "Invalid input asset or size",
+  );
 
 export const jupiterExecuteRequestSchema = z.strictObject({
   orderId: idSchema,
@@ -44,10 +48,18 @@ export const jupiterExecuteRequestSchema = z.strictObject({
 
 export const jupiterExecutionResultSchema = z.discriminatedUnion("status", [
   z.strictObject({
+    status: z.literal("expired"),
+    requestId: z.string().min(1).max(200),
+    code: z.literal(-9999),
+    signature: transactionSignatureSchema,
+  }),
+  z.strictObject({
     status: z.literal("confirmed"),
     requestId: z.string().min(1).max(200),
     code: z.literal(0),
     signature: transactionSignatureSchema,
+    feeLamports: rawAmountSchema.optional(),
+    outputDecimals: z.number().int().min(0).max(255).optional(),
     totalInputAmountRaw: rawAmountSchema,
     totalOutputAmountRaw: rawAmountSchema,
     inputAmountResultRaw: rawAmountSchema,

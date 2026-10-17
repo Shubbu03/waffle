@@ -70,7 +70,7 @@ function quote(now: number, outputMint = mint, size = "50000000"): PaperQuote {
     kind: "paper",
     inputMint: WRAPPED_SOL_MINT,
     outputMint,
-    inputAmountLamports: size,
+    inputAmountRaw: size,
     outputAmountRaw: "500000",
     minOutputAmountRaw: "490000",
     requestId: "probe",
@@ -132,8 +132,8 @@ function harness(
       async getPaperQuote(input) {
         calls.quotes.push(input);
         if (fail) throw new Error("secret-api-key");
-        const request = input as { outputMint: string; inputAmountLamports: string };
-        return quoteOverride ?? quote(now, request.outputMint, request.inputAmountLamports);
+        const request = input as { outputMint: string; inputAmountRaw: string };
+        return quoteOverride ?? quote(now, request.outputMint, request.inputAmountRaw);
       },
       async getUsdPrice() {
         calls.prices++;
@@ -186,7 +186,7 @@ describe("token and pool evidence", () => {
       value: { address: pool, baseMint: mint, liquidityUsd: 30_000, spotPriceUsd: 15 },
     });
     expect(h.calls.accounts).toContainEqual([pool, mint, baseVault, quoteVault]);
-    expect(h.calls.quotes[0]).toMatchObject({ outputMint: mint, inputAmountLamports: "75000000" });
+    expect(h.calls.quotes[0]).toMatchObject({ outputMint: mint, inputAmountRaw: "75000000" });
     expect(result.holders).toEqual({ status: "unknown", reason: "holder-distribution-unavailable" });
     expect(result.creator).toEqual({ status: "unknown", reason: "creator-attribution-unavailable" });
     expect(result.oracle).toEqual({ source: "none", reason: "no-same-asset-feed" });

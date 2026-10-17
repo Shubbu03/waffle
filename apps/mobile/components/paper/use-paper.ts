@@ -59,9 +59,9 @@ export function usePaperTrade(signalId: string, blocked: string | null) {
         current.current.available &&
         current.current.blocked === null &&
         AppState.currentState === 'active',
-      prepare: async (sizeLamports, signal) => {
+      prepare: async (sizeRaw, signal, inputMint) => {
         assertTrade()
-        return preparePaperQuote({ signalId, sizeLamports }, token ?? '', signal)
+        return preparePaperQuote({ signalId, sizeRaw, inputMint }, token ?? '', signal)
       },
       create: async (pending) => {
         // A local refusal before POST is a definitive non-submission.

@@ -110,13 +110,13 @@ export class TokenEvidenceCollector {
               await this.dependencies.jupiter.getPaperQuote({
                 signalId: crypto.randomUUID(),
                 outputMint: mint,
-                inputAmountLamports: this.copySize.toString(),
+                inputAmountRaw: this.copySize.toString(),
               }),
             );
             if (
               quote.outputMint !== mint ||
               quote.inputMint !== WRAPPED_SOL_MINT ||
-              quote.inputAmountLamports !== this.copySize.toString()
+              quote.inputAmountRaw !== this.copySize.toString()
             )
               throw new EvidenceUnavailable("quote-mint-or-size-mismatch");
             const fetchedAtMs = Date.parse(quote.fetchedAt);
@@ -273,7 +273,7 @@ export function toScoreEvidence(
         ? {
             inputMint: quote.value.inputMint,
             outputMint: quote.value.outputMint,
-            inputLamports: BigInt(quote.value.inputAmountLamports),
+            inputLamports: BigInt(quote.value.inputAmountRaw),
             outputAmountRaw: BigInt(quote.value.outputAmountRaw),
             fetchedAtMs: quote.fetchedAtMs,
           }

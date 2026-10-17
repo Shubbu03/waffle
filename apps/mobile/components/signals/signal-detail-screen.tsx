@@ -161,7 +161,7 @@ export function SignalDetailScreen() {
                   {blocked ??
                     (selectedCluster.id === 'solana:devnet'
                       ? 'Use test SOL on Devnet. Each trade checks the current token and pool first.'
-                      : 'Practice with a paper trade, or buy with SOL from your wallet. Both check current conditions first.')}
+                      : 'Practice with a paper trade, or buy with SOL or USDC from your wallet. Both check current conditions first.')}
                 </AppText>
               </View>
               {!blocked ? (

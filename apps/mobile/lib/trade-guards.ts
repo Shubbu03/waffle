@@ -1,3 +1,4 @@
+import { paymentSizeAllowed, realTradePolicy, WRAPPED_SOL_MINT } from '@waffle/shared'
 /** Client-side real-trade guards.
  *
  * The server already enforces these in contract; the app re-checks every one
@@ -7,7 +8,6 @@
  */
 
 export const ALLOWED_ROUTERS = ['metis', 'dflow', 'okx'] as const
-export const REAL_MAX_LAMPORTS = 50_000_000 // 0.05 SOL demo cap (mirrors scorePolicyV1.sizeLamports.realMax)
 
 export type GuardResult = { ok: true } | { ok: false; reason: string }
 
@@ -19,7 +19,11 @@ type RealOrderLike = {
   signatureFeePayer?: unknown
   requiredSignatures?: unknown
   gasless?: unknown
-  inputAmountLamports?: unknown
+  inputMint?: unknown
+  slippageBps?: unknown
+  priceImpactBps?: unknown
+  feeLamports?: unknown
+  inputAmountRaw?: unknown
   expiresAt?: unknown
   fetchedAt?: unknown
 }
@@ -40,6 +44,8 @@ export function checkRealOrder(
   if (o.kind !== 'real') return fail(`kind=${String(o.kind)} (expected real)`)
   if ((o.network ?? 'mainnet') !== network || network === 'testnet')
     return fail('Order belongs to another network or trading is unavailable.')
+  if (network !== 'mainnet' && o.inputMint !== undefined && o.inputMint !== WRAPPED_SOL_MINT)
+    return fail('USDC trading is available on Mainnet only')
   const routers = network === 'devnet' ? ['pumpswap'] : ALLOWED_ROUTERS
   if (typeof o.router !== 'string' || !(routers as readonly string[]).includes(o.router)) {
     return fail(`router=${String(o.router)} (need ${routers.join('/')}, never jupiterz)`)
@@ -50,11 +56,33 @@ export function checkRealOrder(
   if (o.signatureFeePayer !== o.taker) return fail('fee payer differs from taker (gasless/sponsored route)')
   if (o.requiredSignatures !== 1) return fail(`requiredSignatures=${String(o.requiredSignatures)} (need exactly 1)`)
   if (o.gasless !== false) return fail('gasless route')
-  const amount = typeof o.inputAmountLamports === 'string' ? Number(o.inputAmountLamports) : NaN
+  const amount = typeof o.inputAmountRaw === 'string' ? Number(o.inputAmountRaw) : NaN
   if (!Number.isSafeInteger(amount) || amount <= 0) return fail('unreadable input amount')
-  if (amount > REAL_MAX_LAMPORTS) return fail(`exceeds 0.05 SOL demo cap (${amount} lamports)`)
+  if (!paymentSizeAllowed(typeof o.inputMint === 'string' ? o.inputMint : WRAPPED_SOL_MINT, String(amount), 'real'))
+    return fail('Purchase exceeds the selected asset limit')
+  if (
+    o.slippageBps !== undefined &&
+    (typeof o.slippageBps !== 'number' || o.slippageBps > realTradePolicy.maxSlippageBps)
+  )
+    return fail('Slippage exceeds the purchase limit')
+  if (
+    o.priceImpactBps !== undefined &&
+    (typeof o.priceImpactBps !== 'number' || o.priceImpactBps > realTradePolicy.maxPriceImpactBps)
+  )
+    return fail('Price impact exceeds the purchase limit')
+  if (
+    o.feeLamports !== undefined &&
+    (typeof o.feeLamports !== 'string' ||
+      !/^\d+$/.test(o.feeLamports) ||
+      BigInt(o.feeLamports) > realTradePolicy.maxFeeLamports)
+  )
+    return fail('Network fees exceed the purchase limit')
   const fetchedAt = typeof o.fetchedAt === 'string' ? Date.parse(o.fetchedAt) : NaN
-  if (!Number.isFinite(fetchedAt) || fetchedAt > nowMs || nowMs - fetchedAt >= (network === 'devnet' ? 60_000 : 10_000))
+  if (
+    !Number.isFinite(fetchedAt) ||
+    fetchedAt > nowMs ||
+    nowMs - fetchedAt >= (network === 'devnet' ? 60_000 : realTradePolicy.quoteMs)
+  )
     return fail('quote expired')
   const expires = typeof o.expiresAt === 'string' ? Date.parse(o.expiresAt) : NaN
   if (!Number.isFinite(expires) || expires <= nowMs) return fail('quote expired')

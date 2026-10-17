@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { paymentMintSchema, paymentSizeAllowed, realTradePolicy } from "../assets.ts";
 import { WRAPPED_SOL_MINT } from "../program-ids.ts";
-import { scorePolicyV1 } from "../scoring/config.ts";
 import {
   idSchema,
   parseRawAmount,
@@ -15,9 +15,9 @@ const quoteFields = z.strictObject({
   network: z.enum(["mainnet", "devnet", "testnet"]).optional(),
   id: idSchema,
   signalId: idSchema,
-  inputMint: z.literal(WRAPPED_SOL_MINT),
+  inputMint: paymentMintSchema,
   outputMint: solanaAddressSchema,
-  inputAmountLamports: positiveRawAmountSchema,
+  inputAmountRaw: positiveRawAmountSchema,
   outputAmountRaw: positiveRawAmountSchema,
   minOutputAmountRaw: positiveRawAmountSchema,
   requestId: z.string().min(1).max(200),
@@ -53,13 +53,15 @@ function quoteIsConsistent(quote: z.infer<typeof quoteFields>): boolean {
     (parseRawAmount(quote.fees.prioritizationLamports) ?? 0n) +
     (parseRawAmount(quote.fees.rentLamports) ?? 0n);
   return (
+    ((quote.network ?? "mainnet") === "mainnet" || quote.inputMint === WRAPPED_SOL_MINT) &&
     (quote.router !== "pumpswap" ? (quote.network ?? "mainnet") === "mainnet" : quote.network === "devnet") &&
     (!quote.assessment || (quote.assessment.network ?? "mainnet") === (quote.network ?? "mainnet")) &&
     (!quote.assessment ||
       (quote.assessment.signalId === quote.signalId &&
         quote.assessment.mint.address === quote.outputMint &&
-        quote.assessment.inputAmountLamports === quote.inputAmountLamports &&
-        Date.parse(quote.expiresAt) <= Date.parse(quote.assessment.expiresAt))) &&
+        (quote.assessment.inputMint ?? WRAPPED_SOL_MINT) === quote.inputMint &&
+        quote.assessment.inputAmountRaw === quote.inputAmountRaw &&
+        (quote.assessment.mode === "real" || Date.parse(quote.expiresAt) <= Date.parse(quote.assessment.expiresAt)))) &&
     minimum !== null &&
     output !== null &&
     minimum <= output &&
@@ -78,12 +80,12 @@ export const paperQuoteSchema = quoteFields
     providerQuoteId: z.string().max(200).nullable(),
   })
   .refine((quote) => {
-    const input = parseRawAmount(quote.inputAmountLamports);
+    const input = parseRawAmount(quote.inputAmountRaw);
     return (
       (!quote.assessment || quote.assessment.mode === "paper") &&
       quoteIsConsistent(quote) &&
       input !== null &&
-      input <= scorePolicyV1.sizeLamports.paperMax
+      paymentSizeAllowed(quote.inputMint, quote.inputAmountRaw, "paper")
     );
   }, "Invalid paper quote bounds or amount");
 
@@ -102,13 +104,16 @@ export const realOrderSchema = quoteFields
     transactionBase64: z.base64().max(8192),
   })
   .refine((order) => {
-    const input = parseRawAmount(order.inputAmountLamports);
+    const input = parseRawAmount(order.inputAmountRaw);
     return (
       (!order.assessment || order.assessment.mode === "real") &&
       quoteIsConsistent(order) &&
       input !== null &&
-      input <= scorePolicyV1.sizeLamports.realMax &&
-      order.signatureFeePayer === order.taker
+      paymentSizeAllowed(order.inputMint, order.inputAmountRaw, "real") &&
+      order.signatureFeePayer === order.taker &&
+      order.slippageBps <= realTradePolicy.maxSlippageBps &&
+      order.priceImpactBps <= realTradePolicy.maxPriceImpactBps &&
+      BigInt(order.feeLamports) <= realTradePolicy.maxFeeLamports
     );
   }, "Invalid real order bounds, size, or fee payer");
 

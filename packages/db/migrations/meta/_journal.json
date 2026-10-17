@@ -36,6 +36,13 @@
       "when": 1791451850692,
       "tag": "0004_nappy_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792216996142,
+      "tag": "0005_payment_assets_and_trade_recovery",
+      "breakpoints": true
     }
   ]
 }

@@ -45,6 +45,7 @@ export function HomeWalletMenu() {
       onPress: () => router.push('/settings'),
     },
     { title: 'My account', icon: 'person.crop.circle', onPress: () => router.push('/account') },
+    { title: 'Trade history', icon: 'chart.bar', onPress: () => router.push('/trade/history') },
     { title: 'Paper positions', icon: 'chart.bar', onPress: () => router.push('/paper/positions') },
   ]
   return (

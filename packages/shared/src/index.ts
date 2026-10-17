@@ -1,3 +1,4 @@
+export * from "./assets.ts";
 export * from "./contracts/api.ts";
 export * from "./contracts/auth.ts";
 export * from "./contracts/jupiter.ts";

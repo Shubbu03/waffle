@@ -6,11 +6,13 @@ import {
   type ApiErrorCode,
   checkTradeLimits,
   PUMP_SWAP_PROGRAM_ID,
+  paymentSizeAllowed,
   type SignalDetail,
   scorePolicyV1,
   type TradeAssessment,
   type TradeMode,
   tradeAssessmentSchema,
+  WRAPPED_SOL_MINT,
 } from "@waffle/shared";
 import type { JupiterService } from "./jupiter.ts";
 
@@ -24,7 +26,7 @@ export class TradeAssessmentError extends Error {
   }
 }
 export type TradeAssessor = {
-  assess(signal: SignalDetail, mode: TradeMode, size: string): Promise<TradeAssessment>;
+  assess(signal: SignalDetail, mode: TradeMode, size: string, inputMint?: string): Promise<TradeAssessment>;
 };
 
 /** History status and stream health govern alerts, not a new manual assessment. */
@@ -43,6 +45,7 @@ export function assertTradeAssessment(
   mode: TradeMode,
   size: string,
   now: number,
+  inputMint: string = WRAPPED_SOL_MINT,
 ) {
   const parsed = tradeAssessmentSchema.safeParse(value);
   if (!parsed.success)
@@ -52,7 +55,8 @@ export function assertTradeAssessment(
     a.signalId !== signal.id ||
     a.mint.address !== signal.mintAddress ||
     a.mode !== mode ||
-    a.inputAmountLamports !== size
+    a.inputAmountRaw !== size ||
+    a.inputMint !== inputMint
   )
     throw new TradeAssessmentError("CONFLICT", 409, "Trade checks do not match this token and size.");
   const mintAge = now - Date.parse(a.mint.fetchedAt);
@@ -81,7 +85,15 @@ export function assertTradeAssessment(
   } else {
     if ((a.network ?? "mainnet") !== "mainnet" || a.pool.liquidityUsd === null)
       throw new TradeAssessmentError("UNSUPPORTED_ROUTE", 409, "PumpSwap trading is unavailable on this network.");
-    const gate = checkTradeLimits(mode, BigInt(size), a.pool.liquidityUsd, Date.parse(a.pool.fetchedAt), now);
+    if (!paymentSizeAllowed(inputMint, size, mode))
+      throw new TradeAssessmentError("LIMIT_EXCEEDED", 409, "Trade size exceeds this asset limit.");
+    const gate = checkTradeLimits(
+      mode,
+      inputMint === WRAPPED_SOL_MINT ? BigInt(size) : 1n,
+      a.pool.liquidityUsd,
+      Date.parse(a.pool.fetchedAt),
+      now,
+    );
     if (!gate.allowed)
       throw new TradeAssessmentError(
         gate.reason === "liquidity_stale" ? "QUOTE_UNAVAILABLE" : "LIMIT_EXCEEDED",
@@ -111,7 +123,7 @@ export function createTradeAssessor(options: {
 }): TradeAssessor {
   const now = options.now ?? Date.now;
   return {
-    async assess(signal, mode, size) {
+    async assess(signal, mode, size, inputMint = WRAPPED_SOL_MINT) {
       assertSupportedSignal(signal);
       try {
         // Derive the pool from the confirmed source transaction, never from mobile input.
@@ -159,7 +171,8 @@ export function createTradeAssessor(options: {
           policyVersion: 1,
           signalId: signal.id,
           mode,
-          inputAmountLamports: size,
+          inputMint,
+          inputAmountRaw: size,
           checkedAt: iso(now()),
           expiresAt: iso(expiresAt),
           mint: {
@@ -188,7 +201,7 @@ export function createTradeAssessor(options: {
                   expiresAt: iso(checks.oracle.expiresAtMs),
                 },
         });
-        assertTradeAssessment(assessment, signal, mode, size, now());
+        assertTradeAssessment(assessment, signal, mode, size, now(), inputMint);
         return assessment;
       } catch (error) {
         if (error instanceof TradeAssessmentError) throw error;

@@ -51,7 +51,7 @@ function checks(): TokenChecks {
       kind: "paper",
       inputMint: WRAPPED_SOL_MINT,
       outputMint: buy.mintAddress,
-      inputAmountLamports: "50000000",
+      inputAmountRaw: "50000000",
       outputAmountRaw: "9007199254740993",
       minOutputAmountRaw: "9007199254740990",
       requestId: "probe",

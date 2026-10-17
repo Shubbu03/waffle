@@ -98,7 +98,7 @@ function mockService(
 const realRequest = {
   signalId,
   outputMint: PUMP_SWAP_PROGRAM_ID,
-  inputAmountLamports: "50000000",
+  inputAmountRaw: "50000000",
   taker: wallet.publicKey.toBase58(),
 };
 
@@ -137,7 +137,7 @@ describe("Jupiter quote and order service", () => {
     const quote = await service.getPaperQuote({
       signalId,
       outputMint: PUMP_SWAP_PROGRAM_ID,
-      inputAmountLamports: "50000000",
+      inputAmountRaw: "50000000",
     });
     expect(requests).toHaveLength(1);
     const request = requests[0];
@@ -163,9 +163,9 @@ describe("Jupiter quote and order service", () => {
   });
 
   test("rejects invalid, stale, mismatched, and transaction-bearing paper quotes", async () => {
-    const request = { signalId, outputMint: PUMP_SWAP_PROGRAM_ID, inputAmountLamports: "50000000" };
+    const request = { signalId, outputMint: PUMP_SWAP_PROGRAM_ID, inputAmountRaw: "50000000" };
     let service = mockService(upstreamOrder({ taker: null, transaction: null }));
-    await expect(service.getPaperQuote({ ...request, inputAmountLamports: "100000001" })).rejects.toMatchObject({
+    await expect(service.getPaperQuote({ ...request, inputAmountRaw: "100000001" })).rejects.toMatchObject({
       code: "INVALID_REQUEST",
     });
     service = mockService(upstreamOrder({ taker: null, transaction: null, inAmount: "1" }));
@@ -216,7 +216,7 @@ describe("Jupiter quote and order service", () => {
     ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
     await expect(
       mockService(upstreamOrder()).getRealOrder(
-        { ...realRequest, inputAmountLamports: "50000001" },
+        { ...realRequest, inputAmountRaw: "50000001" },
         wallet.publicKey.toBase58(),
       ),
     ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
@@ -275,7 +275,7 @@ describe("Jupiter quote and order service", () => {
   });
 
   test("reports upstream failures and uncertain execution without retrying", async () => {
-    const request = { signalId, outputMint: PUMP_SWAP_PROGRAM_ID, inputAmountLamports: "50000000" };
+    const request = { signalId, outputMint: PUMP_SWAP_PROGRAM_ID, inputAmountRaw: "50000000" };
     const unavailable = new JupiterService(
       "server-secret",
       (async () => new Response("rate limited", { status: 429 })) as unknown as HttpTransport,
@@ -345,4 +345,129 @@ test("USD price requests preserve exact mint identity and source block", async (
       Response.json(payload)) as HttpTransport);
     await expect(invalid.getUsdPrice(WRAPPED_SOL_MINT)).rejects.toThrow("UPSTREAM_INVALID");
   }
+});
+
+test("USDC paper and real quotes use the reviewed input mint and reject mismatched responses", async () => {
+  const { USDC_MINT } = await import("@waffle/shared");
+  const requests: Array<{ url: URL; init: RequestInit }> = [];
+  const request = { ...realRequest, inputMint: USDC_MINT, inputAmountRaw: "5000000" };
+  const service = mockService(upstreamOrder({ inputMint: USDC_MINT, inAmount: "5000000" }), requests);
+  const order = await service.getRealOrder(request, wallet.publicKey.toBase58());
+  expect(order.inputMint).toBe(USDC_MINT);
+  expect(requests[0]?.url.searchParams.get("inputMint")).toBe(USDC_MINT);
+  expect(requests[0]?.url.searchParams.get("amount")).toBe("5000000");
+  await expect(mockService(upstreamOrder()).getRealOrder(request, wallet.publicKey.toBase58())).rejects.toMatchObject({
+    code: "UPSTREAM_INVALID",
+  });
+  const paper = await mockService(
+    upstreamOrder({ inputMint: USDC_MINT, inAmount: "5000000", taker: null, transaction: null }),
+  ).getPaperQuote({ signalId, outputMint: PUMP_SWAP_PROGRAM_ID, inputMint: USDC_MINT, inputAmountRaw: "5000000" });
+  expect(paper.inputMint).toBe(USDC_MINT);
+});
+
+test("a new provider process validates the persisted exact message before execution", async () => {
+  const order = await mockService(upstreamOrder()).getRealOrder(realRequest, wallet.publicKey.toBase58());
+  let broadcasts = 0;
+  const restored = new JupiterService(
+    "test",
+    (async () => {
+      broadcasts++;
+      throw new Error("response lost");
+    }) as HttpTransport,
+    () => now + 20_000,
+  );
+  await expect(
+    restored.execute(
+      { orderId: order.id, requestId: order.requestId, signedTransactionBase64: changedBase64 },
+      wallet.publicKey.toBase58(),
+      async () => {},
+      order,
+    ),
+  ).rejects.toMatchObject({ code: "INVALID_ORDER" });
+  expect(broadcasts).toBe(0);
+  let persisted = false;
+  await expect(
+    restored.execute(
+      { orderId: order.id, requestId: order.requestId, signedTransactionBase64: signedBase64 },
+      wallet.publicKey.toBase58(),
+      async () => {
+        persisted = true;
+      },
+      order,
+    ),
+  ).rejects.toMatchObject({ code: "EXECUTION_UNKNOWN" });
+  expect(persisted).toBe(true);
+  expect(broadcasts).toBe(1);
+});
+
+test("Mainnet recovery reads the chain and preserves USDC units and actual network fees", async () => {
+  const { USDC_MINT } = await import("@waffle/shared");
+  const order = await mockService(upstreamOrder({ inputMint: USDC_MINT, inAmount: "5000000" })).getRealOrder(
+    { ...realRequest, inputMint: USDC_MINT, inputAmountRaw: "5000000" },
+    wallet.publicKey.toBase58(),
+  );
+  const signature = "1".repeat(64);
+  const calls: string[] = [];
+  let wrongOwner = false;
+  const balance = (mint: string, amount: string) => ({
+    accountIndex: mint === USDC_MINT ? 1 : 2,
+    mint,
+    owner: wrongOwner ? otherWallet.publicKey.toBase58() : wallet.publicKey.toBase58(),
+    uiTokenAmount: { amount, decimals: 6 },
+  });
+  const service = new JupiterService("test", undefined, () => now, {
+    async call(method) {
+      calls.push(method);
+      if (method === "getSignatureStatuses") return { value: [{ err: null, confirmationStatus: "confirmed" }] };
+      if (method === "getTransaction")
+        return {
+          transaction: {
+            signatures: [signature],
+            message: { accountKeys: [{ pubkey: wallet.publicKey.toBase58(), signer: true }] },
+          },
+          meta: {
+            err: null,
+            fee: 6000,
+            preBalances: [1000000],
+            postBalances: [994000],
+            preTokenBalances: [balance(USDC_MINT, "10000000")],
+            postTokenBalances: [balance(USDC_MINT, "5000000"), balance(PUMP_SWAP_PROGRAM_ID, "1000")],
+          },
+        };
+      throw new Error("Recovery must not simulate or broadcast");
+    },
+  });
+  expect(
+    await service.getExecution(signature, order.requestId, wallet.publicKey.toBase58(), order.outputMint, order),
+  ).toMatchObject({
+    status: "confirmed",
+    inputAmountResultRaw: "5000000",
+    outputAmountResultRaw: "1000",
+    feeLamports: "6000",
+    outputDecimals: 6,
+  });
+  expect(calls).toEqual(["getSignatureStatuses", "getTransaction"]);
+  wrongOwner = true;
+  await expect(
+    service.getExecution(signature, order.requestId, wallet.publicKey.toBase58(), order.outputMint, order),
+  ).rejects.toThrow("Transaction output mismatch");
+});
+
+test("missing transaction stays pending until blockhash expiry is established", async () => {
+  const order = await mockService(upstreamOrder()).getRealOrder(realRequest, wallet.publicKey.toBase58());
+  let height = Number(order.lastValidBlockHeight);
+  const service = new JupiterService("test", undefined, () => now, {
+    async call(method) {
+      if (method === "getSignatureStatuses") return { value: [null] };
+      if (method === "getBlockHeight") return height;
+      throw new Error("Unexpected RPC method");
+    },
+  });
+  expect(
+    await service.getExecution("1".repeat(64), order.requestId, wallet.publicKey.toBase58(), order.outputMint, order),
+  ).toBeNull();
+  height++;
+  expect(
+    await service.getExecution("1".repeat(64), order.requestId, wallet.publicKey.toBase58(), order.outputMint, order),
+  ).toMatchObject({ status: "expired" });
 });

@@ -22,7 +22,7 @@ function harness() {
   let lookupResult: PaperPositionWithFill | null = null
   let lookupError: Error | null = null
   let create = async (pending: PendingPaperFill) =>
-    paperPositionFixture({ ...paperQuoteFixture(now, pending.sizeLamports), id: pending.quoteId }, now)
+    paperPositionFixture({ ...paperQuoteFixture(now, pending.sizeRaw), id: pending.quoteId }, now)
   let prepare = async (size: string) => paperQuoteFixture(now, size)
   let save = async (pending: PendingPaperFill) => {
     saved = pending
@@ -277,7 +277,7 @@ test('a failed status lookup cannot unlock a new simulation', async () => {
 test('restart restores an expired pending quote for lookup, without replaying create', async () => {
   const h = harness()
   const q = paperQuoteFixture(start)
-  h.saved = { quoteId: q.id, signalId: q.signalId, sizeLamports: q.inputAmountLamports }
+  h.saved = { quoteId: q.id, signalId: q.signalId, sizeRaw: q.inputAmountRaw }
   h.lookup = paperPositionFixture(q)
   h.time = start + 30_000
   await h.controller.restore()

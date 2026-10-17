@@ -193,7 +193,7 @@ function fixture() {
   const request = {
     signalId: signal.id,
     outputMint: signal.mintAddress,
-    inputAmountLamports: "10000000",
+    inputAmountRaw: "10000000",
     taker: signal.walletAddress,
   };
   return {
@@ -206,7 +206,7 @@ function fixture() {
     mint,
     accounts,
     async prepare() {
-      await provider.assess(signal, "real", request.inputAmountLamports);
+      await provider.assess(signal, "real", request.inputAmountRaw);
       return provider.getRealOrder(request, request.taker);
     },
     setGenesis(value: string) {
@@ -240,7 +240,7 @@ test("Devnet quote uses real SDK fees and builds a bounded single-signer PumpSwa
   const paper = await f.provider.getPaperQuote({
     signalId: f.signal.id,
     outputMint: f.signal.mintAddress,
-    inputAmountLamports: "10000000",
+    inputAmountRaw: "10000000",
   });
   const exit = await f.provider.getPaperValuation({
     positionId: crypto.randomUUID(),
@@ -248,7 +248,7 @@ test("Devnet quote uses real SDK fees and builds a bounded single-signer PumpSwa
     inputMint: f.signal.mintAddress,
     inputAmountRaw: paper.minOutputAmountRaw,
   });
-  expect(BigInt(exit.outputLamports)).toBeGreaterThan(0n);
+  expect(BigInt(exit.outputAmountRaw)).toBeGreaterThan(0n);
   expect(paper.router).toBe("pumpswap");
   expect(paper.network).toBe("devnet");
   expect(BigInt(paper.outputAmountRaw)).toBeGreaterThan(0n);

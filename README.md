@@ -2,7 +2,7 @@
 
 Follow the Whales. Trade with Signal. Not noise.
 
-Follow Solana wallets, review scored PumpSwap buys, and copy trades on Android. Try simulated paper trades or approve real trades with your connected wallet.
+Follow Solana wallets, review scored PumpSwap buys, and copy trades on Android. Try simulated paper trades or approve real purchases with SOL or USDC from your connected wallet.
 
 Built with Expo, React Native, Bun, Hono, and PostgreSQL.
 
@@ -68,5 +68,3 @@ bun run lint
 bun run typecheck
 bun run test
 ```
-
-Deploy a single API instance while prepared order state remains process-local.

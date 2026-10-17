@@ -4,6 +4,7 @@ import { useThemeColor } from '@/hooks/use-theme-color'
 
 export function AppButton({
   title,
+  accessibilityLabel,
   onPress,
   variant = 'primary',
   disabled = false,
@@ -11,6 +12,7 @@ export function AppButton({
   style,
 }: {
   title: string
+  accessibilityLabel?: string
   onPress: () => void
   variant?: 'primary' | 'secondary' | 'quiet'
   disabled?: boolean
@@ -25,6 +27,7 @@ export function AppButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: disabled || busy, busy }}
       disabled={disabled || busy}
       onPress={onPress}

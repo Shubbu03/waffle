@@ -15,7 +15,7 @@ export function paperQuoteFixture(now = Date.now(), size = '100000000') {
     inputMint: WRAPPED_SOL_MINT,
     outputMint: PUMP_SWAP_PROGRAM_ID,
     outputDecimals: 6,
-    inputAmountLamports: size,
+    inputAmountRaw: size,
     outputAmountRaw: '9007199254740993123',
     minOutputAmountRaw: '8556839292003943467',
     requestId: 'test-only',
@@ -40,7 +40,7 @@ export function paperPositionFixture(quote = paperQuoteFixture(), now = Date.par
   return paperPositionWithFillSchema.parse({
     id: crypto.randomUUID(),
     signalId: quote.signalId,
-    sizeLamports: quote.inputAmountLamports,
+    sizeRaw: quote.inputAmountRaw,
     entryQuote: quote,
     simulated: true,
     status: 'open',
